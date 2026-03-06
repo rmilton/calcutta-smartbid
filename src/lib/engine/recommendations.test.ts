@@ -23,8 +23,7 @@ function buildSession(): AuctionSession {
     updatedAt: new Date().toISOString(),
     focusSyndicateId: "syn_focus",
     eventAccess: {
-      operatorPasscode: "111111",
-      viewerPasscode: "222222"
+      sharedCodeConfigured: true
     },
     payoutRules,
     syndicates: [
@@ -47,6 +46,8 @@ function buildSession(): AuctionSession {
         portfolioExpectedValue: 0
       }
     ],
+    baseProjections: projections,
+    projectionOverrides: {},
     projections,
     projectionProvider: "mock",
     finalFourPairings: getDefaultFinalFourPairings(),

@@ -1,3 +1,4 @@
+import { buildAuthErrorResponse } from "@/lib/auth";
 import { getSessionRepository } from "@/lib/repository";
 import { jsonError, jsonOk } from "@/lib/http";
 import { createPurchaseSchema } from "@/lib/types";
@@ -9,6 +10,10 @@ interface RouteProps {
 export async function POST(request: Request, { params }: RouteProps) {
   try {
     const { sessionId } = await params;
+    const authError = await buildAuthErrorResponse(sessionId, "admin");
+    if (authError) {
+      return authError;
+    }
     const parsed = createPurchaseSchema.safeParse(await request.json());
     if (!parsed.success) {
       return jsonError("Enter a bid greater than $0 before recording a purchase.");

@@ -1,21 +1,25 @@
 "use client";
 
 import { startTransition, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
-import { AuctionDashboard } from "@/lib/types";
+import { AuctionDashboard, AuthenticatedMember } from "@/lib/types";
 import { formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 
 interface DashboardShellProps {
   sessionId: string;
   initialDashboard: AuctionDashboard;
   viewerMode: boolean;
+  currentMember: AuthenticatedMember;
 }
 
 export function DashboardShell({
   sessionId,
   initialDashboard,
-  viewerMode
+  viewerMode,
+  currentMember
 }: DashboardShellProps) {
+  const router = useRouter();
   const { dashboard, isRefreshing, refresh } = useSessionDashboard(
     sessionId,
     initialDashboard
@@ -267,6 +271,14 @@ export function DashboardShell({
     });
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", {
+      method: "POST"
+    });
+    router.push("/");
+    router.refresh();
+  }
+
   const lastSaleTeamName =
     dashboard.lastPurchase &&
     dashboard.session.projections.find(
@@ -285,10 +297,14 @@ export function DashboardShell({
           </p>
         </div>
         <div className="session-badges">
-          <span>Operator code {dashboard.session.eventAccess.operatorPasscode}</span>
-          <span>Viewer code {dashboard.session.eventAccess.viewerPasscode}</span>
+          <span>
+            Signed in as {currentMember.name} ({currentMember.role})
+          </span>
           <span>Backend {dashboard.storageBackend}</span>
           <span>{isRefreshing ? "Syncing..." : "Live sync ready"}</span>
+          <button type="button" className="secondary" onClick={() => void logout()}>
+            Log out
+          </button>
         </div>
       </header>
 

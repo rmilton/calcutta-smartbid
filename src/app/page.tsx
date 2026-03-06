@@ -1,7 +1,17 @@
-import Link from "next/link";
-import { SetupForm } from "@/components/setup-form";
+import { redirect } from "next/navigation";
+import { AccessForm } from "@/components/access-form";
+import { getAuthenticatedMember } from "@/lib/auth";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const auth = await getAuthenticatedMember();
+  if (auth) {
+    if (auth.scope === "platform") {
+      redirect("/admin/sessions/new");
+    }
+
+    redirect(`/session/${auth.sessionId}`);
+  }
+
   return (
     <main className="landing-page">
       <section className="landing-hero">
@@ -13,8 +23,7 @@ export default function HomePage() {
             Every nomination updates current bid guidance, expected return, and collision risk against teams you already own.
           </p>
           <div className="hero-links">
-            <Link href="#setup">Create auction session</Link>
-            <span>Local MVP with Supabase-ready schema and realtime hooks</span>
+            <span>Authenticate with your email address and shared code to enter the auction room.</span>
           </div>
         </div>
         <aside className="landing-stats">
@@ -34,11 +43,7 @@ export default function HomePage() {
       </section>
 
       <section id="setup" className="setup-section">
-        <div className="section-heading">
-          <p className="eyebrow">Auction setup</p>
-          <h2>Create a live session</h2>
-        </div>
-        <SetupForm />
+        <AccessForm />
       </section>
     </main>
   );

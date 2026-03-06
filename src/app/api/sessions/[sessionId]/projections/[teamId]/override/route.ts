@@ -1,3 +1,4 @@
+import { buildAuthErrorResponse } from "@/lib/auth";
 import { jsonError, jsonOk } from "@/lib/http";
 import { getSessionRepository } from "@/lib/repository";
 import { saveProjectionOverrideSchema } from "@/lib/types";
@@ -9,6 +10,10 @@ interface RouteProps {
 export async function PUT(request: Request, { params }: RouteProps) {
   try {
     const { sessionId, teamId } = await params;
+    const authError = await buildAuthErrorResponse(sessionId, "admin");
+    if (authError) {
+      return authError;
+    }
     const payload = saveProjectionOverrideSchema.parse(await request.json());
     const dashboard = await getSessionRepository().saveProjectionOverride(
       sessionId,
@@ -26,6 +31,10 @@ export async function PUT(request: Request, { params }: RouteProps) {
 export async function DELETE(_request: Request, { params }: RouteProps) {
   try {
     const { sessionId, teamId } = await params;
+    const authError = await buildAuthErrorResponse(sessionId, "admin");
+    if (authError) {
+      return authError;
+    }
     const dashboard = await getSessionRepository().clearProjectionOverride(sessionId, teamId);
     return jsonOk(dashboard);
   } catch (error) {

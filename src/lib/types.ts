@@ -10,7 +10,8 @@ export const stageSchema = z.enum([
 
 export type Stage = z.infer<typeof stageSchema>;
 export type Stoplight = "buy" | "caution" | "pass";
-export type SessionRole = "operator" | "viewer";
+export type SessionRole = "admin" | "viewer";
+export type AuthScope = "platform" | "session";
 export type StorageBackend = "local" | "supabase";
 
 export interface PayoutRules {
@@ -105,8 +106,25 @@ export interface PurchaseRecord {
 }
 
 export interface EventAccess {
-  operatorPasscode: string;
-  viewerPasscode: string;
+  sharedCodeConfigured: boolean;
+}
+
+export interface AccessMember {
+  id: string;
+  name: string;
+  email: string;
+  role: SessionRole;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface AuthenticatedMember {
+  scope: AuthScope;
+  sessionId: string | null;
+  memberId: string | null;
+  name: string;
+  email: string;
+  role: "admin" | SessionRole;
 }
 
 export interface AuctionSession {
@@ -126,6 +144,12 @@ export interface AuctionSession {
   liveState: TeamMarketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
+}
+
+export interface StoredAuctionSession extends AuctionSession {
+  sharedAccessCodeHash: string;
+  sharedAccessCodeLookup: string;
+  accessMembers: AccessMember[];
 }
 
 export interface RecommendationDriver {
@@ -183,6 +207,17 @@ export const payoutRulesSchema = z.object({
 export const createSessionSchema = z.object({
   name: z.string().min(3).max(80),
   focusSyndicateName: z.string().min(2).max(40),
+  sharedAccessCode: z.string().min(4).max(64),
+  accessMembers: z
+    .array(
+      z.object({
+        name: z.string().min(2).max(60),
+        email: z.string().email(),
+        role: z.enum(["admin", "viewer"])
+      })
+    )
+    .min(1)
+    .max(40),
   syndicates: z
     .array(
       z.object({
@@ -222,6 +257,11 @@ export const saveProjectionOverrideSchema = z.object({
   offense: z.number().positive().optional(),
   defense: z.number().positive().optional(),
   tempo: z.number().positive().optional()
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  sharedCode: z.string().min(4).max(64)
 });
 
 export interface RemoteProjectionFeed {

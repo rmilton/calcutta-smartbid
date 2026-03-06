@@ -5,13 +5,16 @@ import { getConfiguredStorageBackend } from "@/lib/config";
 import { buildDashboard } from "@/lib/dashboard";
 import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings } from "@/lib/sample-data";
+import { createSharedCodeLookup, hashSharedCode, verifySharedCode } from "@/lib/session-security";
 import { applyProjectionOverrides, loadProjectionProvider } from "@/lib/providers/projections";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  AccessMember,
   AuctionDashboard,
   AuctionSession,
   ProjectionOverride,
   PayoutRules,
+  StoredAuctionSession,
   StorageBackend,
   Syndicate,
   TeamProjection,
@@ -20,12 +23,14 @@ import {
 import { createId, roundCurrency } from "@/lib/utils";
 
 interface SessionStore {
-  sessions: AuctionSession[];
+  sessions: StoredAuctionSession[];
 }
 
 interface CreateSessionInput {
   name: string;
   focusSyndicateName: string;
+  sharedAccessCode: string;
+  accessMembers: Array<{ name: string; email: string; role: AccessMember["role"] }>;
   syndicates: Array<{ name: string; color?: string }>;
   payoutRules: PayoutRules;
   projectionProvider: "mock" | "remote";
@@ -41,9 +46,14 @@ interface ProjectionOverrideInput {
 
 export interface SessionRepository {
   backend: StorageBackend;
-  createSession(input: CreateSessionInput): Promise<AuctionSession>;
-  getSession(sessionId: string): Promise<AuctionSession | null>;
+  createSession(input: CreateSessionInput): Promise<StoredAuctionSession>;
+  getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
+  getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
+  authenticateMember(
+    email: string,
+    sharedCode: string
+  ): Promise<{ sessionId: string; member: AccessMember }>;
   importProjections(sessionId: string, provider: "mock" | "remote"): Promise<AuctionDashboard>;
   rebuildSimulation(sessionId: string, iterations?: number): Promise<AuctionDashboard>;
   updateLiveState(
@@ -95,6 +105,41 @@ class LocalSessionRepository implements SessionRepository {
   async getDashboard(sessionId: string) {
     const session = await this.requireSession(sessionId);
     return buildDashboard(session, this.backend);
+  }
+
+  async getAccessMember(sessionId: string, memberId: string) {
+    const session = await this.requireSession(sessionId);
+    return session.accessMembers.find((member) => member.id === memberId) ?? null;
+  }
+
+  async authenticateMember(email: string, sharedCode: string) {
+    const store = await this.readStore();
+    const normalizedEmail = email.trim().toLowerCase();
+    const lookup = createSharedCodeLookup(sharedCode);
+    const session = store.sessions.find(
+      (candidate) =>
+        candidate.sharedAccessCodeLookup === lookup &&
+        verifySharedCode(sharedCode, candidate.sharedAccessCodeHash)
+    );
+
+    if (!session) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    const member =
+      session.accessMembers.find(
+        (candidate) =>
+          candidate.active && candidate.email.trim().toLowerCase() === normalizedEmail
+      ) ?? null;
+
+    if (!member) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    return {
+      sessionId: session.id,
+      member
+    };
   }
 
   async importProjections(sessionId: string, provider: "mock" | "remote") {
@@ -189,7 +234,15 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async getSession(sessionId: string) {
     const client = requireSupabaseClient();
-    const [sessionResult, syndicatesResult, projectionsResult, purchasesResult, snapshotResult, overridesResult] =
+    const [
+      sessionResult,
+      syndicatesResult,
+      projectionsResult,
+      purchasesResult,
+      snapshotResult,
+      overridesResult,
+      membersResult
+    ] =
       await Promise.all([
         client.from("auction_sessions").select("*").eq("id", sessionId).maybeSingle(),
         client.from("syndicates").select("*").eq("session_id", sessionId),
@@ -202,7 +255,8 @@ class SupabaseSessionRepository implements SessionRepository {
           .order("generated_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        client.from("projection_overrides").select("*").eq("session_id", sessionId)
+        client.from("projection_overrides").select("*").eq("session_id", sessionId),
+        client.from("session_members").select("*").eq("session_id", sessionId)
       ]);
 
     throwOnSupabaseError(sessionResult.error);
@@ -211,6 +265,7 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(purchasesResult.error);
     throwOnSupabaseError(snapshotResult.error);
     throwOnSupabaseError(overridesResult.error);
+    throwOnSupabaseError(membersResult.error);
 
     if (!sessionResult.data) {
       return null;
@@ -252,9 +307,18 @@ class SupabaseSessionRepository implements SessionRepository {
       updatedAt: String(sessionResult.data.updated_at),
       focusSyndicateId: String(sessionResult.data.focus_syndicate_id),
       eventAccess: {
-        operatorPasscode: String(sessionResult.data.operator_passcode),
-        viewerPasscode: String(sessionResult.data.viewer_passcode)
+        sharedCodeConfigured: true
       },
+      sharedAccessCodeHash: String(sessionResult.data.shared_code_hash),
+      sharedAccessCodeLookup: String(sessionResult.data.shared_code_lookup),
+      accessMembers: (((membersResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        email: String(row.email),
+        role: String(row.role) as AccessMember["role"],
+        active: Boolean(row.active),
+        createdAt: String(row.created_at)
+      })) as AccessMember[]),
       payoutRules: sessionResult.data.payout_rules as PayoutRules,
       syndicates: (((syndicatesResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => ({
         id: String(row.id),
@@ -288,6 +352,77 @@ class SupabaseSessionRepository implements SessionRepository {
   async getDashboard(sessionId: string) {
     const session = await this.requireSession(sessionId);
     return buildDashboard(session, this.backend);
+  }
+
+  async getAccessMember(sessionId: string, memberId: string) {
+    const client = requireSupabaseClient();
+    const result = await client
+      .from("session_members")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("id", memberId)
+      .maybeSingle();
+
+    throwOnSupabaseError(result.error);
+    if (!result.data) {
+      return null;
+    }
+
+    return {
+      id: String(result.data.id),
+      name: String(result.data.name),
+      email: String(result.data.email),
+      role: String(result.data.role) as AccessMember["role"],
+      active: Boolean(result.data.active),
+      createdAt: String(result.data.created_at)
+    };
+  }
+
+  async authenticateMember(email: string, sharedCode: string) {
+    const client = requireSupabaseClient();
+    const lookup = createSharedCodeLookup(sharedCode);
+    const sessionResult = await client
+      .from("auction_sessions")
+      .select("id, shared_code_hash")
+      .eq("shared_code_lookup", lookup)
+      .maybeSingle();
+
+    throwOnSupabaseError(sessionResult.error);
+
+    if (!sessionResult.data) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    if (!verifySharedCode(sharedCode, String(sessionResult.data.shared_code_hash))) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const memberResult = await client
+      .from("session_members")
+      .select("*")
+      .eq("session_id", String(sessionResult.data.id))
+      .eq("email", normalizedEmail)
+      .eq("active", true)
+      .maybeSingle();
+
+    throwOnSupabaseError(memberResult.error);
+
+    if (!memberResult.data) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    return {
+      sessionId: String(sessionResult.data.id),
+      member: {
+        id: String(memberResult.data.id),
+        name: String(memberResult.data.name),
+        email: String(memberResult.data.email),
+        role: String(memberResult.data.role) as AccessMember["role"],
+        active: Boolean(memberResult.data.active),
+        createdAt: String(memberResult.data.created_at)
+      }
+    };
   }
 
   async importProjections(sessionId: string, provider: "mock" | "remote") {
@@ -376,15 +511,17 @@ class SupabaseSessionRepository implements SessionRepository {
     return session;
   }
 
-  private async persistFullSession(session: AuctionSession) {
+  private async persistFullSession(session: StoredAuctionSession) {
     const client = requireSupabaseClient();
 
     const upsertSessionResult = await client.from("auction_sessions").upsert({
       id: session.id,
       name: session.name,
       focus_syndicate_id: session.focusSyndicateId,
-      operator_passcode: session.eventAccess.operatorPasscode,
-      viewer_passcode: session.eventAccess.viewerPasscode,
+      operator_passcode: "legacy-admin",
+      viewer_passcode: "legacy-viewer",
+      shared_code_hash: session.sharedAccessCodeHash,
+      shared_code_lookup: session.sharedAccessCodeLookup,
       payout_rules: session.payoutRules,
       projection_provider: session.projectionProvider,
       final_four_pairings: session.finalFourPairings,
@@ -393,6 +530,22 @@ class SupabaseSessionRepository implements SessionRepository {
       updated_at: session.updatedAt
     });
     throwOnSupabaseError(upsertSessionResult.error);
+
+    await replaceRows(
+      client,
+      "session_members",
+      "session_id",
+      session.id,
+      session.accessMembers.map((member) => ({
+        id: member.id,
+        session_id: session.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+        active: member.active,
+        created_at: member.createdAt
+      }))
+    );
 
     await replaceRows(client, "syndicates", "session_id", session.id, session.syndicates.map((syndicate) => ({
       id: syndicate.id,
@@ -458,7 +611,7 @@ class SupabaseSessionRepository implements SessionRepository {
     }
   }
 
-  private async persistDerivedState(session: AuctionSession) {
+  private async persistDerivedState(session: StoredAuctionSession) {
     const client = requireSupabaseClient();
     const sessionUpdate = await client
       .from("auction_sessions")
@@ -494,7 +647,7 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   private async persistProjectionState(
-    session: AuctionSession,
+    session: StoredAuctionSession,
     teamId: string,
     cleared = false
   ) {
@@ -553,6 +706,10 @@ class SupabaseSessionRepository implements SessionRepository {
 async function createSessionModel(input: CreateSessionInput) {
   const parsed = createSessionSchema.parse(input);
   const uniqueSyndicates = ensureUniqueSyndicateNames(parsed.syndicates.map((item) => item.name));
+  const accessMembers = ensureUniqueAccessMembers(parsed.accessMembers);
+  if (!accessMembers.some((member) => member.role === "admin")) {
+    throw new Error("At least one admin access member is required.");
+  }
   const projectionFeed = await loadProjectionProvider(parsed.projectionProvider);
   const timestamp = new Date().toISOString();
   const sessionId = createId("session");
@@ -569,16 +726,25 @@ async function createSessionModel(input: CreateSessionInput) {
   const focusSyndicate =
     syndicates.find((syndicate) => syndicate.name.toLowerCase() === focusName) ?? syndicates[0];
 
-  const session: AuctionSession = normalizeSessionShape({
+  const session: StoredAuctionSession = normalizeSessionShape({
     id: sessionId,
     name: parsed.name,
     createdAt: timestamp,
     updatedAt: timestamp,
     focusSyndicateId: focusSyndicate.id,
     eventAccess: {
-      operatorPasscode: generatePasscode(),
-      viewerPasscode: generatePasscode()
+      sharedCodeConfigured: true
     },
+    sharedAccessCodeHash: hashSharedCode(parsed.sharedAccessCode),
+    sharedAccessCodeLookup: createSharedCodeLookup(parsed.sharedAccessCode),
+    accessMembers: accessMembers.map((member) => ({
+      id: createId("member"),
+      name: member.name,
+      email: member.email,
+      role: member.role,
+      active: true,
+      createdAt: timestamp
+    })),
     payoutRules: parsed.payoutRules,
     syndicates,
     baseProjections: projectionFeed.teams,
@@ -601,7 +767,7 @@ async function createSessionModel(input: CreateSessionInput) {
   return session;
 }
 
-async function applyProjectionImport(session: AuctionSession, provider: "mock" | "remote") {
+async function applyProjectionImport(session: StoredAuctionSession, provider: "mock" | "remote") {
   if (session.purchases.length > 0) {
     throw new Error("Cannot replace projections after purchases have been recorded.");
   }
@@ -628,7 +794,7 @@ async function applyProjectionImport(session: AuctionSession, provider: "mock" |
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
-function recalculateSessionState(session: AuctionSession, iterations?: number) {
+function recalculateSessionState(session: StoredAuctionSession, iterations?: number) {
   session.projections = applyProjectionOverrides(session.baseProjections, session.projectionOverrides);
   session.simulationSnapshot = simulateAuctionField({
     sessionId: session.id,
@@ -643,7 +809,7 @@ function recalculateSessionState(session: AuctionSession, iterations?: number) {
 }
 
 function applyLiveStatePatch(
-  session: AuctionSession,
+  session: StoredAuctionSession,
   patch: { nominatedTeamId?: string | null; currentBid?: number; likelyBidderIds?: string[] }
 ) {
   const nextState = {
@@ -684,7 +850,7 @@ function applyLiveStatePatch(
 }
 
 function applyPurchaseMutation(
-  session: AuctionSession,
+  session: StoredAuctionSession,
   input: { teamId?: string; buyerSyndicateId: string; price: number }
 ) {
   if (input.price <= 0) {
@@ -741,7 +907,7 @@ function applyPurchaseMutation(
 }
 
 function applyProjectionOverrideMutation(
-  session: AuctionSession,
+  session: StoredAuctionSession,
   teamId: string,
   input: ProjectionOverrideInput
 ) {
@@ -766,7 +932,7 @@ function applyProjectionOverrideMutation(
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
-function clearProjectionOverrideMutation(session: AuctionSession, teamId: string) {
+function clearProjectionOverrideMutation(session: StoredAuctionSession, teamId: string) {
   if (!session.baseProjections.some((projection) => projection.id === teamId)) {
     throw new Error("Projection override team not found.");
   }
@@ -775,7 +941,7 @@ function clearProjectionOverrideMutation(session: AuctionSession, teamId: string
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
-function recalculateSyndicateValues(session: AuctionSession): Syndicate[] {
+function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] {
   return session.syndicates.map((syndicate) => {
     const ownedPurchases = session.purchases.filter(
       (purchase) => purchase.buyerSyndicateId === syndicate.id
@@ -799,7 +965,7 @@ function recalculateSyndicateValues(session: AuctionSession): Syndicate[] {
   });
 }
 
-function findSession(sessions: AuctionSession[], sessionId: string) {
+function findSession(sessions: StoredAuctionSession[], sessionId: string) {
   const session = sessions.find((candidate) => candidate.id === sessionId);
   if (!session) {
     throw new Error("Auction session not found.");
@@ -821,8 +987,23 @@ function ensureUniqueSyndicateNames(names: string[]) {
   return cleaned;
 }
 
-function generatePasscode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+function ensureUniqueAccessMembers(members: CreateSessionInput["accessMembers"]) {
+  const normalized = members.map((member) => ({
+    name: member.name.trim(),
+    email: member.email.trim().toLowerCase(),
+    role: member.role
+  }));
+
+  const duplicates = normalized.filter(
+    (member, index) =>
+      normalized.findIndex((candidate) => candidate.email === member.email) !== index
+  );
+
+  if (duplicates.length > 0) {
+    throw new Error("Duplicate access-member emails are not allowed.");
+  }
+
+  return normalized;
 }
 
 function sortProjections(projections: TeamProjection[]) {
@@ -844,7 +1025,7 @@ function filterOverridesForProjectionSet(
   );
 }
 
-function normalizeSessionShape(session: AuctionSession) {
+function normalizeSessionShape(session: StoredAuctionSession) {
   const projectionOverrides = session.projectionOverrides ?? {};
   const baseProjections = sortProjections(
     session.baseProjections ?? session.projections ?? []
@@ -856,6 +1037,12 @@ function normalizeSessionShape(session: AuctionSession) {
 
   return {
     ...session,
+    eventAccess: {
+      sharedCodeConfigured: true
+    },
+    sharedAccessCodeHash: session.sharedAccessCodeHash ?? "",
+    sharedAccessCodeLookup: session.sharedAccessCodeLookup ?? "",
+    accessMembers: session.accessMembers ?? [],
     baseProjections,
     projections,
     projectionOverrides

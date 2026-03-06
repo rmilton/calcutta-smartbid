@@ -12,7 +12,11 @@ export function SetupForm() {
   const [error, setError] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("2026 March Madness Calcutta");
   const [focusSyndicateName, setFocusSyndicateName] = useState("SmartBid Capital");
+  const [sharedAccessCode, setSharedAccessCode] = useState("march26");
   const [syndicatesText, setSyndicatesText] = useState(["SmartBid Capital", "Riverboat", "Glass House", "Fourth Bid"].join("\n"));
+  const [accessMembersText, setAccessMembersText] = useState(
+    ["Ryan Milton, rmilton@westmonroe.com, admin", "Jordan Ames, jordan@example.com, viewer"].join("\n")
+  );
   const [startingBankroll, setStartingBankroll] = useState(defaults.startingBankroll);
   const [houseTakePct, setHouseTakePct] = useState(defaults.houseTakePct);
   const [iterations, setIterations] = useState(4000);
@@ -27,6 +31,19 @@ export function SetupForm() {
       .filter(Boolean)
       .map((name) => ({ name }));
 
+    const accessMembers = accessMembersText
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((row) => {
+        const [name, email, role] = row.split(",").map((part) => part.trim());
+        return {
+          name,
+          email,
+          role: role === "viewer" ? "viewer" : "admin"
+        };
+      });
+
     startTransition(async () => {
       const response = await fetch("/api/sessions", {
         method: "POST",
@@ -36,6 +53,8 @@ export function SetupForm() {
         body: JSON.stringify({
           name: sessionName,
           focusSyndicateName,
+          sharedAccessCode,
+          accessMembers,
           syndicates,
           projectionProvider: "mock",
           simulationIterations: iterations,
@@ -72,6 +91,10 @@ export function SetupForm() {
         <label>
           <span>Focus syndicate</span>
           <input value={focusSyndicateName} onChange={(event) => setFocusSyndicateName(event.target.value)} required />
+        </label>
+        <label>
+          <span>Shared access code</span>
+          <input value={sharedAccessCode} onChange={(event) => setSharedAccessCode(event.target.value)} required />
         </label>
         <label>
           <span>Starting bankroll</span>
@@ -113,6 +136,15 @@ export function SetupForm() {
       <label>
         <span>Syndicates (one per line)</span>
         <textarea rows={5} value={syndicatesText} onChange={(event) => setSyndicatesText(event.target.value)} />
+      </label>
+
+      <label>
+        <span>Access roster (name, email, role per line)</span>
+        <textarea
+          rows={4}
+          value={accessMembersText}
+          onChange={(event) => setAccessMembersText(event.target.value)}
+        />
       </label>
 
       {error ? <p className="form-error">{error}</p> : null}

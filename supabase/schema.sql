@@ -12,6 +12,28 @@ create table if not exists public.auction_sessions (
   updated_at timestamptz not null default now()
 );
 
+alter table public.auction_sessions
+  add column if not exists shared_code_hash text;
+
+alter table public.auction_sessions
+  add column if not exists shared_code_lookup text;
+
+create unique index if not exists auction_sessions_shared_code_lookup_idx
+  on public.auction_sessions(shared_code_lookup);
+
+create table if not exists public.session_members (
+  id text primary key,
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  name text not null,
+  email text not null,
+  role text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists session_members_session_email_idx
+  on public.session_members(session_id, email);
+
 create table if not exists public.syndicates (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,
@@ -131,5 +153,26 @@ begin
 end;
 $$;
 
-alter publication supabase_realtime add table public.auction_sessions;
-alter publication supabase_realtime add table public.purchase_records;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'auction_sessions'
+  ) then
+    alter publication supabase_realtime add table public.auction_sessions;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'purchase_records'
+  ) then
+    alter publication supabase_realtime add table public.purchase_records;
+  end if;
+end
+$$;

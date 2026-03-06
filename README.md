@@ -24,6 +24,19 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Access model
+
+The landing page is login-only. It accepts an email address and shared code, then routes the user based on what those credentials match:
+
+- `platform admin` credentials route to the live-session creation page
+- `session member` credentials route into their auction room as either `admin` or `viewer`
+
+Platform admin credentials are configured with:
+
+- `PLATFORM_ADMIN_EMAILS`: comma-separated email list
+- `PLATFORM_ADMIN_NAMES`: optional comma-separated display names aligned by position
+- `PLATFORM_ADMIN_SHARED_CODE`: shared code used to unlock session creation
+
 ## Local storage
 
 By default the app persists auction data to a JSON file under the OS temp directory. You can override that path with `CALCUTTA_STORE_FILE`.
@@ -97,6 +110,9 @@ The local repository remains the default execution path so the app works immedia
 
 ```bash
 CALCUTTA_STORAGE_BACKEND=supabase
+PLATFORM_ADMIN_EMAILS=admin@example.com
+PLATFORM_ADMIN_NAMES=Admin User
+PLATFORM_ADMIN_SHARED_CODE=your-platform-admin-code
 NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key
 SUPABASE_SERVICE_ROLE_KEY=your-secret-key
