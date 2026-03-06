@@ -17,14 +17,18 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
   const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [likelyBidderIds, setLikelyBidderIds] = useState<string[]>(dashboard.session.liveState.likelyBidderIds);
+  const [isLiveStateDirty, setIsLiveStateDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLiveStateDirty && !viewerMode) {
+      return;
+    }
     setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
     setCurrentBid(dashboard.session.liveState.currentBid);
     setLikelyBidderIds(dashboard.session.liveState.likelyBidderIds);
-  }, [dashboard.session.liveState]);
+  }, [dashboard.session.liveState, isLiveStateDirty, viewerMode]);
 
   const nominatedTeam = dashboard.nominatedTeam;
   const recommendation = dashboard.recommendation;
@@ -34,6 +38,7 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
   );
 
   function toggleLikelyBidder(syndicateId: string) {
+    setIsLiveStateDirty(true);
     setLikelyBidderIds((current) =>
       current.includes(syndicateId) ? current.filter((candidate) => candidate !== syndicateId) : [...current, syndicateId]
     );
@@ -61,6 +66,7 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
     }
 
     setNotice("Live board updated.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -88,6 +94,7 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
     }
 
     setNotice("Purchase recorded.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -111,6 +118,7 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
     }
 
     setNotice("Simulation refreshed.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -134,6 +142,7 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
     }
 
     setNotice("Sample field reloaded.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -252,7 +261,14 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
           <div className="form-stack">
             <label>
               <span>Nominated team</span>
-              <select disabled={viewerMode} value={selectedTeamId} onChange={(event) => setSelectedTeamId(event.target.value)}>
+              <select
+                disabled={viewerMode}
+                value={selectedTeamId}
+                onChange={(event) => {
+                  setIsLiveStateDirty(true);
+                  setSelectedTeamId(event.target.value);
+                }}
+              >
                 <option value="">Select a team</option>
                 {dashboard.session.projections.map((team) => (
                   <option key={team.id} value={team.id} disabled={soldLookup.has(team.id)}>
@@ -269,7 +285,10 @@ export function DashboardShell({ sessionId, initialDashboard, viewerMode }: Dash
                 min={0}
                 step={100}
                 value={currentBid}
-                onChange={(event) => setCurrentBid(Number(event.target.value))}
+                onChange={(event) => {
+                  setIsLiveStateDirty(true);
+                  setCurrentBid(Number(event.target.value));
+                }}
               />
             </label>
             <label>
