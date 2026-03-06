@@ -11,6 +11,7 @@ export const stageSchema = z.enum([
 export type Stage = z.infer<typeof stageSchema>;
 export type Stoplight = "buy" | "caution" | "pass";
 export type SessionRole = "operator" | "viewer";
+export type StorageBackend = "local" | "supabase";
 
 export interface PayoutRules {
   sweet16: number;
@@ -43,6 +44,15 @@ export interface TeamProjection {
   defense: number;
   tempo: number;
   source: string;
+}
+
+export interface ProjectionOverride {
+  teamId: string;
+  rating?: number;
+  offense?: number;
+  defense?: number;
+  tempo?: number;
+  updatedAt: string;
 }
 
 export type TeamRoundProbabilities = Record<Stage, number>;
@@ -108,12 +118,20 @@ export interface AuctionSession {
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
   syndicates: Syndicate[];
+  baseProjections: TeamProjection[];
   projections: TeamProjection[];
+  projectionOverrides: Record<string, ProjectionOverride>;
   projectionProvider: string;
   finalFourPairings: [string, string][];
   liveState: TeamMarketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
+}
+
+export interface RecommendationDriver {
+  label: string;
+  value: string;
+  tone: "positive" | "neutral" | "negative";
 }
 
 export interface BidRecommendation {
@@ -122,10 +140,14 @@ export interface BidRecommendation {
   recommendedMaxBid: number;
   expectedGrossPayout: number;
   expectedNetValue: number;
+  valueGap: number;
   confidenceBand: [number, number];
   stoplight: Stoplight;
   ownershipPenalty: number;
   bankrollHeadroom: number;
+  bidderPressure: number;
+  concentrationScore: number;
+  drivers: RecommendationDriver[];
   rationale: string[];
 }
 
@@ -144,6 +166,8 @@ export interface AuctionDashboard {
   ledger: Syndicate[];
   recommendation: BidRecommendation | null;
   lastPurchase: PurchaseRecord | null;
+  projectionOverrideCount: number;
+  storageBackend: StorageBackend;
 }
 
 export const payoutRulesSchema = z.object({
@@ -191,6 +215,13 @@ export const createPurchaseSchema = z.object({
   teamId: z.string().optional(),
   buyerSyndicateId: z.string(),
   price: z.number().positive()
+});
+
+export const saveProjectionOverrideSchema = z.object({
+  rating: z.number().positive().optional(),
+  offense: z.number().positive().optional(),
+  defense: z.number().positive().optional(),
+  tempo: z.number().positive().optional()
 });
 
 export interface RemoteProjectionFeed {

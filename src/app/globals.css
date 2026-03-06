@@ -325,6 +325,43 @@ label span,
   font-family: var(--font-display);
 }
 
+.driver-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 1rem;
+}
+
+.driver-chip {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+}
+
+.driver-chip span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.driver-chip strong {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.driver-chip--positive {
+  background: rgba(47, 107, 73, 0.1);
+}
+
+.driver-chip--neutral {
+  background: rgba(31, 26, 23, 0.05);
+}
+
+.driver-chip--negative {
+  background: rgba(163, 61, 46, 0.1);
+}
+
 .metric-row + .metric-row {
   margin-top: 0.95rem;
 }
@@ -401,6 +438,15 @@ th {
 .viewer-board {
   display: grid;
   gap: 1rem;
+}
+
+.override-meta {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.override-meta span {
+  color: var(--muted);
 }
 
 .rationale-list {

@@ -85,5 +85,7 @@ describe("recommendations", () => {
 
     expect(recommendation).not.toBeNull();
     expect(recommendation?.recommendedMaxBid).toBeGreaterThan(0);
+    expect(recommendation?.drivers).toHaveLength(3);
+    expect(recommendation?.valueGap).toBeDefined();
   });
 });

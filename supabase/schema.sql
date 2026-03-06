@@ -38,6 +38,17 @@ create table if not exists public.team_projections (
   primary key (session_id, id)
 );
 
+create table if not exists public.projection_overrides (
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  team_id text not null,
+  rating numeric null,
+  offense numeric null,
+  defense numeric null,
+  tempo numeric null,
+  updated_at timestamptz not null default now(),
+  primary key (session_id, team_id)
+);
+
 create table if not exists public.simulation_snapshots (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,
@@ -55,6 +66,70 @@ create table if not exists public.purchase_records (
   price numeric not null,
   created_at timestamptz not null default now()
 );
+
+create or replace function public.record_purchase_transaction(
+  p_session_id text,
+  p_purchase_id text,
+  p_team_id text,
+  p_buyer_syndicate_id text,
+  p_price numeric,
+  p_created_at timestamptz,
+  p_live_state jsonb,
+  p_updated_at timestamptz,
+  p_syndicates jsonb
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if exists (
+    select 1
+    from public.purchase_records
+    where session_id = p_session_id
+      and team_id = p_team_id
+  ) then
+    raise exception 'That team has already been sold.';
+  end if;
+
+  insert into public.purchase_records (
+    id,
+    session_id,
+    team_id,
+    buyer_syndicate_id,
+    price,
+    created_at
+  )
+  values (
+    p_purchase_id,
+    p_session_id,
+    p_team_id,
+    p_buyer_syndicate_id,
+    p_price,
+    p_created_at
+  );
+
+  update public.auction_sessions
+  set live_state = p_live_state,
+      updated_at = p_updated_at
+  where id = p_session_id;
+
+  update public.syndicates as target
+  set spend = source.spend,
+      remaining_bankroll = source.remaining_bankroll,
+      owned_team_ids = source.owned_team_ids,
+      portfolio_expected_value = source.portfolio_expected_value
+  from jsonb_to_recordset(p_syndicates) as source(
+    id text,
+    spend numeric,
+    remaining_bankroll numeric,
+    owned_team_ids jsonb,
+    portfolio_expected_value numeric
+  )
+  where target.session_id = p_session_id
+    and target.id = source.id;
+end;
+$$;
 
 alter publication supabase_realtime add table public.auction_sessions;
 alter publication supabase_realtime add table public.purchase_records;

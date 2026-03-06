@@ -1,5 +1,5 @@
 import { getMockProjections } from "@/lib/sample-data";
-import { RemoteProjectionFeed, TeamProjection } from "@/lib/types";
+import { ProjectionOverride, RemoteProjectionFeed, TeamProjection } from "@/lib/types";
 import { uniqueBy } from "@/lib/utils";
 import { z } from "zod";
 
@@ -24,7 +24,7 @@ export async function loadProjectionProvider(provider: "mock" | "remote") {
   if (provider === "mock") {
     return {
       provider: "mock",
-      teams: getMockProjections()
+      teams: validateProjectionFieldShape(getMockProjections())
     };
   }
 
@@ -49,7 +49,7 @@ export async function loadProjectionProvider(provider: "mock" | "remote") {
   const parsed = remoteProjectionFeedSchema.parse((await response.json()) as RemoteProjectionFeed);
   return {
     provider: parsed.provider,
-    teams: normalizeProjectionFeed(parsed.provider, parsed.teams)
+    teams: validateProjectionFieldShape(normalizeProjectionFeed(parsed.provider, parsed.teams))
   };
 }
 
@@ -76,5 +76,54 @@ export function normalizeProjectionFeed(provider: string, teams: RawProjection[]
       }),
     (team) => team.id
   );
+}
+
+export function applyProjectionOverrides(
+  teams: TeamProjection[],
+  overrides: Record<string, ProjectionOverride>
+): TeamProjection[] {
+  return teams.map((team) => {
+    const override = overrides[team.id];
+    if (!override) {
+      return team;
+    }
+
+    return {
+      ...team,
+      rating: override.rating ?? team.rating,
+      offense: override.offense ?? team.offense,
+      defense: override.defense ?? team.defense,
+      tempo: override.tempo ?? team.tempo,
+      source: `${team.source}+override`
+    };
+  });
+}
+
+export function validateProjectionFieldShape(teams: TeamProjection[]) {
+  const regions = new Map<string, TeamProjection[]>();
+  for (const team of teams) {
+    const list = regions.get(team.region) ?? [];
+    list.push(team);
+    regions.set(team.region, list);
+  }
+
+  if (regions.size !== 4) {
+    throw new Error("Projection feed must contain exactly four tournament regions.");
+  }
+
+  const regionSizes = new Set([...regions.values()].map((group) => group.length));
+  if (regionSizes.size !== 1) {
+    throw new Error("Projection feed must contain the same number of teams in each region.");
+  }
+
+  for (const [region, group] of regions.entries()) {
+    const seeds = group.map((team) => team.seed);
+    const duplicateSeed = seeds.find((seed, index) => seeds.indexOf(seed) !== index);
+    if (duplicateSeed) {
+      throw new Error(`Projection feed contains duplicate ${duplicateSeed}-seeds in ${region}.`);
+    }
+  }
+
+  return teams;
 }
 type RawProjection = Omit<TeamProjection, "source">;

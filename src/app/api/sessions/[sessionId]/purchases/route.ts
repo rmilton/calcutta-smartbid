@@ -9,7 +9,11 @@ interface RouteProps {
 export async function POST(request: Request, { params }: RouteProps) {
   try {
     const { sessionId } = await params;
-    const payload = createPurchaseSchema.parse(await request.json());
+    const parsed = createPurchaseSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return jsonError("Enter a bid greater than $0 before recording a purchase.");
+    }
+    const payload = parsed.data;
     const dashboard = await getSessionRepository().recordPurchase(sessionId, payload);
     return jsonOk(dashboard, 201);
   } catch (error) {
