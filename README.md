@@ -33,6 +33,18 @@ When using the Supabase backend, configure:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+The app now fails fast when:
+
+- `CALCUTTA_STORAGE_BACKEND` is set to an invalid value
+- `CALCUTTA_STORAGE_BACKEND=supabase` but required Supabase env vars are missing
+- a Vercel deployment tries to run with the local file-backed repository
+
+For a Vercel deployment, production should always use:
+
+```bash
+CALCUTTA_STORAGE_BACKEND=supabase
+```
+
 ## Projection providers
 
 - `mock`: loads the included sample tournament field
@@ -70,3 +82,20 @@ The app includes:
 - a projection override table for session-scoped manual model corrections
 
 The local repository remains the default execution path so the app works immediately without provisioning infrastructure.
+
+## Vercel deployment checklist
+
+1. Create a Supabase project.
+2. Run `supabase/schema.sql` in the Supabase SQL editor.
+3. Set these environment variables locally and in Vercel:
+
+```bash
+CALCUTTA_STORAGE_BACKEND=supabase
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key
+SUPABASE_SERVICE_ROLE_KEY=your-secret-key
+```
+
+4. Start the app locally and verify the session header badge reads `Backend supabase`.
+5. Create a session, record a purchase, and refresh the page to confirm persistence.
+6. Deploy `main` to Vercel with the same environment variables.

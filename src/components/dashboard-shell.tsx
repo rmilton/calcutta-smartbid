@@ -28,6 +28,7 @@ export function DashboardShell({
   const [likelyBidderIds, setLikelyBidderIds] = useState<string[]>(
     dashboard.session.liveState.likelyBidderIds
   );
+  const [isLiveStateDirty, setIsLiveStateDirty] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     rating: "",
     offense: "",
@@ -38,10 +39,13 @@ export function DashboardShell({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isLiveStateDirty && !viewerMode) {
+      return;
+    }
     setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
     setCurrentBid(dashboard.session.liveState.currentBid);
     setLikelyBidderIds(dashboard.session.liveState.likelyBidderIds);
-  }, [dashboard.session.liveState]);
+  }, [dashboard.session.liveState, isLiveStateDirty, viewerMode]);
 
   const nominatedTeam = dashboard.nominatedTeam;
   const recommendation = dashboard.recommendation;
@@ -74,6 +78,7 @@ export function DashboardShell({
   }, [selectedOverride, selectedTeam]);
 
   function toggleLikelyBidder(syndicateId: string) {
+    setIsLiveStateDirty(true);
     setLikelyBidderIds((current) =>
       current.includes(syndicateId)
         ? current.filter((candidate) => candidate !== syndicateId)
@@ -103,6 +108,7 @@ export function DashboardShell({
     }
 
     setNotice("Live board updated.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -140,6 +146,7 @@ export function DashboardShell({
     }
 
     setNotice("Purchase recorded.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -163,6 +170,7 @@ export function DashboardShell({
     }
 
     setNotice("Simulation refreshed.");
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -190,6 +198,7 @@ export function DashboardShell({
         ? "Sample field reloaded."
         : "Remote projection feed imported."
     );
+    setIsLiveStateDirty(false);
     startTransition(() => {
       void refresh();
     });
@@ -433,7 +442,10 @@ export function DashboardShell({
               <select
                 disabled={viewerMode}
                 value={selectedTeamId}
-                onChange={(event) => setSelectedTeamId(event.target.value)}
+                onChange={(event) => {
+                  setIsLiveStateDirty(true);
+                  setSelectedTeamId(event.target.value);
+                }}
               >
                 <option value="">Select a team</option>
                 {dashboard.session.projections.map((team) => (
@@ -455,7 +467,10 @@ export function DashboardShell({
                 min={0}
                 step={100}
                 value={currentBid}
-                onChange={(event) => setCurrentBid(Number(event.target.value))}
+                onChange={(event) => {
+                  setIsLiveStateDirty(true);
+                  setCurrentBid(Number(event.target.value));
+                }}
               />
             </label>
             <label>

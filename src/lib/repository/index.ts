@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { getConfiguredStorageBackend } from "@/lib/config";
 import { buildDashboard } from "@/lib/dashboard";
 import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings } from "@/lib/sample-data";
@@ -861,20 +862,8 @@ function normalizeSessionShape(session: AuctionSession) {
   };
 }
 
-function getRequestedBackend(): StorageBackend {
-  return process.env.CALCUTTA_STORAGE_BACKEND === "supabase"
-    ? "supabase"
-    : "local";
-}
-
 function requireSupabaseClient() {
-  const client = createServerSupabaseClient();
-  if (!client) {
-    throw new Error(
-      "Supabase backend requested, but NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured."
-    );
-  }
-  return client;
+  return createServerSupabaseClient();
 }
 
 async function replaceRows(
@@ -884,11 +873,11 @@ async function replaceRows(
   value: string,
   rows: Record<string, unknown>[]
 ) {
-  const deleteResult = await client!.from(table).delete().eq(key, value);
+  const deleteResult = await client.from(table).delete().eq(key, value);
   throwOnSupabaseError(deleteResult.error);
 
   if (rows.length > 0) {
-    const insertResult = await client!.from(table).insert(rows);
+    const insertResult = await client.from(table).insert(rows);
     throwOnSupabaseError(insertResult.error);
   }
 }
@@ -909,7 +898,7 @@ function numberOrUndefined(value: unknown) {
 const localRepository = new LocalSessionRepository();
 
 export function getSessionRepository(): SessionRepository {
-  return getRequestedBackend() === "supabase"
+  return getConfiguredStorageBackend() === "supabase"
     ? new SupabaseSessionRepository()
     : localRepository;
 }

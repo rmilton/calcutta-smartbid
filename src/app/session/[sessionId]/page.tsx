@@ -15,7 +15,11 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
   try {
     const dashboard = await repository.getDashboard(sessionId);
     return <DashboardShell sessionId={sessionId} initialDashboard={dashboard} viewerMode={mode === "viewer"} />;
-  } catch {
-    notFound();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Auction session not found.") {
+      notFound();
+    }
+
+    throw error;
   }
 }

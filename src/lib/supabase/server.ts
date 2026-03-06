@@ -1,14 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { getRequiredSupabaseServerConfig } from "@/lib/config";
 
 export function createServerSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { url, serviceRoleKey } = getRequiredSupabaseServerConfig();
 
-  if (!url || !serviceKey) {
-    return null;
-  }
-
-  return createClient(url, serviceKey, {
+  return createClient(url, serviceRoleKey, {
     auth: {
       persistSession: false
     }

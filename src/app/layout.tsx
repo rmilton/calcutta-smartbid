@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { validateRuntimeConfig } from "@/lib/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,6 +8,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  validateRuntimeConfig();
+
   return (
     <html lang="en">
       <body>{children}</body>
