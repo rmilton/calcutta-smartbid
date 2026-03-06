@@ -9,6 +9,12 @@ Calcutta SmartBid is a live NCAA Calcutta auction cockpit built with Next.js. Th
 - manual projection overrides with automatic simulation rebuilds
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
+Additional project context lives in:
+
+- [AGENTS.md](/Users/rmilton/Code/Calcutta-SmartBid/AGENTS.md): engineering workflow, architecture map, invariants, safe parallel work
+- [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md): current deployment status, recent fixes, regression checklist
+- [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md): product intent and design principles
+
 ## Run locally
 
 ```bash
