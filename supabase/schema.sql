@@ -34,9 +34,36 @@ create table if not exists public.team_projections (
   offense numeric not null,
   defense numeric not null,
   tempo numeric not null,
+  net_rank integer null,
+  kenpom_rank integer null,
+  three_point_pct numeric null,
+  ranked_wins integer null,
+  quad1_wins integer null,
+  quad2_wins integer null,
+  quad3_wins integer null,
+  quad4_wins integer null,
+  ats_wins integer null,
+  ats_losses integer null,
+  ats_pushes integer null,
+  offense_style text null,
+  defense_style text null,
   source text not null,
   primary key (session_id, id)
 );
+
+alter table public.team_projections add column if not exists net_rank integer null;
+alter table public.team_projections add column if not exists kenpom_rank integer null;
+alter table public.team_projections add column if not exists three_point_pct numeric null;
+alter table public.team_projections add column if not exists ranked_wins integer null;
+alter table public.team_projections add column if not exists quad1_wins integer null;
+alter table public.team_projections add column if not exists quad2_wins integer null;
+alter table public.team_projections add column if not exists quad3_wins integer null;
+alter table public.team_projections add column if not exists quad4_wins integer null;
+alter table public.team_projections add column if not exists ats_wins integer null;
+alter table public.team_projections add column if not exists ats_losses integer null;
+alter table public.team_projections add column if not exists ats_pushes integer null;
+alter table public.team_projections add column if not exists offense_style text null;
+alter table public.team_projections add column if not exists defense_style text null;
 
 create table if not exists public.projection_overrides (
   session_id text not null references public.auction_sessions(id) on delete cascade,

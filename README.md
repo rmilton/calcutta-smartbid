@@ -53,11 +53,38 @@ The remote endpoint should return:
       "rating": 95,
       "offense": 121.2,
       "defense": 92.7,
-      "tempo": 69.1
+      "tempo": 69.1,
+      "scouting": {
+        "netRank": 6,
+        "kenpomRank": 4,
+        "threePointPct": 37.8,
+        "rankedWins": 7,
+        "quadWins": {
+          "q1": 9,
+          "q2": 5,
+          "q3": 2,
+          "q4": 1
+        },
+        "ats": {
+          "wins": 19,
+          "losses": 11,
+          "pushes": 1
+        },
+        "offenseStyle": "Spacing-heavy half-court offense",
+        "defenseStyle": "Switch pressure and strong closeouts"
+      }
     }
   ]
 }
 ```
+
+`scouting` is optional. When present, the dashboard adds team-comparison intelligence for:
+- Quad 1/2/3/4 wins
+- ranked wins
+- ATS record and ATS win rate
+- 3PT%
+- KenPom/NET rank
+- offense and defense style notes
 
 ## Supabase
 

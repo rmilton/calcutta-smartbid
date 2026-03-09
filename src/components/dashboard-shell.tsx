@@ -2,6 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
+import { buildTeamIntelligence } from "@/lib/team-intelligence";
 import { AuctionDashboard } from "@/lib/types";
 import { formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 
@@ -53,6 +54,14 @@ export function DashboardShell({
   );
   const selectedOverride =
     (selectedTeamId && dashboard.session.projectionOverrides[selectedTeamId]) || null;
+  const teamIntelligence = useMemo(
+    () =>
+      buildTeamIntelligence(
+        dashboard.session.projections,
+        selectedTeamId || dashboard.session.liveState.nominatedTeamId || null
+      ),
+    [dashboard.session.projections, dashboard.session.liveState.nominatedTeamId, selectedTeamId]
+  );
 
   useEffect(() => {
     if (!selectedTeam) {
@@ -733,6 +742,168 @@ export function DashboardShell({
         <article className="panel">
           <div className="panel-head">
             <div>
+              <p className="eyebrow">Team intelligence</p>
+              <h3>Scouting profile and field deltas</h3>
+            </div>
+          </div>
+          {teamIntelligence.selected ? (
+            <div className="intel-stack">
+              <div className="team-meta">
+                <div>
+                  <strong>{teamIntelligence.selected.team.name}</strong>
+                  <span>
+                    {teamIntelligence.selected.team.region} region,{" "}
+                    {teamIntelligence.selected.team.seed}-seed
+                  </span>
+                </div>
+                <div>
+                  <span>Field percentile</span>
+                  <strong>{teamIntelligence.selected.row.percentile}th</strong>
+                </div>
+              </div>
+
+              <div className="intel-metrics">
+                <div>
+                  <span>Quadrant wins</span>
+                  <strong>
+                    Q1 {displayMetric(teamIntelligence.selected.row.q1Wins)} | Q2{" "}
+                    {displayMetric(teamIntelligence.selected.row.q2Wins)} | Q3{" "}
+                    {displayMetric(teamIntelligence.selected.row.q3Wins)} | Q4{" "}
+                    {displayMetric(teamIntelligence.selected.row.q4Wins)}
+                  </strong>
+                </div>
+                <div>
+                  <span>Ranked wins</span>
+                  <strong>
+                    {displayMetric(teamIntelligence.selected.row.rankedWins)} (
+                    {formatSigned(teamIntelligence.selected.deltas.rankedWins)})
+                  </strong>
+                </div>
+                <div>
+                  <span>ATS</span>
+                  <strong>
+                    {teamIntelligence.selected.row.atsRecord ?? "--"}
+                    {teamIntelligence.selected.row.atsWinPct !== null
+                      ? ` (${(teamIntelligence.selected.row.atsWinPct * 100).toFixed(1)}%)`
+                      : ""}
+                  </strong>
+                </div>
+                <div>
+                  <span>3PT percentage</span>
+                  <strong>
+                    {displayPercent(teamIntelligence.selected.row.threePointPct)} (
+                    {formatSigned(teamIntelligence.selected.deltas.threePointPct, "%")})
+                  </strong>
+                </div>
+                <div>
+                  <span>KenPom rank</span>
+                  <strong>
+                    {displayMetric(teamIntelligence.selected.row.kenpomRank)} (
+                    {formatSigned(teamIntelligence.selected.deltas.kenpomRank, " spots")})
+                  </strong>
+                </div>
+                <div>
+                  <span>NET rank</span>
+                  <strong>
+                    {displayMetric(teamIntelligence.selected.team.scouting?.netRank ?? null)}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="intel-style">
+                <div>
+                  <span>Offensive style</span>
+                  <strong>
+                    {teamIntelligence.selected.row.offenseStyle ??
+                      "Style not available"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Defensive style</span>
+                  <strong>
+                    {teamIntelligence.selected.row.defenseStyle ??
+                      "Style not available"}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="intel-notes">
+                <div>
+                  <span>Strength flags</span>
+                  <p>
+                    {teamIntelligence.selected.row.strengths.length
+                      ? teamIntelligence.selected.row.strengths.join(" | ")
+                      : "No standout strengths from available scouting data."}
+                  </p>
+                </div>
+                <div>
+                  <span>Risk flags</span>
+                  <p>
+                    {teamIntelligence.selected.row.risks.length
+                      ? teamIntelligence.selected.row.risks.join(" | ")
+                      : "No material risks flagged from available scouting data."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="viewer-note">
+              Select a team to view scouting profile comparisons.
+            </p>
+          )}
+        </article>
+
+        <article className="panel">
+          <div className="panel-head">
+            <div>
+              <p className="eyebrow">Field comparison</p>
+              <h3>Composite ranking across scouting factors</h3>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>Score</th>
+                  <th>Q1</th>
+                  <th>Ranked</th>
+                  <th>ATS</th>
+                  <th>3PT</th>
+                  <th>KenPom</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamIntelligence.ranking.slice(0, 12).map((row) => (
+                  <tr
+                    key={row.teamId}
+                    className={
+                      row.teamId === teamIntelligence.selected?.team.id
+                        ? "table-row--focus"
+                        : undefined
+                    }
+                  >
+                    <td>
+                      <strong>{row.teamName}</strong>
+                    </td>
+                    <td>{(row.compositeScore * 100).toFixed(1)}</td>
+                    <td>{displayMetric(row.q1Wins)}</td>
+                    <td>{displayMetric(row.rankedWins)}</td>
+                    <td>{row.atsRecord ?? "--"}</td>
+                    <td>{displayPercent(row.threePointPct)}</td>
+                    <td>{displayMetric(row.kenpomRank)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section className="workspace-grid">
+        <article className="panel">
+          <div className="panel-head">
+            <div>
               <p className="eyebrow">Syndicate ledger</p>
               <h3>Spend, bankroll, and portfolio EV</h3>
             </div>
@@ -814,4 +985,20 @@ export function DashboardShell({
       </section>
     </div>
   );
+}
+
+function displayMetric(value: number | null) {
+  return value === null ? "--" : `${value}`;
+}
+
+function displayPercent(value: number | null) {
+  return value === null ? "--" : `${value.toFixed(1)}%`;
+}
+
+function formatSigned(value: number | null, suffix = "") {
+  if (value === null) {
+    return "--";
+  }
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)}${suffix}`;
 }

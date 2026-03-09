@@ -13,6 +13,7 @@ import {
   PayoutRules,
   StorageBackend,
   Syndicate,
+  TeamScoutingProfile,
   TeamProjection,
   createSessionSchema
 } from "@/lib/types";
@@ -240,7 +241,8 @@ class SupabaseSessionRepository implements SessionRepository {
         offense: Number(row.offense),
         defense: Number(row.defense),
         tempo: Number(row.tempo),
-        source: String(row.source)
+        source: String(row.source),
+        scouting: parseScoutingFromProjectionRow(row)
       })) as TeamProjection[])
     );
 
@@ -415,7 +417,20 @@ class SupabaseSessionRepository implements SessionRepository {
       offense: team.offense,
       defense: team.defense,
       tempo: team.tempo,
-      source: team.source
+      source: team.source,
+      net_rank: team.scouting?.netRank ?? null,
+      kenpom_rank: team.scouting?.kenpomRank ?? null,
+      three_point_pct: team.scouting?.threePointPct ?? null,
+      ranked_wins: team.scouting?.rankedWins ?? null,
+      quad1_wins: team.scouting?.quadWins?.q1 ?? null,
+      quad2_wins: team.scouting?.quadWins?.q2 ?? null,
+      quad3_wins: team.scouting?.quadWins?.q3 ?? null,
+      quad4_wins: team.scouting?.quadWins?.q4 ?? null,
+      ats_wins: team.scouting?.ats?.wins ?? null,
+      ats_losses: team.scouting?.ats?.losses ?? null,
+      ats_pushes: team.scouting?.ats?.pushes ?? null,
+      offense_style: team.scouting?.offenseStyle ?? null,
+      defense_style: team.scouting?.defenseStyle ?? null
     })));
 
     await replaceRows(
@@ -539,7 +554,20 @@ class SupabaseSessionRepository implements SessionRepository {
         offense: team.offense,
         defense: team.defense,
         tempo: team.tempo,
-        source: team.source
+        source: team.source,
+        net_rank: team.scouting?.netRank ?? null,
+        kenpom_rank: team.scouting?.kenpomRank ?? null,
+        three_point_pct: team.scouting?.threePointPct ?? null,
+        ranked_wins: team.scouting?.rankedWins ?? null,
+        quad1_wins: team.scouting?.quadWins?.q1 ?? null,
+        quad2_wins: team.scouting?.quadWins?.q2 ?? null,
+        quad3_wins: team.scouting?.quadWins?.q3 ?? null,
+        quad4_wins: team.scouting?.quadWins?.q4 ?? null,
+        ats_wins: team.scouting?.ats?.wins ?? null,
+        ats_losses: team.scouting?.ats?.losses ?? null,
+        ats_pushes: team.scouting?.ats?.pushes ?? null,
+        offense_style: team.scouting?.offenseStyle ?? null,
+        defense_style: team.scouting?.defenseStyle ?? null
       })
       .eq("session_id", session.id)
       .eq("id", team.id);
@@ -904,6 +932,46 @@ function numberOrUndefined(value: unknown) {
     return undefined;
   }
   return Number(value);
+}
+
+function parseScoutingFromProjectionRow(row: Record<string, unknown>) {
+  const quad1 = numberOrUndefined(row.quad1_wins);
+  const quad2 = numberOrUndefined(row.quad2_wins);
+  const quad3 = numberOrUndefined(row.quad3_wins);
+  const quad4 = numberOrUndefined(row.quad4_wins);
+  const atsWins = numberOrUndefined(row.ats_wins);
+  const atsLosses = numberOrUndefined(row.ats_losses);
+  const atsPushes = numberOrUndefined(row.ats_pushes);
+
+  const scouting: TeamScoutingProfile = {
+    netRank: numberOrUndefined(row.net_rank),
+    kenpomRank: numberOrUndefined(row.kenpom_rank),
+    threePointPct: numberOrUndefined(row.three_point_pct),
+    rankedWins: numberOrUndefined(row.ranked_wins),
+    quadWins:
+      quad1 !== undefined &&
+      quad2 !== undefined &&
+      quad3 !== undefined &&
+      quad4 !== undefined
+        ? { q1: quad1, q2: quad2, q3: quad3, q4: quad4 }
+        : undefined,
+    ats:
+      atsWins !== undefined && atsLosses !== undefined && atsPushes !== undefined
+        ? { wins: atsWins, losses: atsLosses, pushes: atsPushes }
+        : undefined,
+    offenseStyle:
+      typeof row.offense_style === "string" && row.offense_style.length > 0
+        ? row.offense_style
+        : undefined,
+    defenseStyle:
+      typeof row.defense_style === "string" && row.defense_style.length > 0
+        ? row.defense_style
+        : undefined
+  };
+
+  return Object.values(scouting).some((value) => value !== undefined)
+    ? scouting
+    : undefined;
 }
 
 const localRepository = new LocalSessionRepository();

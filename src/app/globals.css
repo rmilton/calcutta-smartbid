@@ -93,7 +93,10 @@ label span,
 .viewer-board span,
 .hero-stats span,
 .hero-insights span,
-.team-meta span {
+.team-meta span,
+.intel-metrics span,
+.intel-style span,
+.intel-notes span {
   color: var(--muted);
   font-size: 0.9rem;
 }
@@ -429,6 +432,10 @@ th {
   color: var(--muted);
 }
 
+.table-row--focus {
+  background: rgba(163, 61, 46, 0.08);
+}
+
 .syndicate-name {
   display: inline-flex;
   gap: 0.5rem;
@@ -438,6 +445,42 @@ th {
 .viewer-board {
   display: grid;
   gap: 1rem;
+}
+
+.intel-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.intel-metrics {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.intel-metrics strong,
+.intel-style strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.05rem;
+  font-family: var(--font-display);
+}
+
+.intel-style {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.intel-notes {
+  display: grid;
+  gap: 0.8rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.intel-notes p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
 }
 
 .override-meta {

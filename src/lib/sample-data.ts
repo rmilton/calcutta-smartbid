@@ -1,4 +1,5 @@
 import { AuctionSession, PayoutRules, TeamProjection } from "@/lib/types";
+import { clamp } from "@/lib/utils";
 
 const sampleTeams: Array<Omit<TeamProjection, "source">> = [
   { id: "auburn", name: "Auburn", shortName: "AUB", region: "South", seed: 1, rating: 93.8, offense: 121.6, defense: 94.2, tempo: 70.1 },
@@ -41,7 +42,8 @@ const sampleTeams: Array<Omit<TeamProjection, "source">> = [
 export function getMockProjections(): TeamProjection[] {
   return sampleTeams.map((team) => ({
     ...team,
-    source: "mock"
+    source: "mock",
+    scouting: buildMockScoutingProfile(team)
   }));
 }
 
@@ -66,4 +68,60 @@ export function getDefaultFinalFourPairings(): [string, string][] {
 
 export function isSessionReady(session: AuctionSession) {
   return session.projections.length > 0 && session.simulationSnapshot !== null;
+}
+
+function buildMockScoutingProfile(team: Omit<TeamProjection, "source">) {
+  const strength = team.rating - 80;
+  const q1 = clamp(Math.round(strength / 1.9 + (4 - team.seed / 5)), 0, 13);
+  const q2 = clamp(Math.round(4 + strength / 4), 1, 10);
+  const q3 = clamp(Math.round(6 - strength / 8 + team.seed / 6), 1, 10);
+  const q4 = clamp(Math.round(8 - strength / 10 + team.seed / 4), 1, 12);
+  const rankedWins = clamp(Math.round(q1 * 0.65 + (team.seed <= 4 ? 1 : 0)), 0, 12);
+
+  const atsWins = clamp(Math.round(15 + strength + (9 - team.seed) / 2), 8, 30);
+  const atsLosses = clamp(Math.round(15 - strength / 3 + team.seed / 3), 5, 24);
+  const atsPushes = clamp(Math.round((team.tempo - 64) / 4), 1, 4);
+
+  const threePointPctRaw = 29.8 + (team.offense - 108) * 0.29 - (team.tempo - 68) * 0.09;
+  const threePointPct = Math.round(clamp(threePointPctRaw, 30.2, 41.4) * 10) / 10;
+
+  const estimatedKenpom = clamp(Math.round((101 - team.rating) * 4.5 + team.seed), 1, 140);
+  const estimatedNet = clamp(estimatedKenpom + Math.round((team.defense - 95) * 1.4), 1, 160);
+
+  return {
+    netRank: estimatedNet,
+    kenpomRank: estimatedKenpom,
+    threePointPct,
+    rankedWins,
+    quadWins: { q1, q2, q3, q4 },
+    ats: { wins: atsWins, losses: atsLosses, pushes: atsPushes },
+    offenseStyle: describeOffense(team),
+    defenseStyle: describeDefense(team)
+  };
+}
+
+function describeOffense(team: Omit<TeamProjection, "source">) {
+  if (team.tempo >= 71.5) {
+    return "Transition-heavy pace and early-clock threes";
+  }
+  if (team.offense >= 119) {
+    return "Spacing-driven half-court shot quality";
+  }
+  if (team.offense <= 112) {
+    return "Physical paint touches with second-chance focus";
+  }
+  return "Balanced attack mixing ball screens and kick-outs";
+}
+
+function describeDefense(team: Omit<TeamProjection, "source">) {
+  if (team.defense <= 93.5) {
+    return "Switch pressure with disruptive point-of-attack defense";
+  }
+  if (team.defense <= 96.8) {
+    return "Disciplined man-to-man with strong glass control";
+  }
+  if (team.defense <= 100.2) {
+    return "Containment-first shell with selective pressure";
+  }
+  return "Coverage-mix defense that protects the lane first";
 }

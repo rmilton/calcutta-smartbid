@@ -13,7 +13,14 @@ describe("normalizeProjectionFeed", () => {
         offense: 122,
         defense: 92,
         tempo: 69,
-        source: "ignored"
+        scouting: {
+          kenpomRank: 3,
+          threePointPct: 38.4,
+          quadWins: { q1: 9, q2: 5, q3: 2, q4: 1 },
+          ats: { wins: 18, losses: 11, pushes: 1 },
+          offenseStyle: " Four-out spacing ",
+          defenseStyle: " Point-of-attack pressure "
+        }
       },
       {
         id: "duke",
@@ -24,14 +31,15 @@ describe("normalizeProjectionFeed", () => {
         rating: 95,
         offense: 122,
         defense: 92,
-        tempo: 69,
-        source: "ignored"
+        tempo: 69
       }
     ]);
 
     expect(teams).toHaveLength(1);
     expect(teams[0].shortName).toBe("DUKE");
     expect(teams[0].region).toBe("East");
+    expect(teams[0].scouting?.offenseStyle).toBe("Four-out spacing");
+    expect(teams[0].scouting?.ats?.wins).toBe(18);
   });
 });
 
