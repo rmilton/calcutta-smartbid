@@ -6,7 +6,7 @@ export default async function HomePage() {
   const auth = await getAuthenticatedMember();
   if (auth) {
     if (auth.scope === "platform") {
-      redirect("/admin/sessions/new");
+      redirect("/admin");
     }
 
     redirect(`/session/${auth.sessionId}`);

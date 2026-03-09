@@ -91,7 +91,6 @@ export interface SimulationSnapshot {
 export interface TeamMarketState {
   nominatedTeamId: string | null;
   currentBid: number;
-  likelyBidderIds: string[];
   soldTeamIds: string[];
   lastUpdatedAt: string;
 }
@@ -169,7 +168,6 @@ export interface BidRecommendation {
   stoplight: Stoplight;
   ownershipPenalty: number;
   bankrollHeadroom: number;
-  bidderPressure: number;
   concentrationScore: number;
   drivers: RecommendationDriver[];
   rationale: string[];
@@ -192,6 +190,19 @@ export interface AuctionDashboard {
   lastPurchase: PurchaseRecord | null;
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
+}
+
+export interface AdminSessionSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  projectionProvider: string;
+  purchaseCount: number;
+  syndicateCount: number;
+  overrideCount: number;
+  adminCount: number;
+  viewerCount: number;
 }
 
 export const payoutRulesSchema = z.object({
@@ -242,8 +253,7 @@ export const rebuildSimulationSchema = z.object({
 
 export const updateLiveStateSchema = z.object({
   nominatedTeamId: z.string().nullable().optional(),
-  currentBid: z.number().nonnegative().optional(),
-  likelyBidderIds: z.array(z.string()).max(8).optional()
+  currentBid: z.number().nonnegative().optional()
 });
 
 export const createPurchaseSchema = z.object({

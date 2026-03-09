@@ -54,7 +54,6 @@ function buildSession(): AuctionSession {
     liveState: {
       nominatedTeamId: "alabama",
       currentBid: 6200,
-      likelyBidderIds: ["syn_other"],
       soldTeamIds: ["duke"],
       lastUpdatedAt: new Date().toISOString()
     },
@@ -86,7 +85,7 @@ describe("recommendations", () => {
 
     expect(recommendation).not.toBeNull();
     expect(recommendation?.recommendedMaxBid).toBeGreaterThan(0);
-    expect(recommendation?.drivers).toHaveLength(3);
+    expect(recommendation?.drivers).toHaveLength(2);
     expect(recommendation?.valueGap).toBeDefined();
   });
 });

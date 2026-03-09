@@ -72,6 +72,7 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
   return {
     dashboard,
     isRefreshing,
-    refresh
+    refresh,
+    replaceDashboard: setDashboard
   };
 }

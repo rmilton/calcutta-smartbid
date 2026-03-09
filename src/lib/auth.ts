@@ -118,6 +118,13 @@ export async function requireAuthenticatedMemberForSession(
     throw new Error("Authentication required.");
   }
 
+  if (auth.scope === "platform" && auth.role === "admin") {
+    return {
+      ...auth,
+      sessionId
+    } satisfies AuthenticatedMember;
+  }
+
   if (auth.scope !== "session") {
     throw new Error("Session access requires a session login.");
   }
@@ -227,7 +234,7 @@ export async function authenticateLandingAccess(email: string, sharedCode: strin
     )
   ) {
     return {
-      redirectTo: "/admin/sessions/new",
+      redirectTo: "/admin",
       member: {
         scope: "platform",
         sessionId: null,

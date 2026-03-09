@@ -10,6 +10,7 @@ import { applyProjectionOverrides, loadProjectionProvider } from "@/lib/provider
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   AccessMember,
+  AdminSessionSummary,
   AuctionDashboard,
   AuctionSession,
   ProjectionOverride,
@@ -47,6 +48,7 @@ interface ProjectionOverrideInput {
 export interface SessionRepository {
   backend: StorageBackend;
   createSession(input: CreateSessionInput): Promise<StoredAuctionSession>;
+  listSessions(): Promise<AdminSessionSummary[]>;
   getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
   getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
@@ -58,7 +60,7 @@ export interface SessionRepository {
   rebuildSimulation(sessionId: string, iterations?: number): Promise<AuctionDashboard>;
   updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number; likelyBidderIds?: string[] }
+    patch: { nominatedTeamId?: string | null; currentBid?: number }
   ): Promise<AuctionDashboard>;
   recordPurchase(
     sessionId: string,
@@ -100,6 +102,13 @@ class LocalSessionRepository implements SessionRepository {
   async getSession(sessionId: string) {
     const store = await this.readStore();
     return store.sessions.find((session) => session.id === sessionId) ?? null;
+  }
+
+  async listSessions() {
+    const store = await this.readStore();
+    return store.sessions
+      .map((session) => buildAdminSessionSummary(session))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   async getDashboard(sessionId: string) {
@@ -160,7 +169,7 @@ class LocalSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number; likelyBidderIds?: string[] }
+    patch: { nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -349,6 +358,58 @@ class SupabaseSessionRepository implements SessionRepository {
     return session;
   }
 
+  async listSessions() {
+    const client = requireSupabaseClient();
+    const [sessionsResult, syndicatesResult, purchasesResult, overridesResult, membersResult] =
+      await Promise.all([
+        client
+          .from("auction_sessions")
+          .select("id, name, created_at, updated_at, projection_provider")
+          .order("updated_at", { ascending: false }),
+        client.from("syndicates").select("session_id"),
+        client.from("purchase_records").select("session_id"),
+        client.from("projection_overrides").select("session_id"),
+        client.from("session_members").select("session_id, role, active")
+      ]);
+
+    throwOnSupabaseError(sessionsResult.error);
+    throwOnSupabaseError(syndicatesResult.error);
+    throwOnSupabaseError(purchasesResult.error);
+    throwOnSupabaseError(overridesResult.error);
+    throwOnSupabaseError(membersResult.error);
+
+    const syndicateCounts = countRowsBySession(
+      (syndicatesResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const purchaseCounts = countRowsBySession(
+      (purchasesResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const overrideCounts = countRowsBySession(
+      (overridesResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const memberCounts = countMembersBySession(
+      (membersResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+
+    return (((sessionsResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
+      const sessionId = String(row.id);
+      const memberCount = memberCounts.get(sessionId) ?? { adminCount: 0, viewerCount: 0 };
+
+      return {
+        id: sessionId,
+        name: String(row.name),
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+        projectionProvider: String(row.projection_provider),
+        purchaseCount: purchaseCounts.get(sessionId) ?? 0,
+        syndicateCount: syndicateCounts.get(sessionId) ?? 0,
+        overrideCount: overrideCounts.get(sessionId) ?? 0,
+        adminCount: memberCount.adminCount,
+        viewerCount: memberCount.viewerCount
+      } satisfies AdminSessionSummary;
+    })) as AdminSessionSummary[];
+  }
+
   async getDashboard(sessionId: string) {
     const session = await this.requireSession(sessionId);
     return buildDashboard(session, this.backend);
@@ -441,7 +502,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number; likelyBidderIds?: string[] }
+    patch: { nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const session = await this.requireSession(sessionId);
     applyLiveStatePatch(session, patch);
@@ -752,13 +813,12 @@ async function createSessionModel(input: CreateSessionInput) {
     projectionOverrides: {},
     projectionProvider: projectionFeed.provider,
     finalFourPairings: getDefaultFinalFourPairings(),
-    liveState: {
-      nominatedTeamId: projectionFeed.teams[0]?.id ?? null,
-      currentBid: 0,
-      likelyBidderIds: [],
-      soldTeamIds: [],
-      lastUpdatedAt: timestamp
-    },
+      liveState: {
+        nominatedTeamId: projectionFeed.teams[0]?.id ?? null,
+        currentBid: 0,
+        soldTeamIds: [],
+        lastUpdatedAt: timestamp
+      },
     purchases: [],
     simulationSnapshot: null
   });
@@ -787,7 +847,6 @@ async function applyProjectionImport(session: StoredAuctionSession, provider: "m
     ...session.liveState,
     nominatedTeamId: session.projections[0]?.id ?? null,
     currentBid: 0,
-    likelyBidderIds: [],
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
@@ -810,7 +869,7 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
 
 function applyLiveStatePatch(
   session: StoredAuctionSession,
-  patch: { nominatedTeamId?: string | null; currentBid?: number; likelyBidderIds?: string[] }
+  patch: { nominatedTeamId?: string | null; currentBid?: number }
 ) {
   const nextState = {
     ...session.liveState,
@@ -830,11 +889,6 @@ function applyLiveStatePatch(
     session.liveState.soldTeamIds.includes(nextState.nominatedTeamId)
   ) {
     throw new Error("That team has already been sold.");
-  }
-
-  const validBidderIds = new Set(session.syndicates.map((syndicate) => syndicate.id));
-  if (nextState.likelyBidderIds.some((syndicateId) => !validBidderIds.has(syndicateId))) {
-    throw new Error("Live state includes an unknown syndicate.");
   }
 
   if (
@@ -897,7 +951,6 @@ function applyPurchaseMutation(
     ...session.liveState,
     currentBid: 0,
     nominatedTeamId: null,
-    likelyBidderIds: [],
     soldTeamIds: [...session.liveState.soldTeamIds, teamId],
     lastUpdatedAt: createdAt
   };
@@ -1006,6 +1059,22 @@ function ensureUniqueAccessMembers(members: CreateSessionInput["accessMembers"])
   return normalized;
 }
 
+function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSummary {
+  const activeMembers = session.accessMembers.filter((member) => member.active);
+  return {
+    id: session.id,
+    name: session.name,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    projectionProvider: session.projectionProvider,
+    purchaseCount: session.purchases.length,
+    syndicateCount: session.syndicates.length,
+    overrideCount: Object.keys(session.projectionOverrides).length,
+    adminCount: activeMembers.filter((member) => member.role === "admin").length,
+    viewerCount: activeMembers.filter((member) => member.role === "viewer").length
+  };
+}
+
 function sortProjections(projections: TeamProjection[]) {
   return [...projections].sort((left, right) => {
     if (left.region === right.region) {
@@ -1051,6 +1120,33 @@ function normalizeSessionShape(session: StoredAuctionSession) {
 
 function requireSupabaseClient() {
   return createServerSupabaseClient();
+}
+
+function countRowsBySession(rows: Array<Record<string, unknown>>) {
+  return rows.reduce((counts, row) => {
+    const sessionId = String(row.session_id);
+    counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+}
+
+function countMembersBySession(rows: Array<Record<string, unknown>>) {
+  return rows.reduce((counts, row) => {
+    if (!Boolean(row.active)) {
+      return counts;
+    }
+
+    const sessionId = String(row.session_id);
+    const current = counts.get(sessionId) ?? { adminCount: 0, viewerCount: 0 };
+    const role = String(row.role);
+    if (role === "admin") {
+      current.adminCount += 1;
+    } else if (role === "viewer") {
+      current.viewerCount += 1;
+    }
+    counts.set(sessionId, current);
+    return counts;
+  }, new Map<string, { adminCount: number; viewerCount: number }>());
 }
 
 async function replaceRows(

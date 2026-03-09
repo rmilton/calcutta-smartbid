@@ -1,8 +1,8 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
+import { LogoutButton } from "@/components/logout-button";
 import { AuctionDashboard, AuthenticatedMember } from "@/lib/types";
 import { formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 
@@ -13,32 +13,33 @@ interface DashboardShellProps {
   currentMember: AuthenticatedMember;
 }
 
+function formatTeamOption(team: AuctionDashboard["session"]["projections"][number] | null) {
+  if (!team) {
+    return "";
+  }
+
+  return `${team.seed}. ${team.name} (${team.region})`;
+}
+
 export function DashboardShell({
   sessionId,
   initialDashboard,
   viewerMode,
   currentMember
 }: DashboardShellProps) {
-  const router = useRouter();
-  const { dashboard, isRefreshing, refresh } = useSessionDashboard(
+  const [isLiveStateDirty, setIsLiveStateDirty] = useState(false);
+  const { dashboard, isRefreshing, refresh, replaceDashboard } = useSessionDashboard(
     sessionId,
     initialDashboard
   );
   const [selectedTeamId, setSelectedTeamId] = useState(
     dashboard.session.liveState.nominatedTeamId ?? ""
   );
+  const [teamQuery, setTeamQuery] = useState("");
+  const deferredTeamQuery = useDeferredValue(teamQuery);
+  const [isTeamPickerOpen, setIsTeamPickerOpen] = useState(false);
   const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
-  const [likelyBidderIds, setLikelyBidderIds] = useState<string[]>(
-    dashboard.session.liveState.likelyBidderIds
-  );
-  const [isLiveStateDirty, setIsLiveStateDirty] = useState(false);
-  const [overrideForm, setOverrideForm] = useState({
-    rating: "",
-    offense: "",
-    defense: "",
-    tempo: ""
-  });
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,10 +47,14 @@ export function DashboardShell({
     if (isLiveStateDirty && !viewerMode) {
       return;
     }
-    setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
+    const nextSelectedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
+    const nextSelectedTeam =
+      dashboard.session.projections.find((team) => team.id === nextSelectedTeamId) ?? null;
+
+    setSelectedTeamId(nextSelectedTeamId);
+    setTeamQuery(formatTeamOption(nextSelectedTeam));
     setCurrentBid(dashboard.session.liveState.currentBid);
-    setLikelyBidderIds(dashboard.session.liveState.likelyBidderIds);
-  }, [dashboard.session.liveState, isLiveStateDirty, viewerMode]);
+  }, [dashboard.session.liveState, dashboard.session.projections, isLiveStateDirty, viewerMode]);
 
   const nominatedTeam = dashboard.nominatedTeam;
   const recommendation = dashboard.recommendation;
@@ -59,50 +64,125 @@ export function DashboardShell({
     () => new Set(dashboard.soldTeams.map((item) => item.team.id)),
     [dashboard.soldTeams]
   );
-  const selectedOverride =
-    (selectedTeamId && dashboard.session.projectionOverrides[selectedTeamId]) || null;
+  const searchableTeams = useMemo(
+    () => dashboard.session.projections.filter((team) => !soldLookup.has(team.id)),
+    [dashboard.session.projections, soldLookup]
+  );
+  const selectedTeamLabel = useMemo(
+    () => formatTeamOption(selectedTeam),
+    [selectedTeam]
+  );
+  const filteredTeams = useMemo(() => {
+    const query = deferredTeamQuery.trim().toLowerCase();
+    if (!query || query === selectedTeamLabel.toLowerCase()) {
+      return searchableTeams;
+    }
+
+    return searchableTeams
+      .filter((team) => {
+        const haystack = [
+          team.name,
+          team.shortName,
+          team.region,
+          team.seed.toString()
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
+      });
+  }, [deferredTeamQuery, searchableTeams, selectedTeamLabel]);
 
   useEffect(() => {
-    if (!selectedTeam) {
-      setOverrideForm({
-        rating: "",
-        offense: "",
-        defense: "",
-        tempo: ""
-      });
+    if (teamQuery !== "") {
       return;
     }
 
-    setOverrideForm({
-      rating: selectedOverride?.rating?.toString() ?? selectedTeam.rating.toString(),
-      offense: selectedOverride?.offense?.toString() ?? selectedTeam.offense.toString(),
-      defense: selectedOverride?.defense?.toString() ?? selectedTeam.defense.toString(),
-      tempo: selectedOverride?.tempo?.toString() ?? selectedTeam.tempo.toString()
-    });
-  }, [selectedOverride, selectedTeam]);
+    setTeamQuery(formatTeamOption(selectedTeam));
+  }, [selectedTeam, teamQuery]);
 
-  function toggleLikelyBidder(syndicateId: string) {
+  async function selectTeam(teamId: string) {
+    const team =
+      dashboard.session.projections.find((candidate) => candidate.id === teamId) ?? null;
     setIsLiveStateDirty(true);
-    setLikelyBidderIds((current) =>
-      current.includes(syndicateId)
-        ? current.filter((candidate) => candidate !== syndicateId)
-        : [...current, syndicateId]
-    );
+    setSelectedTeamId(teamId);
+    setTeamQuery(formatTeamOption(team));
+    setIsTeamPickerOpen(false);
+    await saveLiveState({
+      patch: {
+        nominatedTeamId: teamId,
+        currentBid
+      },
+      silent: true
+    });
   }
 
-  async function saveLiveState() {
+  function handleTeamQueryChange(value: string) {
+    setIsLiveStateDirty(true);
+    setTeamQuery(value);
+
+    const normalized = value.trim().toLowerCase();
+    const exactMatch =
+      searchableTeams.find(
+        (team) => formatTeamOption(team).toLowerCase() === normalized
+      ) ?? null;
+    setSelectedTeamId(exactMatch?.id ?? "");
+    setIsTeamPickerOpen(true);
+  }
+
+  function commitTeamQuery() {
+    const normalized = teamQuery.trim().toLowerCase();
+    if (!normalized) {
+      setSelectedTeamId("");
+      setTeamQuery("");
+      setIsTeamPickerOpen(false);
+      return;
+    }
+
+    const exactMatch =
+      searchableTeams.find(
+        (team) =>
+          formatTeamOption(team).toLowerCase() === normalized ||
+          team.name.toLowerCase() === normalized ||
+          team.shortName.toLowerCase() === normalized
+      ) ?? null;
+
+    if (exactMatch) {
+      void selectTeam(exactMatch.id);
+      return;
+    }
+
+    if (filteredTeams.length === 1) {
+      void selectTeam(filteredTeams[0].id);
+      return;
+    }
+
+    const currentSelection =
+      dashboard.session.projections.find((team) => team.id === selectedTeamId) ?? null;
+    setTeamQuery(formatTeamOption(currentSelection));
+    setIsTeamPickerOpen(false);
+  }
+
+  async function saveLiveState(options?: {
+    patch?: { nominatedTeamId?: string | null; currentBid?: number };
+    silent?: boolean;
+  }) {
     setError(null);
-    setNotice(null);
+    if (!options?.silent) {
+      setNotice(null);
+    }
+
+    const payload = {
+      nominatedTeamId: selectedTeamId || null,
+      currentBid,
+      ...options?.patch
+    };
+
     const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        nominatedTeamId: selectedTeamId || null,
-        currentBid,
-        likelyBidderIds
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -111,10 +191,22 @@ export function DashboardShell({
       return;
     }
 
-    setNotice("Live board updated.");
+    const nextDashboard = (await response.json()) as AuctionDashboard;
+    replaceDashboard(nextDashboard);
+
+    if (!options?.silent) {
+      setNotice("Live board updated.");
+    }
     setIsLiveStateDirty(false);
-    startTransition(() => {
-      void refresh();
+  }
+
+  async function persistCurrentBid() {
+    await saveLiveState({
+      patch: {
+        nominatedTeamId: selectedTeamId || null,
+        currentBid
+      },
+      silent: true
     });
   }
 
@@ -127,7 +219,7 @@ export function DashboardShell({
     }
 
     if (!selectedTeamId) {
-      setError("Choose a nominated team before recording a purchase.");
+      setError("Choose an active team before recording a purchase.");
       return;
     }
 
@@ -208,77 +300,6 @@ export function DashboardShell({
     });
   }
 
-  async function saveProjectionOverride() {
-    if (!selectedTeamId) {
-      setError("Choose a team before saving an override.");
-      return;
-    }
-
-    setError(null);
-    setNotice(null);
-    const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          rating: Number(overrideForm.rating),
-          offense: Number(overrideForm.offense),
-          defense: Number(overrideForm.defense),
-          tempo: Number(overrideForm.tempo)
-        })
-      }
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to save projection override.");
-      return;
-    }
-
-    setNotice("Projection override saved and simulation rebuilt.");
-    startTransition(() => {
-      void refresh();
-    });
-  }
-
-  async function clearProjectionOverride() {
-    if (!selectedTeamId) {
-      setError("Choose a team before clearing an override.");
-      return;
-    }
-
-    setError(null);
-    setNotice(null);
-    const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
-      {
-        method: "DELETE"
-      }
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to clear projection override.");
-      return;
-    }
-
-    setNotice("Projection override cleared.");
-    startTransition(() => {
-      void refresh();
-    });
-  }
-
-  async function logout() {
-    await fetch("/api/auth/logout", {
-      method: "POST"
-    });
-    router.push("/");
-    router.refresh();
-  }
-
   const lastSaleTeamName =
     dashboard.lastPurchase &&
     dashboard.session.projections.find(
@@ -302,18 +323,182 @@ export function DashboardShell({
           </span>
           <span>Backend {dashboard.storageBackend}</span>
           <span>{isRefreshing ? "Syncing..." : "Live sync ready"}</span>
-          <button type="button" className="secondary" onClick={() => void logout()}>
-            Log out
-          </button>
+          <LogoutButton />
         </div>
       </header>
+
+      <section className="control-bar panel">
+        <div className="panel-head control-bar__head">
+          <div>
+            <p className="eyebrow">Operator console</p>
+            <h3>Live bidding controls</h3>
+          </div>
+          {!viewerMode ? (
+            <div className="panel-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void rebuildSimulation()}
+              >
+                Refresh simulation
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void importField("mock")}
+              >
+                Reload sample field
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void importField("remote")}
+              >
+                Import remote feed
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="control-bar__grid">
+          <label className="control-bar__field control-bar__field--team">
+            <span>Active Team for Bidding</span>
+            <div className="team-picker">
+              <input
+                disabled={viewerMode}
+                placeholder="Start typing a team, seed, or region"
+                value={teamQuery}
+                onFocus={(event) => {
+                  setIsTeamPickerOpen(true);
+                  event.currentTarget.select();
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => {
+                    commitTeamQuery();
+                  }, 120);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitTeamQuery();
+                    return;
+                  }
+
+                  if (event.key === "ArrowDown") {
+                    setIsTeamPickerOpen(true);
+                  }
+                }}
+                onChange={(event) => handleTeamQueryChange(event.target.value)}
+              />
+              {!viewerMode ? (
+                <span className="team-picker__hint">
+                  Type to filter, then choose a result or press Enter.
+                </span>
+              ) : null}
+              {isTeamPickerOpen && !viewerMode ? (
+                <div className="team-picker__results">
+                  {filteredTeams.length ? (
+                    filteredTeams.map((team) => (
+                      <button
+                        key={team.id}
+                        type="button"
+                        className={
+                          team.id === selectedTeamId
+                            ? "team-picker__option team-picker__option--active"
+                            : "team-picker__option"
+                        }
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          void selectTeam(team.id);
+                        }}
+                      >
+                        <strong>{team.name}</strong>
+                        <span>
+                          {team.seed}-seed · {team.region} · {team.shortName}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="team-picker__empty">
+                      No available team matches that search.
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </label>
+
+          <label className="control-bar__field">
+            <span>Current bid</span>
+            <input
+              disabled={viewerMode}
+              type="number"
+              min={0}
+              step={100}
+              value={currentBid}
+              onBlur={() => {
+                if (!viewerMode && isLiveStateDirty) {
+                  void persistCurrentBid();
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (!viewerMode && isLiveStateDirty) {
+                    void persistCurrentBid();
+                  }
+                }
+              }}
+              onChange={(event) => {
+                setIsLiveStateDirty(true);
+                setCurrentBid(Number(event.target.value));
+              }}
+            />
+          </label>
+
+          <label className="control-bar__field">
+            <span>Record winner</span>
+            <select
+              disabled={viewerMode}
+              value={buyerId}
+              onChange={(event) => setBuyerId(event.target.value)}
+            >
+              {dashboard.ledger.map((syndicate) => (
+                <option key={syndicate.id} value={syndicate.id}>
+                  {syndicate.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {!viewerMode ? (
+            <div className="control-bar__actions">
+              <button
+                type="button"
+                className="danger"
+                disabled={currentBid <= 0 || !selectedTeamId}
+                onClick={() => void recordPurchase()}
+              >
+                Record purchase
+              </button>
+            </div>
+          ) : (
+            <p className="viewer-note control-bar__viewer-note">
+              Viewer mode is read-only.
+            </p>
+          )}
+        </div>
+
+        {notice ? <p className="form-notice">{notice}</p> : null}
+        {error ? <p className="form-error">{error}</p> : null}
+      </section>
 
       <section className="top-grid">
         <article className="hero-card">
           <div className="hero-card__head">
             <div>
-              <p className="eyebrow">Live nomination</p>
-              <h2>{nominatedTeam ? nominatedTeam.name : "No team nominated"}</h2>
+              <p className="eyebrow">Active Team for Bidding</p>
+              <h2>{nominatedTeam ? nominatedTeam.name : "No active team selected"}</h2>
             </div>
             <span
               className={`stoplight stoplight--${recommendation?.stoplight ?? "pass"}`}
@@ -370,8 +555,8 @@ export function DashboardShell({
                   <strong>{formatCurrency(recommendation.valueGap)}</strong>
                 </div>
                 <div>
-                  <span>Bidder pressure</span>
-                  <strong>{Math.round(recommendation.bidderPressure * 100)}%</strong>
+                  <span>Portfolio concentration</span>
+                  <strong>{Math.round(recommendation.concentrationScore * 100)}%</strong>
                 </div>
               </div>
               <div className="driver-grid">
@@ -419,140 +604,6 @@ export function DashboardShell({
       </section>
 
       <section className="workspace-grid">
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Operator console</p>
-              <h3>Live bidding controls</h3>
-            </div>
-            {!viewerMode ? (
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void rebuildSimulation()}
-                >
-                  Refresh simulation
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void importField("mock")}
-                >
-                  Reload sample field
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void importField("remote")}
-                >
-                  Import remote feed
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="form-stack">
-            <label>
-              <span>Nominated team</span>
-              <select
-                disabled={viewerMode}
-                value={selectedTeamId}
-                onChange={(event) => {
-                  setIsLiveStateDirty(true);
-                  setSelectedTeamId(event.target.value);
-                }}
-              >
-                <option value="">Select a team</option>
-                {dashboard.session.projections.map((team) => (
-                  <option
-                    key={team.id}
-                    value={team.id}
-                    disabled={soldLookup.has(team.id)}
-                  >
-                    {team.seed}. {team.name} ({team.region})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Current bid</span>
-              <input
-                disabled={viewerMode}
-                type="number"
-                min={0}
-                step={100}
-                value={currentBid}
-                onChange={(event) => {
-                  setIsLiveStateDirty(true);
-                  setCurrentBid(Number(event.target.value));
-                }}
-              />
-            </label>
-            <label>
-              <span>Likely bidders</span>
-              <div className="chip-grid">
-                {dashboard.ledger.map((syndicate) => (
-                  <button
-                    key={syndicate.id}
-                    type="button"
-                    disabled={viewerMode}
-                    className={
-                      likelyBidderIds.includes(syndicate.id)
-                        ? "chip chip--active"
-                        : "chip"
-                    }
-                    onClick={() => toggleLikelyBidder(syndicate.id)}
-                  >
-                    <span
-                      className="chip-dot"
-                      style={{ backgroundColor: syndicate.color }}
-                    />
-                    {syndicate.name}
-                  </button>
-                ))}
-              </div>
-            </label>
-            <label>
-              <span>Record winner</span>
-              <select
-                disabled={viewerMode}
-                value={buyerId}
-                onChange={(event) => setBuyerId(event.target.value)}
-              >
-                {dashboard.ledger.map((syndicate) => (
-                  <option key={syndicate.id} value={syndicate.id}>
-                    {syndicate.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {!viewerMode ? (
-            <div className="control-actions">
-              <button type="button" onClick={() => void saveLiveState()}>
-                Update live board
-              </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={currentBid <= 0 || !selectedTeamId}
-                onClick={() => void recordPurchase()}
-              >
-                Record purchase
-              </button>
-            </div>
-          ) : (
-            <p className="viewer-note">
-              Viewer mode is read-only. Operator controls are hidden from guests.
-            </p>
-          )}
-
-          {notice ? <p className="form-notice">{notice}</p> : null}
-          {error ? <p className="form-error">{error}</p> : null}
-        </article>
-
         <article className="panel">
           <div className="panel-head">
             <div>
@@ -620,131 +671,18 @@ export function DashboardShell({
         <article className="panel">
           <div className="panel-head">
             <div>
-              <p className="eyebrow">Projection controls</p>
-              <h3>Manual overrides</h3>
-            </div>
-          </div>
-
-          {selectedTeam ? (
-            <div className="form-stack">
-              <div className="override-meta">
-                <strong>{selectedTeam.name}</strong>
-                <span>
-                  Source {selectedTeam.source}
-                  {selectedOverride ? " with manual override" : ""}
-                </span>
-              </div>
-              <label>
-                <span>Rating</span>
-                <input
-                  disabled={viewerMode}
-                  type="number"
-                  step="0.1"
-                  value={overrideForm.rating}
-                  onChange={(event) =>
-                    setOverrideForm((current) => ({
-                      ...current,
-                      rating: event.target.value
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Offense</span>
-                <input
-                  disabled={viewerMode}
-                  type="number"
-                  step="0.1"
-                  value={overrideForm.offense}
-                  onChange={(event) =>
-                    setOverrideForm((current) => ({
-                      ...current,
-                      offense: event.target.value
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Defense</span>
-                <input
-                  disabled={viewerMode}
-                  type="number"
-                  step="0.1"
-                  value={overrideForm.defense}
-                  onChange={(event) =>
-                    setOverrideForm((current) => ({
-                      ...current,
-                      defense: event.target.value
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Tempo</span>
-                <input
-                  disabled={viewerMode}
-                  type="number"
-                  step="0.1"
-                  value={overrideForm.tempo}
-                  onChange={(event) =>
-                    setOverrideForm((current) => ({
-                      ...current,
-                      tempo: event.target.value
-                    }))
-                  }
-                />
-              </label>
-              {!viewerMode ? (
-                <div className="control-actions">
-                  <button type="button" onClick={() => void saveProjectionOverride()}>
-                    Save override
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => void clearProjectionOverride()}
-                  >
-                    Clear override
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p className="viewer-note">
-              Pick a team in the operator console to edit projection inputs.
-            </p>
-          )}
-        </article>
-
-        <article className="panel">
-          <div className="panel-head">
-            <div>
               <p className="eyebrow">Viewer board</p>
               <h3>Shared auction snapshot</h3>
             </div>
           </div>
           <div className="viewer-board">
             <div>
-              <span>Current team</span>
-              <strong>{dashboard.nominatedTeam?.name ?? "Waiting for nomination"}</strong>
+              <span>Active Team for Bidding</span>
+              <strong>{dashboard.nominatedTeam?.name ?? "Waiting for active team"}</strong>
             </div>
             <div>
               <span>Current bid</span>
               <strong>{formatCurrency(dashboard.session.liveState.currentBid)}</strong>
-            </div>
-            <div>
-              <span>Likely bidders</span>
-              <strong>
-                {dashboard.session.liveState.likelyBidderIds.length
-                  ? dashboard.session.liveState.likelyBidderIds
-                      .map(
-                        (id) =>
-                          dashboard.ledger.find((syndicate) => syndicate.id === id)?.name ??
-                          id
-                      )
-                      .join(", ")
-                  : "Not tagged"}
-              </strong>
             </div>
             <div>
               <span>Last sale</span>

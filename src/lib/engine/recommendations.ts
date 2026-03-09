@@ -27,13 +27,11 @@ export function buildBidRecommendation(
   const expectedGrossPayout = teamResult.expectedGrossPayout;
   const remainingBankroll = focusSyndicate.remainingBankroll;
   const conservativeHeadroom = remainingBankroll * 0.92;
-  const bidderPressure = session.liveState.likelyBidderIds.length / Math.max(session.syndicates.length - 1, 1);
   const convictionMultiplier =
     1 -
     clamp(
       ownershipExposure.overlapScore * 0.55 +
-        ownershipExposure.concentrationScore * 0.18 +
-        bidderPressure * 0.08,
+        ownershipExposure.concentrationScore * 0.22,
       0,
       0.6
     );
@@ -52,8 +50,7 @@ export function buildBidRecommendation(
   const rationale = [
     `${team.name} projects for ${teamResult.roundProbabilities.finalFour.toFixed(2)} Final Four probability and ${teamResult.roundProbabilities.champion.toFixed(2)} title probability.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
-    `Focus syndicate has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`,
-    `Likely bidder pressure is ${Math.round(bidderPressure * 100)}% based on tagged competitors on this nomination.`
+    `Focus syndicate has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`
   ];
 
   if (ownershipExposure.likelyConflicts[0]) {
@@ -68,11 +65,6 @@ export function buildBidRecommendation(
       label: "Value gap",
       value: `${valueGap >= 0 ? "+" : ""}${roundCurrency(valueGap)}`,
       tone: valueGap >= 0 ? "positive" : "negative"
-    },
-    {
-      label: "Bidder pressure",
-      value: `${Math.round(bidderPressure * 100)}%`,
-      tone: bidderPressure > 0.5 ? "negative" : "neutral"
     },
     {
       label: "Portfolio concentration",
@@ -92,7 +84,6 @@ export function buildBidRecommendation(
     stoplight,
     ownershipPenalty: roundCurrency(ownershipExposure.overlapScore * 850),
     bankrollHeadroom: roundCurrency(conservativeHeadroom),
-    bidderPressure,
     concentrationScore: ownershipExposure.concentrationScore,
     drivers: [...drivers],
     rationale
