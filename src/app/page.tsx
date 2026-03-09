@@ -14,6 +14,7 @@ export default function HomePage() {
           </p>
           <div className="hero-links">
             <Link href="#setup">Create auction session</Link>
+            <Link href="/csv-analysis">Open CSV analysis</Link>
             <span>Local MVP with Supabase-ready schema and realtime hooks</span>
           </div>
         </div>

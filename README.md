@@ -38,6 +38,36 @@ When using the Supabase backend, configure:
 - `mock`: loads the included sample tournament field
 - `remote`: fetches JSON from `SPORTS_PROJECTIONS_URL`
 
+### CSV-backed remote feed (local)
+
+If your source data is CSV, the app now includes a local bridge endpoint at
+`/api/projections/csv` that converts the CSV into the same `remote` JSON shape.
+
+Set these env vars:
+
+- `SPORTS_PROJECTIONS_URL=http://localhost:3000/api/projections/csv`
+- `SPORTS_PROJECTIONS_CSV_FILE=/absolute/path/to/your.csv`
+- `SPORTS_PROJECTIONS_CSV_PROVIDER=csv-local` (optional label)
+
+The CSV import pipeline:
+
+- reads the top 64 valid teams by power rating
+- auto-assigns them into four 16-team regions (`South`, `West`, `East`, `Midwest`)
+- auto-seeds each region from 1 to 16
+- maps scouting fields where available (`netRank`, `kenpomRank`, `rankedWins`, and inferred quadrant wins)
+
+Use the existing **Import remote feed** button to load this dataset into a session.
+
+### CSV analysis mode (no bracket import required)
+
+If you only want team analysis from the CSV (without region/seed bracket constraints), use:
+
+- app page: `/csv-analysis`
+- API: `/api/projections/csv/analysis`
+- budget API: `/api/projections/csv/budget?bankroll=10000&team=Arizona&targetTeams=8`
+
+This mode analyzes all valid teams found in the CSV and returns team intelligence rankings directly.
+
 The remote endpoint should return:
 
 ```json
