@@ -36,14 +36,18 @@ export function AccessForm() {
   }
 
   return (
-    <form className="setup-card" onSubmit={onSubmit}>
-      <div className="section-heading">
-        <p className="eyebrow">Auction access</p>
+    <form className="surface-card auth-card" onSubmit={onSubmit}>
+      <div className="auth-card__header">
+        <p className="eyebrow">Auction Access</p>
         <h2>Open your live room</h2>
+        <p>
+          Platform admins are routed into session setup. Session members go directly to
+          the live board.
+        </p>
       </div>
 
-      <div className="setup-grid">
-        <label>
+      <div className="form-grid form-grid--two">
+        <label className="field-shell">
           <span>Email address</span>
           <input
             type="email"
@@ -52,7 +56,7 @@ export function AccessForm() {
             required
           />
         </label>
-        <label>
+        <label className="field-shell">
           <span>Shared code</span>
           <input
             value={sharedCode}
@@ -62,13 +66,15 @@ export function AccessForm() {
         </label>
       </div>
 
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="setup-actions">
-        <button type="submit" disabled={isPending}>
+      <div className="button-row button-row--spread">
+        <button type="submit" className="button" disabled={isPending}>
           {isPending ? "Checking access..." : "Enter auction"}
         </button>
-        <p>Platform admins are routed to session setup. Session members are routed into their auction room.</p>
+        <p className="support-copy">
+          Use the shared event code from the operator to join the same synchronized room.
+        </p>
       </div>
     </form>
   );

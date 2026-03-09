@@ -5,12 +5,17 @@ export default async function NewSessionPage() {
   await requirePlatformAdminPage();
 
   return (
-    <main className="landing-page">
-      <section className="setup-section">
-        <div className="section-heading">
-          <p className="eyebrow">Auction setup</p>
-          <h2>Create a live session</h2>
+    <main className="admin-page">
+      <section className="admin-shell">
+        <div className="admin-shell__intro">
+          <p className="eyebrow">Auction Setup</p>
+          <h1>Create a live session</h1>
+          <p>
+            Configure the room, bankroll rules, and member access before the live board
+            opens.
+          </p>
         </div>
+
         <SetupForm />
       </section>
     </main>

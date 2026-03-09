@@ -13,36 +13,33 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="landing-page">
-      <section className="landing-hero">
-        <div className="landing-copy">
+    <main className="marketing-page">
+      <section className="marketing-hero">
+        <div className="surface-card marketing-copy">
           <p className="eyebrow">Live NCAA Calcutta Intelligence</p>
-          <h1>Run the room with simulation-backed bids, ownership risk alerts, and a live syndicate ledger.</h1>
+          <h1>Run the room with a premium live-market auction cockpit.</h1>
           <p>
-            Calcutta SmartBid gives one operator a fast live cockpit while the rest of the syndicate watches the same board in sync.
-            Every nomination updates current bid guidance, expected return, and collision risk against teams you already own.
+            Calcutta SmartBid gives one operator a focused decision board while the rest
+            of the syndicate watches the same bid pulse, sale feed, and portfolio posture
+            in sync.
           </p>
-          <div className="hero-links">
-            <span>Authenticate with your email address and shared code to enter the auction room.</span>
+
+          <div className="marketing-feature-list">
+            <div className="feature-card">
+              <strong>Decision strip</strong>
+              <span>Current bid, model ceiling, bankroll impact, and key drivers stay visible.</span>
+            </div>
+            <div className="feature-card">
+              <strong>Shared board</strong>
+              <span>Viewer mode turns the current bid into the dominant room-facing signal.</span>
+            </div>
+            <div className="feature-card">
+              <strong>Portfolio discipline</strong>
+              <span>Track owned teams, expected value, and conflicts without breaking live flow.</span>
+            </div>
           </div>
         </div>
-        <aside className="landing-stats">
-          <div>
-            <span>Realtime decision loop</span>
-            <strong>Sub-second recalculation from cached Monte Carlo outputs</strong>
-          </div>
-          <div>
-            <span>Risk lens</span>
-            <strong>Highlights early-round ownership collisions before you overbid</strong>
-          </div>
-          <div>
-            <span>Audit trail</span>
-            <strong>Every purchase updates bankroll, ledger, and viewer board immediately</strong>
-          </div>
-        </aside>
-      </section>
 
-      <section id="setup" className="setup-section">
         <AccessForm />
       </section>
     </main>
