@@ -4,7 +4,7 @@ This file explains what Calcutta SmartBid is trying to be so future work does no
 
 ## Core Idea
 
-Calcutta SmartBid is not a bracket game and not a passive analytics site. It is a live decision-support system for a syndicate leader in the middle of a fast-moving auction.
+Calcutta SmartBid is not a bracket game and not a passive analytics site. It is a live decision-support system for a syndicate leader in the middle of a fast-moving auction, with an admin control plane that prepares the room before bidding starts.
 
 The product succeeds when it helps the operator make a better bid decision in seconds, with enough confidence to act in the room.
 
@@ -24,6 +24,7 @@ Everything in the app should be optimized around that reality.
 ## Secondary Users
 
 - syndicate teammates watching the same board
+- platform admins configuring access, syndicates, and data sources before the event
 - analysts who want to inspect auction outcomes after the event
 - future operators reusing the tool in later tournaments
 
@@ -34,6 +35,8 @@ Secondary users matter, but they should not make the main live workflow slower o
 ### Fast over ornate
 
 The operator needs immediate signals, not a dense research interface. Any new feature should justify its screen space during a live nomination.
+
+The admin center can be deeper than the live board, but it still needs to stay operational and clear rather than “enterprise” for its own sake.
 
 ### Recommendations must be explainable
 
@@ -53,6 +56,8 @@ A team is not valuable in isolation. Owning teams that likely collide early chan
 
 Auction state should be anchored around completed purchases and current live nomination state. The product is not trying to be a perfect tick-by-tick bid history recorder in v1.
 
+Projected values are estimates until the room closes. The app can forecast against a projected pot, but completed purchases are the only real market facts during the auction.
+
 ### Recovery matters
 
 Live auction software cannot be fragile. Refreshing the page, reconnecting, or reopening the session should not lose the room.
@@ -64,6 +69,7 @@ Live auction software cannot be fragile. Refreshing the page, reconnecting, or r
 - the ledger should answer "who owns what" and "how much do they have left"
 - viewer mode should feel synchronized but never editable
 - validation errors should be domain language, not raw schema text
+- admin workflows should happen before the live room, not inside the live room
 
 ## What This App Is Not
 
@@ -78,10 +84,10 @@ Those may inform future features, but they are not the product center.
 
 The strongest next product improvements are:
 
-1. stronger auth and session-role safety
-2. better live-room correction workflows
-3. richer explanation of recommendation changes
-4. better external projection ingestion and override UX
+1. better live-room correction workflows
+2. richer explanation of recommendation changes
+3. stronger actual-pot modeling as teams are sold
+4. better external projection ingestion and import ergonomics
 
 ## Quality Bar
 

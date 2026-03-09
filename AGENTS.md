@@ -4,105 +4,169 @@ This file is for future Codex sessions and human contributors working on Calcutt
 
 ## Purpose
 
-Calcutta SmartBid is a live auction decision-support app for NCAA March Madness Calcutta auctions. The operator needs fast, reliable guidance while the auction is moving. The system should prefer correctness, recovery, and clarity over cleverness.
-
-Use this file for:
-
-- where to start in the codebase
-- what must not be broken
-- how to split work safely across branches or worktrees
+Use this file to get oriented quickly, preserve working assumptions, and avoid breaking the live auction path.
 
 Use [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md) for product intent.
-Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for current status and next work.
+Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for current state and known gaps.
+
+## Current Product Shape
+
+Calcutta SmartBid now has two major surfaces:
+
+- `Admin center`
+  - platform-admin login at `/`
+  - admin landing at `/admin`
+  - session creation at `/admin/sessions/new`
+  - per-session admin management at `/admin/sessions/[sessionId]`
+- `Live auction board`
+  - session member login with `email + shared code`
+  - role-driven `admin` vs `viewer` behavior at `/session/[sessionId]`
+
+The admin center is the control plane. The live board is the auction execution surface.
 
 ## Current Stack
 
 - `Next.js 15`
 - `React 19`
 - `TypeScript`
-- `Supabase` for production persistence and realtime
-- `Vitest` for simulation/provider tests
+- `Supabase` for production persistence and data
 - `Vercel` for production hosting
+- `Vitest` for simulation/provider tests
 
 ## First Places To Read
 
 - [README.md](/Users/rmilton/Code/Calcutta-SmartBid/README.md)
 - [src/lib/types.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/types.ts)
 - [src/lib/repository/index.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/repository/index.ts)
+- [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
+- [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
+- [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
-- [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
 
 ## Architectural Map
 
-### App shell and routes
+### Routes
 
-- [src/app/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/page.tsx): landing page and setup entry
-- [src/app/session/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/session/[sessionId]/page.tsx): session dashboard entry
-- [src/app/api/sessions](/Users/rmilton/Code/Calcutta-SmartBid/src/app/api/sessions): API surface for session creation, live state, purchases, projection import, overrides, and simulation rebuilds
+- [src/app/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/page.tsx)
+  - login-only landing page
+  - platform admin redirects to `/admin`
+  - session users authenticate with `email + shared code`
+- [src/app/admin/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/page.tsx)
+  - admin center overview
+- [src/app/admin/sessions/new/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/sessions/new/page.tsx)
+  - new session creation
+- [src/app/admin/sessions/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/sessions/[sessionId]/page.tsx)
+  - session management
+- [src/app/session/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/session/[sessionId]/page.tsx)
+  - live board entry
 
-### UI
+### Admin UI
 
-- [src/components/setup-form.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/setup-form.tsx): create-session flow
-- [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx): operator/viewer experience, live controls, overrides, recommendation panel
+- [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
+  - org users
+  - syndicate catalog
+  - data sources
+  - session list
+- [src/components/setup-form.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/setup-form.tsx)
+  - creates sessions from org users, catalog syndicates, and active data source
+  - includes payout defaults and `projectedPot`
+- [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
+  - session access assignment
+  - shared code rotation
+  - participating syndicates
+  - payout structure
+  - data source selection and import history
+
+### Live Board UI
+
+- [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
+  - role-aware board
+  - single searchable `Active Team for Bidding` control
+  - auto-save on team selection
+  - no `likely bidders`
+  - no manual overrides panel
+  - no `Update live board` button
 
 ### Domain and orchestration
 
-- [src/lib/types.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/types.ts): domain contracts and request schemas
-- [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts): dashboard view-model assembly
-- [src/lib/config.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/config.ts): runtime storage/backend validation
+- [src/lib/types.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/types.ts)
+  - shared contracts
+  - session/admin request schemas
+- [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts)
+  - builds board payload
+- [src/lib/config.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/config.ts)
+  - environment validation
+- [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
+  - platform-admin and session-member auth
 
 ### Persistence
 
-- [src/lib/repository/index.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/repository/index.ts): repository abstraction and backend selection
-- [src/lib/supabase/server.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/supabase/server.ts): privileged server client
-- [src/lib/supabase/client.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/supabase/client.ts): browser realtime client
-- [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql): schema and transactional purchase RPC
+- [src/lib/repository/index.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/repository/index.ts)
+  - local and Supabase repository implementations
+  - session creation
+  - admin-center CRUD
+  - session admin mutations
+- [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
+  - auction sessions
+  - session members
+  - platform users
+  - syndicate catalog
+  - data sources
+  - data import runs
 
 ### Auction intelligence
 
-- [src/lib/providers/projections.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.ts): sample and remote projection ingest, overrides application
-- [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts): Monte Carlo tournament model
-- [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts): max-bid guidance and risk signals
+- [src/lib/providers/projections.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.ts)
+  - built-in mock field
+  - CSV/API source loading
+- [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
+  - Monte Carlo engine
+  - payout model uses stage percentages plus `projectedPot`
+- [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
+  - max-bid guidance and ownership conflict signals
 
 ## Invariants
 
 - Production must run with `CALCUTTA_STORAGE_BACKEND=supabase`.
-- Vercel deployments should fail fast if Supabase env vars are missing.
-- Purchases are authoritative market events. Do not add logic that lets UI state drift from persisted purchase state.
-- Recommendation updates during bidding should use cached simulation output. Do not rerun full Monte Carlo on every bid keystroke.
-- Viewer mode stays read-only.
-- Raw validation errors should not leak to operators when a clean domain error can be returned.
-- Local form edits in the dashboard must not be overwritten by background refresh before the operator saves.
+- Platform admins create sessions. The public landing page should not expose session creation.
+- Session users authenticate with assigned email plus the session shared code.
+- Viewer mode is role-driven and read-only.
+- Purchases are authoritative. Do not let UI-only state become the source of truth.
+- Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
+- The active-team control must stay fast and low-friction under live auction use.
+- Raw schema errors should not leak to the operator if a clean domain message can be returned.
 
 ## Environment Expectations
 
-Local development supports two modes:
-
-- `local` backend: easy startup and fixture iteration
-- `supabase` backend: production-like behavior and the required Vercel path
-
-For production-like local work, `.env.local` should contain:
+Production-like local work should use `.env.local` with:
 
 ```bash
 CALCUTTA_STORAGE_BACKEND=supabase
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+PLATFORM_ADMIN_EMAILS=...
+PLATFORM_ADMIN_NAMES=...
+PLATFORM_ADMIN_SHARED_CODE=...
+AUTH_SESSION_SECRET=...
 ```
 
 ## Smoke Test Checklist
 
-Run before merging anything that touches core flows:
+Run this after touching auth, admin flows, dashboard controls, or payout/simulation behavior:
 
-1. Create a session.
-2. Confirm session header shows `Backend supabase` when testing production-like config.
-3. Change nominated team and current bid, wait a few seconds, and confirm local edits are not reset.
-4. Update live board and confirm recommendation refreshes.
-5. Record a purchase and confirm ledger, sold-team availability, and last-sale panel update.
-6. Refresh the page and confirm persistence.
-7. Open `?mode=viewer` in another tab and confirm it reflects changes without edit controls.
+1. Log in as platform admin at `/`.
+2. Confirm you land on `/admin`.
+3. Create or open a session from the admin center.
+4. On the session admin page, update session access, rotate the shared code, and save payout structure.
+5. Log in as a session member with assigned email plus shared code.
+6. Confirm the live board loads in the expected role.
+7. Change `Active Team for Bidding` and confirm the board updates automatically.
+8. Change current bid and confirm it persists.
+9. Record a purchase and confirm ledger and sold-team state update.
+10. Refresh and confirm persistence.
 
 ## Test Commands
 
@@ -114,44 +178,34 @@ npm run build
 
 ## Safe Parallelization
 
-Two workstreams can usually move in parallel if they respect boundaries:
+The cleanest parallel split remains:
 
-### Track A: Persistence, auth, realtime, workflow safety
+### Track A: Auth, admin center, repository, schema
 
-Primary files:
-
+- [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
 - [src/lib/repository/index.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/repository/index.ts)
-- [src/lib/supabase/server.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/supabase/server.ts)
-- [src/lib/supabase/client.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/supabase/client.ts)
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
-- [src/lib/hooks/use-session-dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/hooks/use-session-dashboard.ts)
+- [src/app/admin](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin)
+- [src/app/api/admin](/Users/rmilton/Code/Calcutta-SmartBid/src/app/api/admin)
 
-### Track B: Projection ingest and auction intelligence
+### Track B: Live board UX and auction intelligence
 
-Primary files:
-
-- [src/lib/providers/projections.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.ts)
+- [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
 - [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
-- [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx) for additive UI exposure only
+- [src/lib/providers/projections.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.ts)
 
-Shared contract to avoid breaking:
+Shared contract hot spots:
 
 - [src/lib/types.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/types.ts)
-- API routes under [src/app/api/sessions](/Users/rmilton/Code/Calcutta-SmartBid/src/app/api/sessions)
+- [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts)
+- session APIs under [src/app/api/sessions](/Users/rmilton/Code/Calcutta-SmartBid/src/app/api/sessions)
 
-If two contributors need to move quickly, use separate git worktrees and separate `codex/...` branches.
-
-## Change Discipline
-
-- Keep domain types coherent. If a type changes, update both the route payloads and the dashboard model.
-- Prefer additive dashboard fields over breaking UI contracts.
-- If you touch recommendation behavior, add or update tests in [src/lib/engine/recommendations.test.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.test.ts).
-- If you touch projection ingest behavior, add or update tests in [src/lib/providers/projections.test.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.test.ts).
-- If you touch simulation outputs, keep deterministic test mode stable.
+Use separate git worktrees if two Codex sessions are editing in parallel.
 
 ## Known Sharp Edges
 
-- `next lint` still uses the deprecated Next wrapper. It works, but migration to ESLint CLI remains future cleanup.
-- The repository still supports a local JSON fallback for development. That path is not a production deployment target.
-- Session page errors used to be masked as 404s. That has been corrected. Keep config/runtime errors visible.
+- `next lint` still uses the deprecated Next wrapper.
+- The repository still supports a local JSON backend for development only.
+- Older stored sessions may still contain legacy payout fields. The repository normalizes them on load.
+- The live board still uses `remainingBankroll` as derived headroom from `projectedPot / syndicateCount`. If that business model changes, update repository math and recommendation language together.
