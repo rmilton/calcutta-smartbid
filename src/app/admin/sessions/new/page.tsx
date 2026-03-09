@@ -19,8 +19,8 @@ export default async function NewSessionPage() {
           </p>
         </div>
 
-        <div className="panel-actions" style={{ marginBottom: "1rem" }}>
-          <Link href="/admin" className="action-link">
+        <div className="button-row">
+          <Link href="/admin" className="button button-secondary">
             Back to admin center
           </Link>
         </div>

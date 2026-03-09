@@ -13,16 +13,18 @@ export default async function SessionAdminPage({ params }: PageProps) {
   const config = await getSessionRepository().getSessionAdminConfig(sessionId);
 
   return (
-    <main className="landing-page">
-      <div className="panel-actions" style={{ marginBottom: "1rem" }}>
-        <Link href="/admin" className="action-link">
-          Back to admin center
-        </Link>
-        <Link href={`/session/${sessionId}`} className="action-link">
-          Open live board
-        </Link>
-      </div>
-      <SessionAdminCenter initialConfig={config} />
+    <main className="admin-page">
+      <section className="admin-shell">
+        <div className="button-row">
+          <Link href="/admin" className="button button-secondary">
+            Back to admin center
+          </Link>
+          <Link href={`/session/${sessionId}`} className="button button-ghost">
+            Open live board
+          </Link>
+        </div>
+        <SessionAdminCenter initialConfig={config} />
+      </section>
     </main>
   );
 }

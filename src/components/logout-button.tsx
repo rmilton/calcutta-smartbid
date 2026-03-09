@@ -9,7 +9,7 @@ export function LogoutButton() {
   }
 
   return (
-    <button type="button" className="secondary" onClick={() => void logout()}>
+    <button type="button" className="button button-secondary" onClick={() => void logout()}>
       Log out
     </button>
   );

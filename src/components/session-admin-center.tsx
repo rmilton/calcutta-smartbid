@@ -12,6 +12,15 @@ interface SessionAdminCenterProps {
   initialConfig: SessionAdminConfig;
 }
 
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
 export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
   const [config, setConfig] = useState(initialConfig);
   const [isPending, startTransition] = useTransition();
@@ -63,6 +72,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
   );
+  const accessCount = selectedUserIds.length;
 
   useEffect(() => {
     setSelectedUserIds(
@@ -176,9 +186,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           "Session access updated."
         );
       } catch (submitError) {
-        setError(
-          submitError instanceof Error ? submitError.message : "Unable to save access."
-        );
+        setError(submitError instanceof Error ? submitError.message : "Unable to save access.");
       }
     });
   }
@@ -221,9 +229,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
         );
       } catch (submitError) {
         setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Unable to update syndicates."
+          submitError instanceof Error ? submitError.message : "Unable to update syndicates."
         );
       }
     });
@@ -243,9 +249,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
         );
       } catch (submitError) {
         setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Unable to update data source."
+          submitError instanceof Error ? submitError.message : "Unable to update data source."
         );
       }
     });
@@ -285,87 +289,117 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           "Projection import completed."
         );
       } catch (submitError) {
-        setError(
-          submitError instanceof Error ? submitError.message : "Unable to run import."
-        );
+        setError(submitError instanceof Error ? submitError.message : "Unable to run import.");
       }
     });
   }
 
   return (
-    <div className="setup-section">
-      <header className="session-header">
-        <div>
-          <p className="eyebrow">Session admin</p>
+    <div className="stack-layout">
+      <header className="surface-card session-hero">
+        <div className="session-hero__copy">
+          <p className="eyebrow">Session Admin</p>
           <h1>{config.session.name}</h1>
-          <p className="session-subtitle">
+          <p>
             Manage who can log in, which syndicates are participating, and which
             projection source feeds this auction room.
           </p>
         </div>
-        <div className="session-badges">
-          <span>{config.session.activeDataSource.name}</span>
-          <span>{config.importRuns.length} import run{config.importRuns.length === 1 ? "" : "s"}</span>
+        <div className="session-hero__meta">
+          <span className="status-pill">{config.session.activeDataSource.name}</span>
+          <span className="status-pill">
+            {config.importRuns.length} import run{config.importRuns.length === 1 ? "" : "s"}
+          </span>
         </div>
       </header>
 
-      {notice ? <p className="form-notice">{notice}</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
+      <section className="admin-summary-grid">
+        <article className="surface-card admin-summary-card">
+          <span>Assigned users</span>
+          <strong>{accessCount}</strong>
+          <p>Session-specific admin and viewer assignments.</p>
+        </article>
+        <article className="surface-card admin-summary-card">
+          <span>Participating syndicates</span>
+          <strong>{selectedSyndicateIds.length}</strong>
+          <p>Reusable syndicates currently active in the room.</p>
+        </article>
+        <article className="surface-card admin-summary-card">
+          <span>Projected pot</span>
+          <strong>${payoutRules.projectedPot.toLocaleString()}</strong>
+          <p>Estimated pool used to calculate round-based payouts.</p>
+        </article>
+        <article className="surface-card admin-summary-card">
+          <span>Payout allocation</span>
+          <strong>{totalPayoutPercent.toFixed(1)}%</strong>
+          <p>Total configured distribution across all scoring stages.</p>
+        </article>
+      </section>
 
-      <section className="workspace-grid">
-        <article className="panel">
-          <div className="panel-head">
+      {notice ? <p className="notice-text">{notice}</p> : null}
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <section className="admin-card-grid admin-card-grid--three">
+        <article className="surface-card form-section">
+          <div className="section-headline">
             <div>
               <p className="eyebrow">Access</p>
               <h3>Assign session users</h3>
+              <p>Select active platform users and set their room-specific role.</p>
             </div>
+            <span className="status-pill">{activeUsers.length} available</span>
           </div>
-          <form className="form-stack" onSubmit={onSaveAccess}>
-            {activeUsers.map((user) => {
-              const selected = selectedUserIds.includes(user.id);
-              return (
-                <div key={user.id} className="admin-row">
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggleUser(user.id)}
-                    />
-                    <span>
-                      {user.name} <small>{user.email}</small>
-                    </span>
-                  </label>
-                  <select
-                    disabled={!selected}
-                    value={userRoles[user.id] ?? "viewer"}
-                    onChange={(event) =>
-                      setUserRoles((current) => ({
-                        ...current,
-                        [user.id]: event.target.value as "admin" | "viewer"
-                      }))
-                    }
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
-                </div>
-              );
-            })}
-            <button type="submit" disabled={isPending}>
-              Save access
-            </button>
+          <form className="setup-shell" onSubmit={onSaveAccess}>
+            <div className="selection-list">
+              {activeUsers.map((user) => {
+                const selected = selectedUserIds.includes(user.id);
+                return (
+                  <div key={user.id} className="selection-row">
+                    <label className="selection-check">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleUser(user.id)}
+                      />
+                      <div className="selection-check__meta">
+                        <strong>{user.name}</strong>
+                        <span>{user.email}</span>
+                      </div>
+                    </label>
+                    <select
+                      className="inline-select"
+                      disabled={!selected}
+                      value={userRoles[user.id] ?? "viewer"}
+                      onChange={(event) =>
+                        setUserRoles((current) => ({
+                          ...current,
+                          [user.id]: event.target.value as "admin" | "viewer"
+                        }))
+                      }
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="button-row">
+              <button type="submit" className="button" disabled={isPending}>
+                Save access
+              </button>
+            </div>
           </form>
         </article>
 
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Login</p>
-              <h3>Rotate shared access code</h3>
-            </div>
+        <article className="surface-card form-section">
+          <div className="form-section__header">
+            <p className="eyebrow">Login</p>
+            <h3>Rotate shared access code</h3>
+            <p>Issue a new room code without changing the assigned member list.</p>
           </div>
-          <form className="form-stack" onSubmit={onRotateCode}>
-            <label>
+          <form className="setup-shell" onSubmit={onRotateCode}>
+            <label className="field-shell">
               <span>New shared access code</span>
               <input
                 value={sharedAccessCode}
@@ -373,23 +407,24 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                 required
               />
             </label>
-            <button type="submit" disabled={isPending}>
-              Rotate code
-            </button>
+            <div className="button-row">
+              <button type="submit" className="button" disabled={isPending}>
+                Rotate code
+              </button>
+            </div>
           </form>
         </article>
 
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <p className="eyebrow">Payouts</p>
-              <h3>Set payout structure</h3>
-            </div>
+        <article className="surface-card form-section">
+          <div className="form-section__header">
+            <p className="eyebrow">Payouts</p>
+            <h3>Set payout structure</h3>
+            <p>Configure the distributable percentages the model uses for valuation.</p>
           </div>
-          <form className="form-stack" onSubmit={onSavePayoutRules}>
-            <div className="setup-grid">
+          <form className="setup-shell" onSubmit={onSavePayoutRules}>
+            <div className="form-grid form-grid--three">
               {payoutStages.map((stage) => (
-                <label key={stage}>
+                <label key={stage} className="field-shell">
                   <span>{titleCaseStage(stage)} %</span>
                   <input
                     type="number"
@@ -406,7 +441,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                   />
                 </label>
               ))}
-              <label>
+              <label className="field-shell">
                 <span>Projected pot</span>
                 <input
                   type="number"
@@ -423,38 +458,47 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                 />
               </label>
             </div>
-            <p className="viewer-note">
+            <p className="support-copy">
               Total round payout: {totalPayoutPercent.toFixed(1)}% of the estimated distributable pot.
             </p>
-            <button type="submit" disabled={isPending}>
-              Save payout structure
-            </button>
+            <div className="button-row">
+              <button type="submit" className="button" disabled={isPending}>
+                Save payout structure
+              </button>
+            </div>
           </form>
         </article>
       </section>
 
-      <section className="workspace-grid">
-        <article className="panel">
-          <div className="panel-head">
+      <section className="admin-grid">
+        <article className="surface-card form-section">
+          <div className="section-headline">
             <div>
               <p className="eyebrow">Syndicates</p>
               <h3>Participating syndicate list</h3>
+              <p>Select the catalog entries available to bid in this session.</p>
             </div>
+            <span className="status-pill">{selectedSyndicateIds.length} selected</span>
           </div>
-          <form className="form-stack" onSubmit={onSaveSyndicates}>
-            <div className="form-stack">
+          <form className="setup-shell" onSubmit={onSaveSyndicates}>
+            <div className="selection-list">
               {activeSyndicates.map((entry) => (
-                <label key={entry.id} className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedSyndicateIds.includes(entry.id)}
-                    onChange={() => toggleSyndicate(entry.id)}
-                  />
-                  <span>{entry.name}</span>
+                <label key={entry.id} className="selection-row selection-row--stacked">
+                  <span className="selection-check">
+                    <input
+                      type="checkbox"
+                      checked={selectedSyndicateIds.includes(entry.id)}
+                      onChange={() => toggleSyndicate(entry.id)}
+                    />
+                    <span className="selection-check__meta">
+                      <strong>{entry.name}</strong>
+                      <span>{entry.color}</span>
+                    </span>
+                  </span>
                 </label>
               ))}
             </div>
-            <label>
+            <label className="field-shell">
               <span>Focus syndicate</span>
               <select
                 value={focusSyndicateName}
@@ -467,21 +511,25 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                 ))}
               </select>
             </label>
-            <button type="submit" disabled={isPending}>
-              Save syndicates
-            </button>
+            <div className="button-row">
+              <button type="submit" className="button" disabled={isPending}>
+                Save syndicates
+              </button>
+            </div>
           </form>
         </article>
 
-        <article className="panel">
-          <div className="panel-head">
+        <article className="surface-card form-section">
+          <div className="section-headline">
             <div>
               <p className="eyebrow">Data</p>
               <h3>Projection source and imports</h3>
+              <p>Choose the active feed and monitor recent projection imports.</p>
             </div>
+            <span className="status-pill">{config.importRuns.length} imports logged</span>
           </div>
-          <form className="form-stack" onSubmit={onSaveDataSource}>
-            <label>
+          <form className="setup-shell" onSubmit={onSaveDataSource}>
+            <label className="field-shell">
               <span>Active data source</span>
               <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
                 <option value="builtin:mock">Built-in Mock Field</option>
@@ -494,13 +542,13 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                   ))}
               </select>
             </label>
-            <div className="panel-actions">
-              <button type="submit" disabled={isPending}>
+            <div className="button-row">
+              <button type="submit" className="button" disabled={isPending}>
                 Save source
               </button>
               <button
                 type="button"
-                className="secondary"
+                className="button button-secondary"
                 disabled={isPending}
                 onClick={onRunImport}
               >
@@ -509,33 +557,34 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
             </div>
           </form>
 
-          <div className="table-wrap" style={{ marginTop: "1rem" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Source</th>
-                  <th>Status</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                {config.importRuns.length === 0 ? (
-                  <tr>
-                    <td colSpan={4}>No imports recorded yet.</td>
-                  </tr>
-                ) : (
-                  config.importRuns.map((run) => (
-                    <tr key={run.id}>
-                      <td>{new Date(run.createdAt).toLocaleString()}</td>
-                      <td>{run.sourceName}</td>
-                      <td>{run.status}</td>
-                      <td>{run.message}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="selection-list">
+            {config.importRuns.length === 0 ? (
+              <div className="list-line">
+                <strong>No imports recorded yet.</strong>
+              </div>
+            ) : (
+              config.importRuns.map((run) => (
+                <article key={run.id} className="list-line import-run">
+                  <div className="import-run__topline">
+                    <strong>{run.sourceName}</strong>
+                    <span
+                      className={
+                        run.status === "success"
+                          ? "status-pill status-pill--positive"
+                          : "status-pill status-pill--danger"
+                      }
+                    >
+                      {run.status}
+                    </span>
+                  </div>
+                  <p>{run.message}</p>
+                  <div className="import-run__meta">
+                    <span>{formatDateTime(run.createdAt)}</span>
+                    <span>{run.sourceKey}</span>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         </article>
       </section>

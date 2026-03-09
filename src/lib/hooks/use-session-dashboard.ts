@@ -55,6 +55,18 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
         {
           event: "*",
           schema: "public",
+          table: "syndicates",
+          filter: `session_id=eq.${sessionId}`
+        },
+        () => {
+          void refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "purchase_records",
           filter: `session_id=eq.${sessionId}`
         },
