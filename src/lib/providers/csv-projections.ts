@@ -17,6 +17,7 @@ interface ParsedCsvRow {
   rating: number;
   tempo: number;
   wins: number | null;
+  rankedWins: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -34,6 +35,7 @@ export interface CsvAnalysisTeam {
   defense: number;
   tempo: number;
   wins: number | null;
+  rankedWins: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -143,6 +145,7 @@ export function buildCsvTeamAnalysis(
       defense: team.defense,
       tempo: team.tempo,
       wins: rankedRows[index]?.wins ?? null,
+      rankedWins: rankedRows[index]?.rankedWins ?? null,
       winsAboveBubble: rankedRows[index]?.winsAboveBubble ?? null
     })),
     intelligence
@@ -276,6 +279,7 @@ function parseAndRankRows(csvText: string) {
 
   const optionalColumns = {
     wins: getOptionalHeaderIndex(headerLookup, ["wins"]),
+    rankedWins: getOptionalHeaderIndex(headerLookup, ["ranked wins"]),
     winsAboveBubble: getOptionalHeaderIndex(headerLookup, ["wins above bubble"])
   };
 
@@ -357,7 +361,7 @@ function buildScouting(team: RankedCsvRow): TeamScoutingProfile {
   return {
     netRank: team.rank,
     kenpomRank: team.rank,
-    rankedWins: team.wins ?? undefined,
+    rankedWins: team.rankedWins ?? undefined,
     quadWins: team.winsAboveBubble === null ? undefined : inferQuadWins(team.winsAboveBubble),
     offenseStyle: describeOffense(team.offense, team.tempo),
     defenseStyle: describeDefense(team.defense)
@@ -411,6 +415,7 @@ function parseProjectionRow(
   },
   optionalColumns: {
     wins: number | null;
+    rankedWins: number | null;
     winsAboveBubble: number | null;
   }
 ): ParsedCsvRow | null {
@@ -434,6 +439,10 @@ function parseProjectionRow(
       optionalColumns.wins === null
         ? null
         : parseNumber(getCell(row, optionalColumns.wins), { asInteger: true }),
+    rankedWins:
+      optionalColumns.rankedWins === null
+        ? null
+        : parseNumber(getCell(row, optionalColumns.rankedWins), { asInteger: true }),
     winsAboveBubble:
       optionalColumns.winsAboveBubble === null
         ? null

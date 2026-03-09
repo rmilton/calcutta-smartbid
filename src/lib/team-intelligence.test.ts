@@ -88,4 +88,40 @@ describe("buildTeamIntelligence", () => {
     expect(selected?.deltas.q1Wins).not.toBeNull();
     expect(selected?.deltas.kenpomRank).not.toBeNull();
   });
+
+  it("adds an uncertainty risk when scouting coverage is sparse", () => {
+    const sparseTeams: TeamProjection[] = [
+      {
+        id: "sparse-a",
+        name: "Sparse A",
+        shortName: "SPA",
+        region: "East",
+        seed: 1,
+        rating: 90,
+        offense: 118,
+        defense: 95,
+        tempo: 68,
+        source: "test",
+        scouting: { kenpomRank: 20 }
+      },
+      {
+        id: "sparse-b",
+        name: "Sparse B",
+        shortName: "SPB",
+        region: "West",
+        seed: 2,
+        rating: 89,
+        offense: 117,
+        defense: 96,
+        tempo: 67,
+        source: "test",
+        scouting: { kenpomRank: 22 }
+      }
+    ];
+
+    const intelligence = buildTeamIntelligence(sparseTeams, "sparse-b");
+    const selected = intelligence.selected;
+    expect(selected).not.toBeNull();
+    expect(selected?.row.risks).toContain("Limited scouting data increases uncertainty");
+  });
 });

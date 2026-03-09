@@ -130,6 +130,9 @@ export function buildTeamIntelligence(
         },
         fieldAverages
       );
+      if (risks.length === 0 && scoutingCoverage <= 0.45) {
+        risks.push("Limited scouting data increases uncertainty");
+      }
 
       const atsRecord = team.scouting?.ats
         ? `${team.scouting.ats.wins}-${team.scouting.ats.losses}-${team.scouting.ats.pushes}`

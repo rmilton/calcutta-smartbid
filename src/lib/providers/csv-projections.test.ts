@@ -71,6 +71,7 @@ describe("buildCsvProjectionFeed", () => {
     expect(analysis.teams).toHaveLength(68);
     expect(analysis.intelligence.ranking).toHaveLength(68);
     expect(analysis.teams[0].name).toBe("Maryland, Baltimore County");
+    expect(analysis.intelligence.ranking.every((row) => row.rankedWins === null)).toBe(true);
   });
 
   it("builds budget guidance and caps single-team spend", () => {
