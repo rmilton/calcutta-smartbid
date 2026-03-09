@@ -4,7 +4,7 @@ This file is the current-state handoff document. Update it when the system meani
 
 ## Last Known Good State
 
-As of `2026-03-06`:
+As of `2026-03-09`:
 
 - app runs locally against Supabase via `.env.local`
 - local smoke test passed:
@@ -12,6 +12,9 @@ As of `2026-03-06`:
   - update live board
   - record purchase
   - refresh and confirm persistence
+- redesigned UI is live across landing, setup, live session, viewer board, and admin surfaces
+- admin center and session-admin views now use the shared dark premium design system
+- live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - production deployment on `Vercel + Supabase` was confirmed working
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
 
@@ -30,6 +33,8 @@ Key files:
 ## Core User Flows Working
 
 - create auction session
+- admin center load
+- session admin load
 - operator dashboard load
 - viewer mode load
 - live-state update
@@ -43,6 +48,8 @@ Key files:
 
 - purchase route now returns a clean message when price is `<= 0`
 - operator local form state no longer resets while polling/realtime refresh is active
+- live dashboard now refreshes when session syndicates change
+- admin pages no longer rely on the legacy panel shell for primary layouts
 - runtime config errors no longer masquerade as missing-session 404s
 - production deployments are guarded from running on local storage
 
@@ -61,6 +68,7 @@ These are the most sensible next major workstreams:
 - no robust undo/correction workflow for operator mistakes during a live room
 - recommendation model is good enough for MVP use but still heuristic-heavy
 - remote projection ingest exists, but provider normalization and override ergonomics can be improved
+- session creation still allows rooms to be created from whatever syndicates are selected at creation time; updating the catalog does not retroactively change existing sessions
 - lint still uses deprecated `next lint`
 
 ## Manual Regression Checklist
@@ -83,6 +91,7 @@ Use this exact list after changing core auction behavior:
 - local development can still use `CALCUTTA_STORAGE_BACKEND=local`, but do not treat that path as deployable
 - if the app behaves strangely in dev after large changes, a clean `.next` rebuild may still be necessary
 - the clearest visible signal that configuration is correct is the session badge reading `Backend supabase`
+- the winner picker on the live board is driven by the session's participating syndicates, not the global syndicate catalog
 
 ## Backlog References
 

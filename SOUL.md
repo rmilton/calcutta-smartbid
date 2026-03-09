@@ -35,6 +35,8 @@ Secondary users matter, but they should not make the main live workflow slower o
 
 The operator needs immediate signals, not a dense research interface. Any new feature should justify its screen space during a live nomination.
 
+The product can feel premium and market-aware, but visual energy must still serve speed, confidence, and decision clarity.
+
 ### Recommendations must be explainable
 
 The user should be able to answer:

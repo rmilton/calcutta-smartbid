@@ -13,6 +13,7 @@ Use this file for:
 - how to split work safely across branches or worktrees
 
 Use [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md) for product intent.
+Use [DESIGN.md](/Users/rmilton/Code/Calcutta-SmartBid/DESIGN.md) for visual direction and shared UI rules.
 Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for current status and next work.
 
 ## Current Stack
@@ -46,6 +47,9 @@ Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for curre
 
 - [src/components/setup-form.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/setup-form.tsx): create-session flow
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx): operator/viewer experience, live controls, overrides, recommendation panel
+- [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx): platform admin center
+- [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx): session-level admin controls
+- [src/app/globals.css](/Users/rmilton/Code/Calcutta-SmartBid/src/app/globals.css): shared design tokens and UI primitives
 
 ### Domain and orchestration
 
@@ -73,8 +77,16 @@ Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for curre
 - Purchases are authoritative market events. Do not add logic that lets UI state drift from persisted purchase state.
 - Recommendation updates during bidding should use cached simulation output. Do not rerun full Monte Carlo on every bid keystroke.
 - Viewer mode stays read-only.
+- The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw validation errors should not leak to operators when a clean domain error can be returned.
 - Local form edits in the dashboard must not be overwritten by background refresh before the operator saves.
+
+## Design System Expectations
+
+- The active visual direction is a dark premium live-market UI, not the legacy warm auction aesthetic.
+- Prefer the shared primitives in `src/app/globals.css` such as `surface-card`, `button`, `field-shell`, `workspace-tab`, and `status-pill`.
+- New admin or live-session UI should match the current shell and spacing patterns before introducing new layout systems.
+- Avoid extending the old compatibility classes unless the goal is temporary migration support.
 
 ## Environment Expectations
 
