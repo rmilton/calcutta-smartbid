@@ -133,11 +133,11 @@ export function SetupForm({
     <form className="setup-shell" onSubmit={onSubmit}>
       <section className="surface-card form-section">
         <div className="form-section__header">
-          <p className="eyebrow">Session Identity</p>
-          <h2>Core auction setup</h2>
+          <p className="eyebrow">Session identity</p>
+          <h2>Start the room, then continue into readiness</h2>
           <p>
-            Assign the room, select the focus syndicate, and choose the active data
-            source before the auction starts.
+            Create the room name, choose your syndicate, and define the shared room code.
+            You will continue into the readiness checklist after creation.
           </p>
         </div>
 
@@ -151,7 +151,7 @@ export function SetupForm({
             />
           </label>
           <label className="field-shell">
-            <span>Focus syndicate</span>
+            <span>Your syndicate</span>
             <select
               value={focusSyndicateName}
               onChange={(event) => setFocusSyndicateName(event.target.value)}
@@ -164,7 +164,7 @@ export function SetupForm({
             </select>
           </label>
           <label className="field-shell">
-            <span>Shared access code</span>
+            <span>Shared room code</span>
             <input
               value={sharedAccessCode}
               onChange={(event) => setSharedAccessCode(event.target.value)}
@@ -176,8 +176,8 @@ export function SetupForm({
 
       <section className="surface-card form-section">
         <div className="form-section__header">
-          <p className="eyebrow">Auction Economics</p>
-          <h3>Pot sizing, simulation, and projections</h3>
+          <p className="eyebrow">Initial readiness</p>
+          <h3>Economics, simulation, and data source</h3>
         </div>
 
         <div className="form-grid form-grid--three">
@@ -223,8 +223,8 @@ export function SetupForm({
       <section className="form-grid form-grid--two">
         <section className="surface-card form-section">
           <div className="form-section__header">
-            <p className="eyebrow">Session Access</p>
-            <h3>Assign users and roles</h3>
+            <p className="eyebrow">Room access</p>
+            <h3>Assign operators and viewers</h3>
           </div>
 
           {activeUsers.length === 0 ? (
@@ -256,7 +256,7 @@ export function SetupForm({
                         }))
                       }
                     >
-                      <option value="admin">Admin</option>
+                      <option value="admin">Operator</option>
                       <option value="viewer">Viewer</option>
                     </select>
                   </div>
@@ -293,11 +293,10 @@ export function SetupForm({
 
       <div className="button-row button-row--spread">
         <button type="submit" className="button" disabled={isPending}>
-          {isPending ? "Building session..." : "Launch live auction"}
+          {isPending ? "Creating session..." : "Create session and continue"}
         </button>
         <p className="support-copy">
-          Use the session admin center after creation to fine-tune payouts, access,
-          syndicates, and data imports.
+          Next stop: the readiness checklist for room access, economics, imports, and launch tools.
         </p>
       </div>
     </form>

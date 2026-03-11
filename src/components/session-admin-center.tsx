@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
 import { titleCaseStage } from "@/lib/utils";
@@ -73,6 +74,55 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
     [payoutRules]
   );
   const accessCount = selectedUserIds.length;
+  const successfulImportCount = useMemo(
+    () => config.importRuns.filter((run) => run.status === "success").length,
+    [config.importRuns]
+  );
+  const readinessSteps = useMemo(
+    () => [
+      {
+        label: "Access",
+        status: accessCount > 0 ? `${accessCount} assigned` : "Needs operator and viewer assignments"
+      },
+      {
+        label: "Room code",
+        status: config.session.eventAccess.sharedCodeConfigured ? "Configured" : "Missing room code"
+      },
+      {
+        label: "Syndicates",
+        status:
+          selectedSyndicateIds.length > 0
+            ? `${selectedSyndicateIds.length} participating`
+            : "Choose room lineup"
+      },
+      {
+        label: "Economics",
+        status:
+          payoutRules.projectedPot > 0 && totalPayoutPercent > 0
+            ? `$${payoutRules.projectedPot.toLocaleString()} projected pot`
+            : "Needs payout inputs"
+      },
+      {
+        label: "Data import",
+        status:
+          successfulImportCount > 0
+            ? `${successfulImportCount} successful import${successfulImportCount === 1 ? "" : "s"}`
+            : "Run first projection import"
+      },
+      {
+        label: "Launch tools",
+        status: "Open operator board, viewer preview, or analysis"
+      }
+    ],
+    [
+      accessCount,
+      config.session.eventAccess.sharedCodeConfigured,
+      payoutRules.projectedPot,
+      selectedSyndicateIds.length,
+      successfulImportCount,
+      totalPayoutPercent
+    ]
+  );
 
   useEffect(() => {
     setSelectedUserIds(
@@ -201,14 +251,14 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           {
             sharedAccessCode
           },
-          "Shared access code rotated."
+          "Shared room code rotated."
         );
         setSharedAccessCode("");
       } catch (submitError) {
         setError(
           submitError instanceof Error
             ? submitError.message
-            : "Unable to rotate shared access code."
+            : "Unable to rotate shared room code."
         );
       }
     });
@@ -298,11 +348,11 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
     <div className="stack-layout">
       <header className="surface-card session-hero">
         <div className="session-hero__copy">
-          <p className="eyebrow">Session Admin</p>
+          <p className="eyebrow">Session workspace</p>
           <h1>{config.session.name}</h1>
           <p>
-            Manage who can log in, which syndicates are participating, and which
-            projection source feeds this auction room.
+            Complete room readiness in order, then launch operator, viewer, and analysis
+            tools from the same session workspace.
           </p>
         </div>
         <div className="session-hero__meta">
@@ -313,11 +363,47 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
         </div>
       </header>
 
+      <article className="surface-card">
+        <div className="section-headline">
+          <div>
+            <p className="eyebrow">Room readiness</p>
+            <h3>Follow the launch flow in order</h3>
+            <p>Access, room code, syndicates, economics, data import, then launch tools.</p>
+          </div>
+        </div>
+        <div className="readiness-grid">
+          {readinessSteps.map((step, index) => (
+            <div key={step.label} className="readiness-item">
+              <span>{index + 1}</span>
+              <strong>{step.label}</strong>
+              <p>{step.status}</p>
+            </div>
+          ))}
+        </div>
+        <div className="button-row">
+          <Link href="#session-access" className="button button-secondary">
+            Invite members
+          </Link>
+          <Link href="#session-data" className="button button-secondary">
+            Import projections
+          </Link>
+          <Link href={`/session/${config.session.id}`} className="button button-ghost">
+            Open operator board
+          </Link>
+          <Link href={`/session/${config.session.id}?preview=viewer`} className="button button-ghost">
+            Open viewer preview
+          </Link>
+          <Link href={`/csv-analysis?sessionId=${config.session.id}`} className="button button-secondary">
+            Open analysis
+          </Link>
+        </div>
+      </article>
+
       <section className="admin-summary-grid">
         <article className="surface-card admin-summary-card">
-          <span>Assigned users</span>
+          <span>Assigned people</span>
           <strong>{accessCount}</strong>
-          <p>Session-specific admin and viewer assignments.</p>
+          <p>Session-specific operator and viewer assignments.</p>
         </article>
         <article className="surface-card admin-summary-card">
           <span>Participating syndicates</span>
@@ -340,12 +426,12 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
       {error ? <p className="error-text">{error}</p> : null}
 
       <section className="admin-card-grid admin-card-grid--three">
-        <article className="surface-card form-section">
+        <article id="session-access" className="surface-card form-section">
           <div className="section-headline">
             <div>
-              <p className="eyebrow">Access</p>
-              <h3>Assign session users</h3>
-              <p>Select active platform users and set their room-specific role.</p>
+              <p className="eyebrow">Step 1</p>
+              <h3>Assign operators and viewers</h3>
+              <p>Select active platform users and set their room-specific role before launch.</p>
             </div>
             <span className="status-pill">{activeUsers.length} available</span>
           </div>
@@ -377,7 +463,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                         }))
                       }
                     >
-                      <option value="admin">Admin</option>
+                      <option value="admin">Operator</option>
                       <option value="viewer">Viewer</option>
                     </select>
                   </div>
@@ -392,15 +478,15 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           </form>
         </article>
 
-        <article className="surface-card form-section">
+        <article id="session-room-code" className="surface-card form-section">
           <div className="form-section__header">
-            <p className="eyebrow">Login</p>
-            <h3>Rotate shared access code</h3>
-            <p>Issue a new room code without changing the assigned member list.</p>
+            <p className="eyebrow">Step 2</p>
+            <h3>Rotate shared room code</h3>
+            <p>Issue a new room code without changing assigned operators and viewers.</p>
           </div>
           <form className="setup-shell" onSubmit={onRotateCode}>
             <label className="field-shell">
-              <span>New shared access code</span>
+              <span>New shared room code</span>
               <input
                 value={sharedAccessCode}
                 onChange={(event) => setSharedAccessCode(event.target.value)}
@@ -415,11 +501,11 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           </form>
         </article>
 
-        <article className="surface-card form-section">
+        <article id="session-economics" className="surface-card form-section">
           <div className="form-section__header">
-            <p className="eyebrow">Payouts</p>
-            <h3>Set payout structure</h3>
-            <p>Configure the distributable percentages the model uses for valuation.</p>
+            <p className="eyebrow">Step 4</p>
+            <h3>Set room economics</h3>
+            <p>Configure the payout percentages and projected pot the model uses for valuation.</p>
           </div>
           <form className="setup-shell" onSubmit={onSavePayoutRules}>
             <div className="form-grid form-grid--three">
@@ -471,12 +557,12 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
       </section>
 
       <section className="admin-grid">
-        <article className="surface-card form-section">
+        <article id="session-syndicates" className="surface-card form-section">
           <div className="section-headline">
             <div>
-              <p className="eyebrow">Syndicates</p>
-              <h3>Participating syndicate list</h3>
-              <p>Select the catalog entries available to bid in this session.</p>
+              <p className="eyebrow">Step 3</p>
+              <h3>Choose the room lineup</h3>
+              <p>Select the syndicates that can bid in this room and confirm your syndicate.</p>
             </div>
             <span className="status-pill">{selectedSyndicateIds.length} selected</span>
           </div>
@@ -499,7 +585,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
               ))}
             </div>
             <label className="field-shell">
-              <span>Focus syndicate</span>
+              <span>Your syndicate</span>
               <select
                 value={focusSyndicateName}
                 onChange={(event) => setFocusSyndicateName(event.target.value)}
@@ -519,12 +605,12 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           </form>
         </article>
 
-        <article className="surface-card form-section">
+        <article id="session-data" className="surface-card form-section">
           <div className="section-headline">
             <div>
-              <p className="eyebrow">Data</p>
-              <h3>Projection source and imports</h3>
-              <p>Choose the active feed and monitor recent projection imports.</p>
+              <p className="eyebrow">Step 5</p>
+              <h3>Confirm data source and imports</h3>
+              <p>Choose the active feed, import projections, and verify the room is ready for launch.</p>
             </div>
             <span className="status-pill">{config.importRuns.length} imports logged</span>
           </div>
@@ -552,7 +638,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
                 disabled={isPending}
                 onClick={onRunImport}
               >
-                Run import
+                Import projections
               </button>
             </div>
           </form>
@@ -586,6 +672,33 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
               ))
             )}
           </div>
+        </article>
+      </section>
+
+      <section className="admin-grid">
+        <article className="surface-card form-section">
+          <div className="section-headline">
+            <div>
+              <p className="eyebrow">Step 6</p>
+              <h3>Launch tools</h3>
+              <p>Use these links when the room is ready for operator, viewer, and analysis workflows.</p>
+            </div>
+            <span className="status-pill">Launch</span>
+          </div>
+          <div className="button-row">
+            <Link href={`/session/${config.session.id}`} className="button">
+              Open operator board
+            </Link>
+            <Link href={`/session/${config.session.id}?preview=viewer`} className="button button-ghost">
+              Open viewer preview
+            </Link>
+            <Link href={`/csv-analysis?sessionId=${config.session.id}`} className="button button-secondary">
+              Open analysis
+            </Link>
+          </div>
+          <p className="support-copy">
+            Use operator board for live auction execution, viewer preview for room-facing read-only checks, and analysis for CSV-based team review.
+          </p>
         </article>
       </section>
     </div>

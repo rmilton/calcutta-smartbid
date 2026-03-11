@@ -18,25 +18,27 @@ The app uses a premium live-market interface:
 
 - centered on a live decision board and recommendation call
 - keyboard-assisted workflow for team focus, bid entry, winner selection, and save
-- split navigation model: `Auction`, `Portfolio`, `Overrides`, `Session`
+- split navigation model: `Live board`, `Portfolio`, `Projection lab`, `Room snapshot`
 - action controls should feel compact, direct, and operational
 
 ### Viewer board
 
 - read-only and optimized for passive watching
 - current bid should be the dominant visual signal
+- should share the same session frame and context as the operator board
 - live-update affordances can pulse or animate, but should stay clean and readable
 
 ### Admin surfaces
 
 - use the same shell, spacing, buttons, and field treatments as the operator experience
+- platform admin should feel Sessions-first, with secondary objects behind workspace navigation
 - prefer summary cards plus structured forms, not legacy panel stacks
-- session admin should clearly separate access, payouts, syndicates, and data-source controls
+- session admin should read like a readiness flow: access, room code, syndicates, economics, data import, launch tools
 
 ## Visual Rules
 
 - Use the shared tokens in `src/app/globals.css`.
-- Prefer `surface-card`, `button`, `button-secondary`, `button-ghost`, `field-shell`, `workspace-tab`, `status-pill`, and the admin grid primitives before adding new one-off classes.
+- Prefer `surface-card`, `button`, `button-secondary`, `button-ghost`, `field-shell`, `status-pill`, `breadcrumb-trail`, `workspace-nav`, `session-workspace-nav`, and the admin grid primitives before adding new one-off classes.
 - Keep section headers consistent with `eyebrow` plus a strong heading and one short support line when needed.
 - Avoid reintroducing the old warm parchment or vintage auction look.
 - Avoid flat utility-only layouts that weaken hierarchy.
@@ -45,6 +47,7 @@ The app uses a premium live-market interface:
 
 - The primary decision area should always stay above secondary detail.
 - Forms should be grouped into clear sections with consistent spacing.
+- Session context should persist across setup, live board, and analysis via breadcrumbs or workspace nav.
 - Tables are acceptable when precision matters, but summary cards or structured rows should lead when readability matters more than density.
 - Mobile support matters most for viewer mode. Operator mode can remain desktop-first as long as it degrades cleanly.
 

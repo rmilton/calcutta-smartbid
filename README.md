@@ -2,9 +2,12 @@
 
 Calcutta SmartBid is a live NCAA Calcutta auction cockpit built with Next.js. The current implementation ships with:
 
-- a setup flow for creating an auction workspace
+- an explicit role-choice landing flow for `platform admin` vs `join session`
+- a Sessions-first platform admin workspace
+- a session readiness checklist for access, room code, syndicates, economics, imports, and launch tools
 - a live operator cockpit with a premium live-market decision board
 - a synchronized viewer mode with a read-only shared board
+- a session analysis workspace with CSV source selection
 - an admin center for sessions, users, syndicates, and data sources
 - Monte Carlo tournament simulation and bid recommendations
 - a ledger for syndicate ownership, spend, and remaining bankroll
@@ -54,16 +57,44 @@ If you use bypass mode, restart `npm run dev` after updating `.env`.
 
 ## Access model
 
-The landing page is login-only. It accepts an email address and shared code, then routes the user based on what those credentials match:
+The landing page is now an explicit role-choice entry point. Users choose:
 
-- `platform admin` credentials route to the live-session creation page
-- `session member` credentials route into their auction room as either `admin` or `viewer`
+- `Platform admin`
+- `Join session`
+
+Both paths still use the same auth backend. The page now explains where each path goes before sign-in:
+
+- `platform admin` credentials route to `/admin`, which is the Sessions workspace
+- `session member` credentials route into their auction room as either `operator` or `viewer`
 
 Platform admin credentials are configured with:
 
 - `PLATFORM_ADMIN_EMAILS`: comma-separated email list
 - `PLATFORM_ADMIN_NAMES`: optional comma-separated display names aligned by position
-- `PLATFORM_ADMIN_SHARED_CODE`: shared code used to unlock session creation
+- `PLATFORM_ADMIN_SHARED_CODE`: control-plane code used to unlock the platform admin workspace
+
+## Main surfaces
+
+- `/`
+  - explicit role-choice entry screen
+  - clarifies platform-admin vs session-member destination before sign-in
+- `/admin`
+  - canonical Sessions landing page
+  - secondary admin objects (`Directory`, `Syndicates`, `Data sources`) live behind workspace navigation
+- `/admin/sessions/new`
+  - session creation
+  - routes directly into room readiness after creation
+- `/admin/sessions/[sessionId]`
+  - session readiness workspace
+  - ordered flow for access, room code, syndicates, economics, imports, and launch tools
+- `/session/[sessionId]`
+  - live board
+  - `operator` and `viewer` share the same session frame
+- `/session/[sessionId]?preview=viewer`
+  - platform-admin viewer preview of the live board shell
+- `/csv-analysis?sessionId=<session-id>`
+  - session analysis workspace
+  - supports uploaded admin CSV sources plus local env CSV fallback
 
 ## Local storage
 
@@ -137,6 +168,10 @@ This mode analyzes all valid teams found in the CSV and returns team intelligenc
 Budget recommendations in this mode default to `reservePct=0` (100% of bankroll is allocated).
 Owned teams and actual paid prices are persisted server-side per authenticated session member via
 `/api/sessions/:sessionId/csv-analysis/portfolio`.
+The analysis UI now includes a source selector that can load:
+
+- uploaded admin CSV sources from `Admin > Data sources`
+- the local env CSV from `SPORTS_PROJECTIONS_CSV_FILE` as fallback
 
 The remote endpoint should return:
 

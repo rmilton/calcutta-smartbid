@@ -12,18 +12,20 @@ Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for curre
 
 ## Current Product Shape
 
-Calcutta SmartBid now has two major surfaces:
+Calcutta SmartBid now has three major user-facing workspaces:
 
-- `Admin center`
-  - platform-admin login at `/`
-  - admin landing at `/admin`
+- `Role-choice landing`
+  - explicit `Platform admin` vs `Join session` choice at `/`
+- `Platform admin workspace`
+  - Sessions-first landing at `/admin`
   - session creation at `/admin/sessions/new`
-  - per-session admin management at `/admin/sessions/[sessionId]`
-- `Live auction board`
-  - session member login with `email + shared code`
-  - role-driven `admin` vs `viewer` behavior at `/session/[sessionId]`
+  - per-session readiness workspace at `/admin/sessions/[sessionId]`
+- `Session workspace`
+  - live board at `/session/[sessionId]`
+  - viewer preview via `/session/[sessionId]?preview=viewer`
+  - session analysis at `/csv-analysis?sessionId=...`
 
-The admin center is the control plane. The live board is the auction execution surface.
+The platform admin workspace is the control plane. The session workspace is the auction execution surface.
 
 ## Current Stack
 
@@ -51,35 +53,41 @@ The admin center is the control plane. The live board is the auction execution s
 ### Routes
 
 - [src/app/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/page.tsx)
-  - login-only landing page
-  - platform admin redirects to `/admin`
-  - session users authenticate with `email + shared code`
+  - explicit role-choice landing page
+  - clarifies platform-admin vs session-member destination before sign-in
 - [src/app/admin/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/page.tsx)
-  - admin center overview
+  - Sessions-first platform admin landing
 - [src/app/admin/sessions/new/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/sessions/new/page.tsx)
-  - new session creation
+  - new session creation with readiness framing
 - [src/app/admin/sessions/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/sessions/[sessionId]/page.tsx)
-  - session management
+  - session readiness management
 - [src/app/session/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/session/[sessionId]/page.tsx)
   - live board entry
+  - operator board and viewer preview shell
+- [src/app/csv-analysis/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/csv-analysis/page.tsx)
+  - session analysis workspace
+  - uploaded CSV source selection plus local CSV fallback
 
 ### Admin UI
 
 - [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
-  - platform admin center
-  - org users
-  - syndicate catalog
-  - data sources
-  - session list
+  - Sessions-first platform admin workspace
+  - sidebar workspace navigation
+  - session launch links for setup, operator board, viewer preview, and analysis
 - [src/components/setup-form.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/setup-form.tsx)
   - creates sessions from org users, catalog syndicates, and active data source
   - includes payout defaults and `projectedPot`
 - [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
-  - session access assignment
-  - shared code rotation
+  - session readiness checklist
+  - operator/viewer access assignment
+  - shared room code rotation
   - participating syndicates
-  - payout structure
+  - room economics
   - data source selection and import history
+- [src/components/session-workspace-nav.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-workspace-nav.tsx)
+  - stable navigation between setup, live board, and analysis
+- [src/components/access-guide.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/access-guide.tsx)
+  - guided unauthorized and mismatched-role states
 - [src/app/globals.css](/Users/rmilton/Code/Calcutta-SmartBid/src/app/globals.css)
   - shared design tokens and UI primitives
 
@@ -87,11 +95,10 @@ The admin center is the control plane. The live board is the auction execution s
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
   - role-aware board
-  - single searchable `Active Team for Bidding` control
-  - auto-save on team selection
-  - no `likely bidders`
-  - no manual overrides panel
-  - no `Update live board` button
+  - shared session frame for operator and viewer
+  - session workspace navigation
+  - `Live board`, `Portfolio`, `Projection lab`, and `Room snapshot` tabs for operator
+  - viewer preview support for platform admins
 
 ### Domain and orchestration
 
@@ -137,6 +144,7 @@ The admin center is the control plane. The live board is the auction execution s
 - Platform admins create sessions. The public landing page should not expose session creation.
 - Session users authenticate with assigned email plus the session shared code.
 - Viewer mode is role-driven and read-only.
+- User-facing session role copy should say `Operator` instead of `Admin`.
 - Purchases are authoritative. Do not let UI-only state become the source of truth.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - The active-team control must stay fast and low-friction under live auction use.
@@ -146,7 +154,7 @@ The admin center is the control plane. The live board is the auction execution s
 ## Design System Expectations
 
 - The active visual direction is a dark premium live-market UI, not the legacy warm auction aesthetic.
-- Prefer the shared primitives in `src/app/globals.css` such as `surface-card`, `button`, `field-shell`, `workspace-tab`, and `status-pill`.
+- Prefer the shared primitives in `src/app/globals.css` such as `surface-card`, `button`, `field-shell`, `status-pill`, `breadcrumb-trail`, `workspace-nav`, and `session-workspace-nav`.
 - New admin or live-session UI should match the current shell and spacing patterns before introducing new layout systems.
 - Avoid extending the old compatibility classes unless the goal is temporary migration support.
 
@@ -170,15 +178,19 @@ AUTH_SESSION_SECRET=...
 Run this after touching auth, admin flows, dashboard controls, or payout/simulation behavior:
 
 1. Log in as platform admin at `/`.
-2. Confirm you land on `/admin`.
+2. Confirm the landing page explains control-plane vs live-room entry.
+3. Confirm you land on `/admin`.
 3. Create or open a session from the admin center.
-4. On the session admin page, update session access, rotate the shared code, and save payout structure.
+4. On the session readiness page, update access, rotate the shared room code, save room economics, and run a projection import.
 5. Log in as a session member with assigned email plus shared code.
 6. Confirm the live board loads in the expected role.
-7. Change `Active Team for Bidding` and confirm the board updates automatically.
-8. Change current bid and confirm it persists.
-9. Record a purchase and confirm ledger and sold-team state update.
-10. Refresh and confirm persistence.
+7. Confirm session workspace navigation is visible and consistent across setup, live board, and analysis.
+8. Change `Active Team for Bidding` and confirm the board updates automatically.
+9. Open viewer preview and confirm it matches the session shell in read-only mode.
+10. Open analysis and confirm source selection works.
+11. Change current bid and confirm it persists.
+12. Record a purchase and confirm ledger and sold-team state update.
+13. Refresh and confirm persistence.
 
 ## Test Commands
 
@@ -221,3 +233,4 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - The repository still supports a local JSON backend for development only.
 - Older stored sessions may still contain legacy payout fields. The repository normalizes them on load.
 - The live board still uses `remainingBankroll` as derived headroom from `projectedPot / syndicateCount`. If that business model changes, update repository math and recommendation language together.
+- Some auth-protected pages now render guided access states at the page level instead of redirecting to `/`.
