@@ -2,11 +2,42 @@
 
 import { FormEvent, useState, useTransition } from "react";
 
+type AccessMode = "viewer" | "operator" | "admin";
+
+const accessModes: Array<{
+  id: AccessMode;
+  label: string;
+  title: string;
+  submitLabel: string;
+}> = [
+  {
+    id: "viewer",
+    label: "Viewer",
+    title: "Join session",
+    submitLabel: "Enter"
+  },
+  {
+    id: "operator",
+    label: "Operator",
+    title: "Operator access",
+    submitLabel: "Enter"
+  },
+  {
+    id: "admin",
+    label: "Platform admin",
+    title: "Platform admin",
+    submitLabel: "Enter admin"
+  }
+];
+
 export function AccessForm() {
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [sharedCode, setSharedCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<AccessMode>("viewer");
+
+  const activeMode = accessModes.find((candidate) => candidate.id === mode) ?? accessModes[0];
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,46 +67,64 @@ export function AccessForm() {
   }
 
   return (
-    <form className="surface-card auth-card" onSubmit={onSubmit}>
-      <div className="auth-card__header">
-        <p className="eyebrow">Auction Access</p>
-        <h2>Open your live room</h2>
-        <p>
-          Platform admins are routed into session setup. Session members go directly to
-          the live board.
-        </p>
+    <form className="minimal-auth-card" onSubmit={onSubmit}>
+      <div className="minimal-auth-card__header">
+        <p className="minimal-auth-card__brand">Mothership</p>
+        <h1 className="minimal-auth-card__title">{activeMode.title}</h1>
+        <div className="access-tier-row" role="tablist" aria-label="Access mode">
+          {accessModes.map((candidate) => {
+            const isActive = candidate.id === mode;
+            return (
+              <button
+                key={candidate.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={[
+                  "access-tier",
+                  `access-tier--${candidate.id}`,
+                  isActive ? "access-tier--active" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => setMode(candidate.id)}
+              >
+                {candidate.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="form-grid form-grid--two">
-        <label className="field-shell">
-          <span>Email address</span>
+      <div className="minimal-auth-form">
+        <label className="minimal-field">
+          <span className="minimal-label">Email</span>
           <input
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            placeholder="name@domain.com"
             required
           />
         </label>
-        <label className="field-shell">
-          <span>Shared code</span>
+        <label className="minimal-field">
+          <span className="minimal-label">Code</span>
           <input
             value={sharedCode}
             onChange={(event) => setSharedCode(event.target.value)}
+            autoComplete="one-time-code"
+            placeholder="Shared code"
             required
           />
         </label>
       </div>
 
-      {error ? <p className="error-text">{error}</p> : null}
+      {error ? <p className="minimal-auth-error">{error}</p> : null}
 
-      <div className="button-row button-row--spread">
-        <button type="submit" className="button" disabled={isPending}>
-          {isPending ? "Checking access..." : "Enter auction"}
-        </button>
-        <p className="support-copy">
-          Use the shared event code from the operator to join the same synchronized room.
-        </p>
-      </div>
+      <button type="submit" className="minimal-auth-submit" disabled={isPending}>
+        {isPending ? "Checking access..." : activeMode.submitLabel}
+      </button>
     </form>
   );
 }

@@ -13,33 +13,8 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="marketing-page">
-      <section className="marketing-hero">
-        <div className="surface-card marketing-copy">
-          <p className="eyebrow">Live NCAA Calcutta Intelligence</p>
-          <h1>Run the room with a premium live-market auction cockpit.</h1>
-          <p>
-            Calcutta SmartBid gives one operator a focused decision board while the rest
-            of the syndicate watches the same bid pulse, sale feed, and portfolio posture
-            in sync.
-          </p>
-
-          <div className="marketing-feature-list">
-            <div className="feature-card">
-              <strong>Decision strip</strong>
-              <span>Current bid, model ceiling, bankroll impact, and key drivers stay visible.</span>
-            </div>
-            <div className="feature-card">
-              <strong>Shared board</strong>
-              <span>Viewer mode turns the current bid into the dominant room-facing signal.</span>
-            </div>
-            <div className="feature-card">
-              <strong>Portfolio discipline</strong>
-              <span>Track owned teams, expected value, and conflicts without breaking live flow.</span>
-            </div>
-          </div>
-        </div>
-
+    <main className="minimal-landing">
+      <section className="minimal-landing__panel">
         <AccessForm />
       </section>
     </main>

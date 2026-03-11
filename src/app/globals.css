@@ -905,12 +905,207 @@ p {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .minimal-landing {
+    padding: 1rem;
+  }
+
+  .minimal-auth-card {
+    padding: 1.4rem;
+    border-radius: 24px;
+  }
 }
 
 .landing-page {
   width: min(1440px, calc(100vw - 2rem));
   margin: 0 auto;
   padding: 1.5rem 0 3rem;
+}
+
+.minimal-landing {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.minimal-landing__panel {
+  width: min(100%, 460px);
+}
+
+.minimal-auth-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 1.25rem;
+  padding: 1.75rem;
+  border-radius: 28px;
+  border: 1px solid rgba(152, 166, 190, 0.16);
+  background: linear-gradient(180deg, rgba(14, 28, 48, 0.97), rgba(9, 22, 39, 0.92));
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.minimal-auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top right, rgba(200, 255, 98, 0.09), transparent 28%),
+    linear-gradient(135deg, rgba(107, 200, 255, 0.08), transparent 46%);
+}
+
+.minimal-auth-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.minimal-auth-card__header {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.minimal-auth-card__brand {
+  color: var(--accent);
+  font: 500 0.78rem/1.2 var(--font-mono);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.minimal-auth-card__title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.1rem);
+  line-height: 0.92;
+  letter-spacing: -0.06em;
+}
+
+.access-tier-row {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.access-tier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.4rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  color: var(--muted);
+  font: 500 0.78rem/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.access-tier--viewer {
+  border-color: rgba(200, 255, 98, 0.24);
+}
+
+.access-tier--operator {
+  border-color: rgba(200, 255, 98, 0.24);
+}
+
+.access-tier--admin {
+  border-color: rgba(152, 166, 190, 0.18);
+}
+
+.access-tier:hover {
+  border-color: rgba(200, 255, 98, 0.32);
+  color: var(--ink);
+}
+
+.access-tier:focus-visible {
+  outline: none;
+  border-color: rgba(200, 255, 98, 0.45);
+  box-shadow: 0 0 0 3px rgba(200, 255, 98, 0.12);
+}
+
+.access-tier--active {
+  transform: translateY(-1px);
+}
+
+.access-tier--viewer.access-tier--active {
+  background: linear-gradient(135deg, var(--accent), #e6ffa5);
+  color: #132000;
+}
+
+.access-tier--operator.access-tier--active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+.access-tier--admin.access-tier--active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(152, 166, 190, 0.34);
+  color: var(--ink);
+}
+
+.access-tier:not(.access-tier--active) {
+  opacity: 0.64;
+}
+
+.minimal-auth-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.minimal-field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.minimal-label {
+  color: var(--muted);
+  font: 500 0.78rem/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.minimal-auth-card input {
+  border-radius: 18px;
+  border-color: rgba(152, 166, 190, 0.16);
+  background: rgba(4, 10, 18, 0.82);
+  padding: 1.05rem 1.1rem;
+}
+
+.minimal-auth-card input::placeholder {
+  color: rgba(152, 166, 190, 0.58);
+}
+
+.minimal-auth-submit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 3.5rem;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent), #e6ffa5);
+  color: #132000;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.minimal-auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.minimal-auth-error {
+  color: var(--danger);
+  font-size: 0.96rem;
 }
 
 .setup-section {
