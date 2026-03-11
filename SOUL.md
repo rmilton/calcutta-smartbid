@@ -8,6 +8,17 @@ Calcutta SmartBid is not a bracket game and not a passive analytics site. It is 
 
 The product succeeds when it helps the operator make a better bid decision in seconds, with enough confidence to act in the room.
 
+## Product Surfaces
+
+Calcutta SmartBid currently has four product surfaces:
+
+- a shared landing/login entrypoint
+- an admin control plane for setup and governance
+- an operator live board for real-time decisions
+- a synchronized viewer board for passive teammates
+
+These surfaces can look and feel related, but they should not converge into one generic dashboard. Each exists to serve a different job.
+
 ## Primary User
 
 The primary user is the auction operator for one syndicate.
@@ -50,6 +61,13 @@ The user should be able to answer:
 
 Opaque scores without drivers are not enough.
 
+At a minimum, recommendation output should make visible:
+
+- the current recommended max bid
+- what changed since the last recommendation state
+- the top drivers behind the recommendation
+- the main caution or ownership risk suppressing aggression
+
 ### Portfolio context matters
 
 A team is not valuable in isolation. Owning teams that likely collide early changes the real value of a bid. The app should keep modeling ownership exposure, not just pure team EV.
@@ -60,15 +78,38 @@ Auction state should be anchored around completed purchases and current live nom
 
 Projected values are estimates until the room closes. The app can forecast against a projected pot, but completed purchases are the only real market facts during the auction.
 
+That said, purchases must still be correctable through explicit, auditable operator workflows. A corrected purchase becomes the new authoritative state. Silent or ad hoc mutation is not acceptable.
+
 ### Recovery matters
 
 Live auction software cannot be fragile. Refreshing the page, reconnecting, or reopening the session should not lose the room.
+
+Recovery also applies to human error. High-impact actions such as purchases and payout edits should either be reversible or leave a clear audit trail.
+
+## State Truth Rules
+
+- completed purchases are authoritative unless superseded by an audited correction
+- the active nominated team and current bid are live operational state, not long-term history
+- projected pot is provisional and can drive recommendation math before the room closes
+- actual locked pot, once set, should override projected assumptions everywhere relevant
+- viewer state must be derived from the same persisted session truth as operator state
+
+## Current Modeling Assumptions
+
+The app currently makes some useful but provisional assumptions. These are implementation constraints, not sacred product truths:
+
+- recommendation and payout forecasting use round percentages plus a projected pot
+- per-syndicate remaining bankroll/headroom is still an assumption layer, not a final accounting model
+- completed purchases are more trustworthy than any forecast-derived value
+
+Future work should improve these assumptions, but should not hide them.
 
 ## UX Truths
 
 - the operator should always know the currently nominated team
 - current bid and recommended max should be visible at a glance
 - the ledger should answer "who owns what" and "how much do they have left"
+- the product should make clear whether "money left" is forecast headroom or locked actual room state
 - viewer mode should feel synchronized but never editable
 - validation errors should be domain language, not raw schema text
 - admin workflows should happen before the live room, not inside the live room
@@ -98,6 +139,7 @@ Before shipping a change, ask:
 - does this make a live auction decision easier or safer
 - does it preserve fast operator flow
 - does it keep persisted state trustworthy
+- does it preserve auditability and correction safety for live-state mutations
 - does it improve explanation instead of adding noise
 
 If the answer is no, the feature is probably off-center.

@@ -35,6 +35,26 @@ As of `2026-03-09`:
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
 
+## Surface Status
+
+Current product surfaces and their roles:
+
+- `Landing/login`
+  - public entrypoint
+  - accepts assigned email plus shared code
+  - routes platform admins to `/admin`
+  - routes session members into their assigned live room
+- `Admin center`
+  - platform-level setup and governance
+  - manages org users, syndicates, data sources, and session list
+- `Session admin`
+  - per-session configuration
+  - manages access, shared code, payout structure, syndicates, and data imports
+- `Live room`
+  - operator and viewer share the same persisted session state
+  - operator can update nomination, current bid, and purchases
+  - viewer is read-only
+
 ## Current Financial / Auction Model
 
 - payout structure is stored as round percentages plus `projectedPot`
@@ -43,6 +63,14 @@ As of `2026-03-09`:
 - per-syndicate `remainingBankroll` is currently derived as:
   - `projectedPot / syndicateCount - spend`
 - this is still an assumption layer, not the final real-pot model
+
+## State Truth Rules
+
+- completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
+- active nominated team and current bid are live operational state, not the primary historical record
+- viewer state must always derive from the same persisted session truth as operator state
+- `projectedPot` is provisional model input
+- a future `actual pot locked` state should override projected assumptions once the room closes
 
 ## Deployment Shape
 
@@ -59,6 +87,7 @@ Key files:
 ## Core User Flows Working
 
 - platform admin login
+- landing-page login routing
 - admin center load
 - org user management
 - syndicate catalog management
@@ -71,6 +100,14 @@ Key files:
 - current bid entry
 - purchase recording
 - persistence across refresh
+
+## Current Product Guarantees
+
+- platform-admin session creation is not exposed on the public landing page
+- session users authenticate with assigned email plus shared code
+- viewer mode remains read-only
+- validation errors should resolve to domain-language messages instead of raw schema failures where feasible
+- production-like deployment must run with `CALCUTTA_STORAGE_BACKEND=supabase`
 
 ## Important Recent Changes
 
@@ -96,6 +133,7 @@ Key files:
 - no undo/correction workflow for mistaken purchases
 - no final `actual pot locked` workflow after all teams are sold
 - recommendation math still uses a simplified bankroll/headroom assumption
+- recommendation explanations are still lighter than the target product standard
 - no full audit trail UI in admin center
 - no session archive/delete flow
 - session creation still allows rooms to be created from whatever syndicates are selected at creation time; updating the catalog does not retroactively change existing sessions
@@ -116,6 +154,7 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 9. Record a purchase with a valid bid.
 10. Try recording a purchase with `0` and confirm the friendly validation error.
 11. Refresh and confirm persistence.
+12. Log in as a viewer and confirm the room is synchronized but not editable.
 
 ## Operational Notes
 
@@ -124,6 +163,8 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 - old stored sessions may still contain legacy payout keys; the repository normalizes them
 - the clearest visible signal that configuration is correct is the session badge reading `Backend supabase`
 - the winner picker on the live board is driven by the session's participating syndicates, not the global syndicate catalog
+- if a live-room mutation cannot be safely corrected or audited, treat that as a product gap rather than operator error
+- any future work that changes bankroll/headroom language should update UI copy, recommendation logic, and this document together
 
 ## Backlog References
 

@@ -1,14 +1,16 @@
 # Calcutta SmartBid
 
-Calcutta SmartBid is a live NCAA Calcutta auction cockpit built with Next.js. The current implementation ships with:
+Calcutta SmartBid is a live NCAA Calcutta auction decision system built with Next.js. It is optimized for one operator making fast bid decisions during a live room, with synchronized viewer access and a separate admin control plane.
 
-- a setup flow for creating an auction workspace
-- a live operator cockpit with a premium live-market decision board
-- a synchronized viewer mode with a read-only shared board
+The current implementation ships with:
+
+- a login-only landing page that routes by `email + shared code`
 - an admin center for sessions, users, syndicates, and data sources
+- a session-admin surface for access, payout rules, syndicates, and imports
+- a live operator board with real-time bid support
+- a synchronized viewer mode with a read-only shared board
 - Monte Carlo tournament simulation and bid recommendations
-- a ledger for syndicate ownership, spend, and remaining bankroll
-- manual projection overrides with automatic simulation rebuilds
+- a ledger for syndicate ownership, spend, and modeled remaining bankroll
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
 Additional project context lives in:
@@ -21,18 +23,31 @@ Additional project context lives in:
 ## Run locally
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
 npm install
 npm run dev
 ```
 
 Open `http://localhost:3000`.
 
+For production-like local work, prefer `.env.local` with:
+
+```bash
+CALCUTTA_STORAGE_BACKEND=supabase
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+PLATFORM_ADMIN_EMAILS=...
+PLATFORM_ADMIN_NAMES=...
+PLATFORM_ADMIN_SHARED_CODE=...
+AUTH_SESSION_SECRET=...
+```
+
 ### CSV analysis local quickstart
 
 Use this when you want to run the CSV analysis page directly.
 
-1. Set `.env` values:
+1. Set `.env.local` values:
    - `SPORTS_PROJECTIONS_CSV_FILE=/absolute/path/to/your.csv`
    - `CALCUTTA_STORAGE_BACKEND=local` (or `supabase` if you want Supabase persistence)
 2. If using `supabase`, run `supabase/schema.sql` in your Supabase SQL editor before starting the app.
@@ -50,14 +65,33 @@ Optional for local development only (skip login flow):
 - `DEV_BYPASS_AUTH=true`
 - `DEV_BYPASS_SESSION_ID=<your-session-id>`
 
-If you use bypass mode, restart `npm run dev` after updating `.env`.
+If you use bypass mode, restart `npm run dev` after updating `.env.local`.
+
+## Product surfaces
+
+- `Landing/login`
+  - public entrypoint
+  - accepts assigned email plus shared code
+  - routes platform admins to `/admin`
+  - routes session members to `/session/[sessionId]`
+- `Admin center`
+  - platform-level setup and governance
+  - manages users, syndicates, data sources, and sessions
+- `Session admin`
+  - per-session access, shared code, payout structure, syndicates, and imports
+- `Live room`
+  - shared persisted session state for operator and viewer
+  - operator can update active team, bid, and purchases
+  - viewer is read-only
 
 ## Access model
 
 The landing page is login-only. It accepts an email address and shared code, then routes the user based on what those credentials match:
 
-- `platform admin` credentials route to the live-session creation page
+- `platform admin` credentials route to the admin center
 - `session member` credentials route into their auction room as either `admin` or `viewer`
+
+Role is determined by the authenticated member record for that session, not by a landing-page toggle.
 
 Platform admin credentials are configured with:
 
@@ -68,6 +102,8 @@ Platform admin credentials are configured with:
 ## Local storage
 
 By default the app persists auction data to a JSON file under the OS temp directory. You can override that path with `CALCUTTA_STORE_FILE`.
+
+This path is intended for local development only. Production should not use the local repository.
 
 ## Storage backends
 
@@ -99,6 +135,14 @@ For a Vercel deployment, production should always use:
 ```bash
 CALCUTTA_STORAGE_BACKEND=supabase
 ```
+
+## State model notes
+
+- completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
+- current bid and active nominated team are live operational state
+- `projectedPot` is a provisional model input used for EV and bankroll forecasting
+- current `remainingBankroll` / headroom values are still modeled assumptions, not final room accounting
+- viewer state should always reflect the same persisted session truth as operator state
 
 ## Projection providers
 
