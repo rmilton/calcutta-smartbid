@@ -501,6 +501,12 @@ export function AdminCenter({
                             >
                               Open board
                             </Link>
+                            <Link
+                              href={`/csv-analysis?sessionId=${session.id}`}
+                              className="button button-ghost button--small"
+                            >
+                              Open analysis
+                            </Link>
                           </div>
                         </td>
                       </tr>

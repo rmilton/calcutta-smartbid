@@ -13,6 +13,7 @@ interface CsvAnalysisWorkbenchProps {
   initialTargetTeams?: number;
   initialMaxSingleTeamPct?: number;
   initialOwnedEntries?: CsvAnalysisPortfolioEntry[];
+  persistOwnedEntries?: boolean;
 }
 
 interface BudgetRow {
@@ -112,7 +113,8 @@ export function CsvAnalysisWorkbench({
   initialBankroll,
   initialTargetTeams,
   initialMaxSingleTeamPct,
-  initialOwnedEntries
+  initialOwnedEntries,
+  persistOwnedEntries = true
 }: CsvAnalysisWorkbenchProps) {
   const initialSelectedTeamId =
     (initialTeamId && analysis.teams.some((team) => team.id === initialTeamId) ? initialTeamId : null) ??
@@ -159,6 +161,10 @@ export function CsvAnalysisWorkbench({
   }, [ownedEntries, teamLookup]);
 
   useEffect(() => {
+    if (!persistOwnedEntries) {
+      return;
+    }
+
     if (!hasMounted.current) {
       hasMounted.current = true;
       return;
@@ -192,7 +198,7 @@ export function CsvAnalysisWorkbench({
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [ownedEntries, sessionId]);
+  }, [ownedEntries, persistOwnedEntries, sessionId]);
 
   const searchNormalized = searchTerm.trim().toLowerCase();
   const filteredTeams = useMemo(() => {

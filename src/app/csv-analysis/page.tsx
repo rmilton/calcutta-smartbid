@@ -5,6 +5,7 @@ import {
   getAuthenticatedMember,
   requireAuthenticatedMemberForSession
 } from "@/lib/auth";
+import { getConfiguredCsvProjectionFilePath } from "@/lib/config";
 import { loadCsvTeamAnalysis } from "@/lib/providers/csv-projections";
 import { getSessionRepository } from "@/lib/repository";
 
@@ -61,11 +62,7 @@ export default async function CsvAnalysisPage({ searchParams }: CsvAnalysisPageP
     resolvedSessionId,
     "viewer"
   );
-
-  if (!sessionAuth.memberId) {
-    redirect("/");
-  }
-  const filePath = process.env.SPORTS_PROJECTIONS_CSV_FILE;
+  const filePath = getConfiguredCsvProjectionFilePath();
 
   if (!filePath) {
     return (
@@ -90,10 +87,19 @@ export default async function CsvAnalysisPage({ searchParams }: CsvAnalysisPageP
 
   try {
     const providerName = process.env.SPORTS_PROJECTIONS_CSV_PROVIDER ?? "csv-local";
-    const [analysis, portfolio] = await Promise.all([
-      loadCsvTeamAnalysis(filePath, providerName, teamId),
-      repository.getCsvAnalysisPortfolio(sessionAuth.sessionId as string, sessionAuth.memberId)
-    ]);
+    const canPersistPortfolio = Boolean(sessionAuth.memberId);
+    const analysis = await loadCsvTeamAnalysis(filePath, providerName, teamId);
+    const portfolio = canPersistPortfolio
+      ? await repository.getCsvAnalysisPortfolio(
+          sessionAuth.sessionId as string,
+          sessionAuth.memberId as string
+        )
+      : {
+          sessionId: sessionAuth.sessionId as string,
+          memberId: "",
+          entries: [],
+          updatedAt: new Date(0).toISOString()
+        };
     return (
       <CsvAnalysisWorkbench
         analysis={analysis}
@@ -103,6 +109,7 @@ export default async function CsvAnalysisPage({ searchParams }: CsvAnalysisPageP
         initialTargetTeams={parseNumber(targetTeams, 8)}
         initialMaxSingleTeamPct={parseNumber(maxSingleTeamPct, 22)}
         initialOwnedEntries={portfolio.entries}
+        persistOwnedEntries={canPersistPortfolio}
       />
     );
   } catch (error) {

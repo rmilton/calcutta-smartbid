@@ -5,7 +5,13 @@ import { getConfiguredStorageBackend } from "@/lib/config";
 import { buildDashboard } from "@/lib/dashboard";
 import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings, getDefaultPayoutRules } from "@/lib/sample-data";
-import { createSharedCodeLookup, hashSharedCode, verifySharedCode } from "@/lib/session-security";
+import {
+  createSharedCodeLookup,
+  decryptSharedCode,
+  encryptSharedCode,
+  hashSharedCode,
+  verifySharedCode
+} from "@/lib/session-security";
 import {
   applyProjectionOverrides,
   loadProjectionProvider,
@@ -457,6 +463,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     session.sharedAccessCodeHash = hashSharedCode(sharedAccessCode);
     session.sharedAccessCodeLookup = createSharedCodeLookup(sharedAccessCode);
+    session.sharedAccessCodeCiphertext = encryptSharedCode(sharedAccessCode);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
     return buildSessionAdminConfig(session, store);
@@ -766,6 +773,9 @@ class SupabaseSessionRepository implements SessionRepository {
     ]);
     return {
       session,
+      currentSharedAccessCode: session.sharedAccessCodeCiphertext
+        ? decryptSharedCode(session.sharedAccessCodeCiphertext)
+        : null,
       accessMembers: session.accessMembers,
       platformUsers: refs.platformUsers,
       syndicateCatalog: refs.syndicateCatalog,
@@ -858,6 +868,7 @@ class SupabaseSessionRepository implements SessionRepository {
       eventAccess: { sharedCodeConfigured: true },
       sharedAccessCodeHash: String(sessionResult.data.shared_code_hash ?? ""),
       sharedAccessCodeLookup: String(sessionResult.data.shared_code_lookup ?? ""),
+      sharedAccessCodeCiphertext: String(sessionResult.data.shared_code_ciphertext ?? ""),
       accessMembers: mapAccessMembers(
         (membersResult.data as Array<Record<string, unknown>> | null) ?? [],
         platformUsers
@@ -1169,6 +1180,7 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     session.sharedAccessCodeHash = hashSharedCode(sharedAccessCode);
     session.sharedAccessCodeLookup = createSharedCodeLookup(sharedAccessCode);
+    session.sharedAccessCodeCiphertext = encryptSharedCode(sharedAccessCode);
     session.updatedAt = new Date().toISOString();
     const client = requireSupabaseClient();
     const result = await client
@@ -1176,6 +1188,7 @@ class SupabaseSessionRepository implements SessionRepository {
       .update({
         shared_code_hash: session.sharedAccessCodeHash,
         shared_code_lookup: session.sharedAccessCodeLookup,
+        shared_code_ciphertext: session.sharedAccessCodeCiphertext,
         updated_at: session.updatedAt
       })
       .eq("id", sessionId);
@@ -1480,6 +1493,7 @@ class SupabaseSessionRepository implements SessionRepository {
       viewer_passcode: "legacy-viewer",
       shared_code_hash: session.sharedAccessCodeHash,
       shared_code_lookup: session.sharedAccessCodeLookup,
+      shared_code_ciphertext: session.sharedAccessCodeCiphertext,
       payout_rules: session.payoutRules,
       projection_provider: session.projectionProvider,
       active_data_source_key: session.activeDataSource.key,
@@ -1674,6 +1688,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     },
     sharedAccessCodeHash: hashSharedCode(parsed.sharedAccessCode),
     sharedAccessCodeLookup: createSharedCodeLookup(parsed.sharedAccessCode),
+    sharedAccessCodeCiphertext: encryptSharedCode(parsed.sharedAccessCode),
     accessMembers,
     payoutRules: parsed.payoutRules,
     syndicates,
@@ -2167,6 +2182,9 @@ function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSu
 function buildSessionAdminConfig(session: StoredAuctionSession, refs: ReferenceData): SessionAdminConfig {
   return {
     session,
+    currentSharedAccessCode: session.sharedAccessCodeCiphertext
+      ? decryptSharedCode(session.sharedAccessCodeCiphertext)
+      : null,
     accessMembers: session.accessMembers,
     platformUsers: refs.platformUsers,
     syndicateCatalog: refs.syndicateCatalog,
@@ -2267,6 +2285,7 @@ function normalizeSessionShape(session: StoredAuctionSession) {
     },
     sharedAccessCodeHash: session.sharedAccessCodeHash ?? "",
     sharedAccessCodeLookup: session.sharedAccessCodeLookup ?? "",
+    sharedAccessCodeCiphertext: session.sharedAccessCodeCiphertext ?? "",
     accessMembers: session.accessMembers ?? [],
     payoutRules,
     baseProjections,

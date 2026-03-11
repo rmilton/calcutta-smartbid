@@ -19,6 +19,9 @@ alter table public.auction_sessions
   add column if not exists shared_code_lookup text;
 
 alter table public.auction_sessions
+  add column if not exists shared_code_ciphertext text;
+
+alter table public.auction_sessions
   add column if not exists active_data_source_key text default 'builtin:mock';
 
 alter table public.auction_sessions

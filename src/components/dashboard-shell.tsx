@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   startTransition,
@@ -57,7 +58,7 @@ export function DashboardShell({
   currentMember
 }: DashboardShellProps) {
   const router = useRouter();
-  const { dashboard, isRefreshing, refresh } = useSessionDashboard(
+  const { dashboard, refresh, broadcastRefresh } = useSessionDashboard(
     sessionId,
     initialDashboard
   );
@@ -79,6 +80,8 @@ export function DashboardShell({
   const teamSelectRef = useRef<HTMLSelectElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const activeTeamSaveInFlightRef = useRef(false);
+  const pendingActiveTeamIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isLiveStateDirty && !viewerMode) {
@@ -189,6 +192,55 @@ export function DashboardShell({
     });
   }, [selectedOverride, selectedTeam]);
 
+  const saveActiveTeam = useCallback(async (nextTeamId: string) => {
+    pendingActiveTeamIdRef.current = nextTeamId;
+
+    if (activeTeamSaveInFlightRef.current) {
+      return;
+    }
+
+    activeTeamSaveInFlightRef.current = true;
+
+    while (pendingActiveTeamIdRef.current !== null) {
+      const teamIdToPersist = pendingActiveTeamIdRef.current;
+      pendingActiveTeamIdRef.current = null;
+
+      setError(null);
+      setNotice(null);
+
+      const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          nominatedTeamId: teamIdToPersist || null
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+
+        if (pendingActiveTeamIdRef.current === null) {
+          setError(payload.error ?? "Unable to update active team.");
+        }
+
+        continue;
+      }
+
+      if (pendingActiveTeamIdRef.current !== null) {
+        continue;
+      }
+
+      void broadcastRefresh("active-team");
+      startTransition(() => {
+        void refresh();
+      });
+    }
+
+    activeTeamSaveInFlightRef.current = false;
+  }, [broadcastRefresh, refresh, sessionId]);
+
   const saveLiveState = useCallback(async () => {
     setError(null);
     setNotice(null);
@@ -211,10 +263,11 @@ export function DashboardShell({
 
     setNotice("Live board updated.");
     setIsLiveStateDirty(false);
+    void broadcastRefresh("live-state");
     startTransition(() => {
       void refresh();
     });
-  }, [currentBid, refresh, selectedTeamId, sessionId]);
+  }, [broadcastRefresh, currentBid, refresh, selectedTeamId, sessionId]);
 
   const handleShortcut = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
@@ -268,7 +321,7 @@ export function DashboardShell({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [handleShortcut, viewerMode]);
 
-  async function recordPurchase() {
+  const recordPurchase = useCallback(async () => {
     setError(null);
     setNotice(null);
 
@@ -302,10 +355,11 @@ export function DashboardShell({
 
     setNotice("Purchase recorded.");
     setIsLiveStateDirty(false);
+    void broadcastRefresh("purchase");
     startTransition(() => {
       void refresh();
     });
-  }
+  }, [broadcastRefresh, buyerId, currentBid, refresh, selectedTeamId, sessionId]);
 
   async function saveProjectionOverride() {
     if (!selectedTeamId) {
@@ -395,7 +449,14 @@ export function DashboardShell({
             Signed in as {currentMember.name} ({currentMember.role})
           </div>
           <div className="status-pill">Backend {dashboard.storageBackend}</div>
-          <div className="status-pill">{isRefreshing ? "Syncing" : "Sync live"}</div>
+          {!viewerMode && currentMember.role === "admin" ? (
+            <Link
+              href={`/csv-analysis?sessionId=${sessionId}`}
+              className="button button-secondary"
+            >
+              Open analysis
+            </Link>
+          ) : null}
           {!viewerMode ? (
             <div className="status-pill">Shortcuts /, B, W, Enter</div>
           ) : null}
@@ -412,7 +473,6 @@ export function DashboardShell({
           titleOdds={titleOdds}
           recentSales={recentSales}
           potentialRemainingBankroll={potentialRemainingBankroll}
-          isRefreshing={isRefreshing}
           syndicateLookup={syndicateLookup}
         />
       ) : (
@@ -652,8 +712,10 @@ export function DashboardShell({
                         ref={teamSelectRef}
                         value={selectedTeamId}
                         onChange={(event) => {
-                          setIsLiveStateDirty(true);
-                          setSelectedTeamId(event.target.value);
+                          const nextTeamId = event.target.value;
+                          setSelectedTeamId(nextTeamId);
+                          setCurrentBid(0);
+                          void saveActiveTeam(nextTeamId);
                         }}
                       >
                         <option value="">Select a team</option>
@@ -1105,7 +1167,6 @@ function ViewerBoard({
   titleOdds,
   recentSales,
   potentialRemainingBankroll,
-  isRefreshing,
   syndicateLookup
 }: {
   dashboard: AuctionDashboard;
@@ -1113,7 +1174,6 @@ function ViewerBoard({
   titleOdds: number;
   recentSales: SoldTeamSummary[];
   potentialRemainingBankroll: number;
-  isRefreshing: boolean;
   syndicateLookup: Map<string, Syndicate>;
 }) {
   const nominatedTeam = dashboard.nominatedTeam;
@@ -1208,7 +1268,6 @@ function ViewerBoard({
               compact
             />
             <MetricCard label="Title odds" value={formatPercent(titleOdds)} compact />
-            <MetricCard label="Sync state" value={isRefreshing ? "Syncing" : "Live"} compact />
           </div>
         </article>
       </aside>

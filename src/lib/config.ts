@@ -73,3 +73,29 @@ export function validateRuntimeConfig() {
     getRequiredSupabaseServerConfig();
   }
 }
+
+export function getConfiguredCsvProjectionFilePath() {
+  const rawValue = process.env.SPORTS_PROJECTIONS_CSV_FILE;
+  if (isBlank(rawValue)) {
+    return null;
+  }
+
+  return normalizeEnvPath(rawValue!);
+}
+
+function normalizeEnvPath(rawValue: string) {
+  let value = rawValue.trim();
+
+  if (value.startsWith("=")) {
+    value = value.slice(1).trim();
+  }
+
+  if (
+    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+
+  return value;
+}

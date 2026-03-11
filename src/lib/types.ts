@@ -248,6 +248,7 @@ export interface AuctionSession {
 export interface StoredAuctionSession extends AuctionSession {
   sharedAccessCodeHash: string;
   sharedAccessCodeLookup: string;
+  sharedAccessCodeCiphertext: string;
   accessMembers: AccessMember[];
 }
 
@@ -326,6 +327,7 @@ export interface SessionSyndicateInput {
 
 export interface SessionAdminConfig {
   session: AuctionSession;
+  currentSharedAccessCode: string | null;
   accessMembers: AccessMember[];
   platformUsers: PlatformUser[];
   syndicateCatalog: SyndicateCatalogEntry[];

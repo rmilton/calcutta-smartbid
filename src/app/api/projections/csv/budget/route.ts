@@ -1,3 +1,4 @@
+import { getConfiguredCsvProjectionFilePath } from "@/lib/config";
 import { jsonError, jsonOk } from "@/lib/http";
 import {
   buildCsvBudgetPlan,
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const filePath = process.env.SPORTS_PROJECTIONS_CSV_FILE;
+    const filePath = getConfiguredCsvProjectionFilePath();
     if (!filePath) {
       return jsonError("SPORTS_PROJECTIONS_CSV_FILE is not configured.");
     }
