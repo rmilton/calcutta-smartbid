@@ -1,5 +1,8 @@
 "use client";
 
+import { Breadcrumbs } from "@/components/breadcrumbs";
+import Link from "next/link";
+import { SessionWorkspaceNav } from "@/components/session-workspace-nav";
 import {
   useCallback,
   startTransition,
@@ -38,10 +41,10 @@ interface ActiveOverrideRow {
 }
 
 const viewLabels: Record<WorkspaceView, string> = {
-  auction: "Auction",
+  auction: "Live board",
   portfolio: "Portfolio",
-  overrides: "Overrides",
-  session: "Session"
+  overrides: "Projection lab",
+  session: "Room snapshot"
 };
 
 const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
@@ -169,6 +172,11 @@ export function DashboardShell({
     0,
     dashboard.focusSyndicate.remainingBankroll - currentBid
   );
+  const roleLabel = viewerMode
+    ? "Viewer"
+    : currentMember.scope === "platform"
+      ? "Platform admin"
+      : "Operator";
 
   useEffect(() => {
     if (!selectedTeam) {
@@ -382,28 +390,44 @@ export function DashboardShell({
     <main className="dashboard-page">
       <header className="surface-card session-hero">
         <div className="session-hero__copy">
-          <p className="eyebrow">Calcutta SmartBid</p>
+          <Breadcrumbs
+            items={[
+              { label: dashboard.session.name, href: `/session/${sessionId}` },
+              { label: viewerMode ? "Viewer board" : "Live board" }
+            ]}
+          />
+          <p className="eyebrow">{viewerMode ? "Viewer workspace" : "Session workspace"}</p>
           <h1>{dashboard.session.name}</h1>
           <p>
-            Premium live-auction control room for{" "}
+            {viewerMode ? "Read-only room view" : "Live room execution"} for{" "}
             <strong>{dashboard.focusSyndicate.name}</strong>.{" "}
             {dashboard.availableTeams.length} teams remain on the board.
           </p>
         </div>
         <div className="session-hero__meta">
-          <div className="status-pill">
-            Signed in as {currentMember.name} ({currentMember.role})
-          </div>
+          <div className="status-pill">{roleLabel}</div>
+          <div className="status-pill">Signed in as {currentMember.name}</div>
           <div className="status-pill">Backend {dashboard.storageBackend}</div>
           <div className="status-pill">{isRefreshing ? "Syncing" : "Sync live"}</div>
           {!viewerMode ? (
             <div className="status-pill">Shortcuts /, B, W, Enter</div>
+          ) : null}
+          {currentMember.scope === "platform" && !viewerMode ? (
+            <Link href={`/session/${sessionId}?preview=viewer`} className="button button-ghost">
+              Viewer preview
+            </Link>
           ) : null}
           <button type="button" className="button button-ghost" onClick={() => void logout()}>
             Log out
           </button>
         </div>
       </header>
+
+      <SessionWorkspaceNav
+        current="live"
+        sessionId={sessionId}
+        showSetup={currentMember.scope === "platform"}
+      />
 
       {viewerMode ? (
         <ViewerBoard
@@ -639,7 +663,7 @@ export function DashboardShell({
                 <article className="surface-card control-panel">
                   <div className="section-headline">
                     <div>
-                      <p className="eyebrow">Live Controls</p>
+                      <p className="eyebrow">Operator controls</p>
                       <h3>Keyboard-first board updates</h3>
                     </div>
                     <p className="section-kicker">/, B, W, Enter</p>
@@ -647,7 +671,7 @@ export function DashboardShell({
 
                   <div className="field-stack">
                     <label className="field-shell">
-                      <span>Active team</span>
+                      <span>Active team for bidding</span>
                       <select
                         ref={teamSelectRef}
                         value={selectedTeamId}
@@ -685,7 +709,7 @@ export function DashboardShell({
                     </label>
 
                     <label className="field-shell">
-                      <span>Winner</span>
+                      <span>Winning syndicate</span>
                       <select
                         ref={winnerSelectRef}
                         value={buyerId}
@@ -722,7 +746,7 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Auction Pulse</p>
-                      <h3>Focus syndicate position</h3>
+                      <h3>Your syndicate position</h3>
                     </div>
                   </div>
                   <div className="mini-grid">
@@ -737,7 +761,7 @@ export function DashboardShell({
                       compact
                     />
                     <MetricCard
-                      label="Portfolio EV"
+                      label="Estimated value"
                       value={formatCurrency(dashboard.focusSyndicate.portfolioExpectedValue)}
                       compact
                     />
@@ -780,7 +804,7 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Focus Summary</p>
-                    <h2>Portfolio position</h2>
+                    <h2>Your syndicate position</h2>
                   </div>
                 </div>
                 <div className="metric-grid">
@@ -896,7 +920,7 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Projection Overrides</p>
-                    <h2>Manual team adjustments</h2>
+                    <h2>Manual projection adjustments</h2>
                   </div>
                 </div>
 
@@ -1051,7 +1075,7 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Session Status</p>
-                    <h2>Operational readiness</h2>
+                    <h2>Room snapshot</h2>
                   </div>
                 </div>
                 <div className="metric-grid">
@@ -1078,8 +1102,8 @@ export function DashboardShell({
               <article className="surface-card">
                 <div className="section-headline">
                   <div>
-                    <p className="eyebrow">Operator Notes</p>
-                    <h3>Keyboard and session guidance</h3>
+                    <p className="eyebrow">Operator notes</p>
+                    <h3>Keyboard and room guidance</h3>
                   </div>
                 </div>
                 <div className="list-stack">
@@ -1122,11 +1146,11 @@ function ViewerBoard({
     <section className="viewer-layout">
       <div className="viewer-layout__main">
         <article className="surface-card viewer-board">
-          <p className="eyebrow">Shared Board</p>
+          <p className="eyebrow">Viewer board</p>
           <h2>{nominatedTeam ? nominatedTeam.name : "Waiting for nomination"}</h2>
           <p className="viewer-board__subcopy">
             {recommendation
-              ? "Recommendation still in range. This board is optimized for passive viewing."
+              ? "Recommendation is still in range. This board stays aligned with the operator workspace while remaining read-only."
               : "The current bid will pulse here as soon as the operator sets a nomination."}
           </p>
 

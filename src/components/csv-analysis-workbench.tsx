@@ -13,6 +13,7 @@ interface CsvAnalysisWorkbenchProps {
   initialTargetTeams?: number;
   initialMaxSingleTeamPct?: number;
   initialOwnedEntries?: CsvAnalysisPortfolioEntry[];
+  canManageOwnedTeams?: boolean;
 }
 
 interface BudgetRow {
@@ -112,7 +113,8 @@ export function CsvAnalysisWorkbench({
   initialBankroll,
   initialTargetTeams,
   initialMaxSingleTeamPct,
-  initialOwnedEntries
+  initialOwnedEntries,
+  canManageOwnedTeams = true
 }: CsvAnalysisWorkbenchProps) {
   const initialSelectedTeamId =
     (initialTeamId && analysis.teams.some((team) => team.id === initialTeamId) ? initialTeamId : null) ??
@@ -159,6 +161,10 @@ export function CsvAnalysisWorkbench({
   }, [ownedEntries, teamLookup]);
 
   useEffect(() => {
+    if (!canManageOwnedTeams) {
+      return;
+    }
+
     if (!hasMounted.current) {
       hasMounted.current = true;
       return;
@@ -192,7 +198,7 @@ export function CsvAnalysisWorkbench({
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [ownedEntries, sessionId]);
+  }, [canManageOwnedTeams, ownedEntries, sessionId]);
 
   const searchNormalized = searchTerm.trim().toLowerCase();
   const filteredTeams = useMemo(() => {
@@ -326,14 +332,7 @@ export function CsvAnalysisWorkbench({
   };
 
   return (
-    <main className="landing-page">
-      <section className="setup-section">
-        <div className="section-heading">
-          <p className="eyebrow">CSV Analysis</p>
-          <h2>Team profile and bid workbench</h2>
-        </div>
-
-        <section className="csv-analysis-layout">
+    <section className="csv-analysis-layout">
           <article className="panel">
             <div className="panel-head">
               <div>
@@ -424,9 +423,18 @@ export function CsvAnalysisWorkbench({
                 </div>
               </div>
 
-              {saveState === "saving" ? <p className="viewer-note">Saving owned teams…</p> : null}
-              {saveState === "saved" ? <p className="viewer-note">Owned teams saved.</p> : null}
-              {saveState === "error" ? (
+              {!canManageOwnedTeams ? (
+                <p className="viewer-note">
+                  Owned team tracking is read-only in platform admin view.
+                </p>
+              ) : null}
+              {canManageOwnedTeams && saveState === "saving" ? (
+                <p className="viewer-note">Saving owned teams…</p>
+              ) : null}
+              {canManageOwnedTeams && saveState === "saved" ? (
+                <p className="viewer-note">Owned teams saved.</p>
+              ) : null}
+              {canManageOwnedTeams && saveState === "error" ? (
                 <p className="form-error">{saveError ?? "Unable to save owned teams."}</p>
               ) : null}
             </div>
@@ -441,7 +449,11 @@ export function CsvAnalysisWorkbench({
                   <button
                     type="button"
                     className={ownedTeamIds.has(selectedTeam.id) ? "secondary" : "button"}
+                    disabled={!canManageOwnedTeams}
                     onClick={() => {
+                      if (!canManageOwnedTeams) {
+                        return;
+                      }
                       setOwnedEntries((current) => {
                         if (current.some((entry) => entry.teamId === selectedTeam.id)) {
                           return current.filter((entry) => entry.teamId !== selectedTeam.id);
@@ -726,6 +738,7 @@ export function CsvAnalysisWorkbench({
                       <button
                         type="button"
                         className="secondary"
+                        disabled={!canManageOwnedTeams}
                         onClick={() =>
                           setOwnedEntries((current) =>
                             current.filter((entry) => entry.teamId !== row.team.id)
@@ -742,6 +755,7 @@ export function CsvAnalysisWorkbench({
                         type="number"
                         min={0}
                         step={10}
+                        disabled={!canManageOwnedTeams}
                         value={String(row.entry.paidPrice)}
                         onChange={(event) => {
                           const nextPaidPrice = toNumber(event.target.value, 0);
@@ -773,9 +787,7 @@ export function CsvAnalysisWorkbench({
               </p>
             )}
           </aside>
-        </section>
-      </section>
-    </main>
+    </section>
   );
 }
 

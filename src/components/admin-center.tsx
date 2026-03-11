@@ -1,5 +1,6 @@
 "use client";
 
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import Link from "next/link";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
@@ -78,6 +79,7 @@ export function AdminCenter({
     () => data.dataSources.filter((source) => source.active).length + 1,
     [data.dataSources]
   );
+  const firstSessionId = data.sessions[0]?.id ?? null;
 
   function resetMessages() {
     setError(null);
@@ -382,13 +384,14 @@ export function AdminCenter({
   return (
     <main className="admin-page">
       <section className="admin-shell">
+        <Breadcrumbs items={[{ label: "Platform", href: "/admin" }, { label: "Sessions" }]} />
         <header className="surface-card session-hero">
           <div className="session-hero__copy">
-            <p className="eyebrow">Admin Center</p>
-            <h1>Manage auctions, users, syndicates, and data sources.</h1>
+            <p className="eyebrow">Platform admin workspace</p>
+            <h1>Sessions is the control plane. Everything else supports room readiness.</h1>
             <p>
-              Platform admin <strong>{platformAdminEmail}</strong> can create sessions,
-              assign access, manage participating syndicates, and control projection imports.
+              Signed in as <strong>{platformAdminEmail}</strong>. Create rooms, complete readiness,
+              and then launch operators, viewer previews, and analysis from one place.
             </p>
           </div>
           <div className="session-hero__meta">
@@ -399,6 +402,14 @@ export function AdminCenter({
             <Link href="/admin/sessions/new" className="button">
               Create session
             </Link>
+            {firstSessionId ? (
+              <Link
+                href={`/csv-analysis?sessionId=${firstSessionId}`}
+                className="button button-secondary"
+              >
+                CSV analysis
+              </Link>
+            ) : null}
             <LogoutButton />
           </div>
         </header>
@@ -429,32 +440,73 @@ export function AdminCenter({
         {notice ? <p className="notice-text">{notice}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
 
-        <div className="workspace-tabs">
-          {[
-            ["overview", "Overview"],
-            ["users", "Users"],
-            ["syndicates", "Syndicates"],
-            ["data", "Data"]
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              className={tab === key ? "workspace-tab workspace-tab--active" : "workspace-tab"}
-              onClick={() => setTab(key as typeof tab)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <div className="workspace-frame">
+          <aside className="surface-card workspace-sidebar">
+            <p className="eyebrow">Navigate workspace</p>
+            <div className="workspace-nav">
+              {[
+                ["overview", "Sessions", `${data.sessions.length}`],
+                ["users", "Directory", `${activeUserCount}`],
+                ["syndicates", "Syndicates", `${activeSyndicateCount}`],
+                ["data", "Data sources", `${activeDataSourceCount}`]
+              ].map(([key, label, count]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={
+                    tab === key
+                      ? "workspace-nav__item workspace-nav__item--active"
+                      : "workspace-nav__item"
+                  }
+                  onClick={() => setTab(key as typeof tab)}
+                >
+                  <span>{label}</span>
+                  <strong>{count}</strong>
+                </button>
+              ))}
+            </div>
+            <div className="workspace-sidebar__note">
+              <strong>Recommended flow</strong>
+              <p>Create the room, finish readiness, then launch operator, viewer, and analysis tools.</p>
+            </div>
+          </aside>
 
-        {tab === "overview" ? (
-          <section className="stack-layout">
-            <article className="surface-card">
+          <div className="stack-layout">
+            {tab === "overview" ? (
+              <section className="stack-layout">
+                <article className="surface-card">
+                  <div className="section-headline">
+                    <div>
+                      <p className="eyebrow">Primary workflow</p>
+                      <h3>Move through room readiness in order</h3>
+                      <p>Sessions stay primary. Directory, syndicates, and data sources exist to support launch readiness.</p>
+                    </div>
+                  </div>
+                  <div className="workflow-grid">
+                    <div className="workflow-card">
+                      <span>1</span>
+                      <strong>Create the room</strong>
+                      <p>Start in Sessions, then continue directly into readiness.</p>
+                    </div>
+                    <div className="workflow-card">
+                      <span>2</span>
+                      <strong>Finish readiness</strong>
+                      <p>Assign operators and viewers, confirm room code, syndicates, economics, and imports.</p>
+                    </div>
+                    <div className="workflow-card">
+                      <span>3</span>
+                      <strong>Launch tools</strong>
+                      <p>Open operator board, viewer preview, and session analysis from the room workspace.</p>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="surface-card">
               <div className="section-headline">
                 <div>
-                  <p className="eyebrow">Auction Sessions</p>
-                  <h3>Live room directory</h3>
-                  <p>Track session health, data-source selection, and entry points for operators.</p>
+                  <p className="eyebrow">Sessions</p>
+                  <h3>Room directory and launch points</h3>
+                  <p>Track session health, readiness context, and the handoff into operator, viewer, and analysis surfaces.</p>
                 </div>
                 <span className="status-pill">{data.sessions.length} configured</span>
               </div>
@@ -485,7 +537,7 @@ export function AdminCenter({
                         <td>{session.purchaseCount}</td>
                         <td>{session.syndicateCount}</td>
                         <td>
-                          {session.adminCount} admin / {session.viewerCount} viewer
+                          {session.adminCount} operator / {session.viewerCount} viewer
                         </td>
                         <td>
                           <div className="button-row">
@@ -493,13 +545,25 @@ export function AdminCenter({
                               href={`/admin/sessions/${session.id}`}
                               className="button button-secondary button--small"
                             >
-                              Manage
+                              Setup &amp; data
                             </Link>
                             <Link
                               href={`/session/${session.id}`}
                               className="button button-ghost button--small"
                             >
-                              Open board
+                              Operator board
+                            </Link>
+                            <Link
+                              href={`/session/${session.id}?preview=viewer`}
+                              className="button button-ghost button--small"
+                            >
+                              Viewer preview
+                            </Link>
+                            <Link
+                              href={`/csv-analysis?sessionId=${session.id}`}
+                              className="button button-secondary button--small"
+                            >
+                              Analysis
                             </Link>
                           </div>
                         </td>
@@ -508,18 +572,18 @@ export function AdminCenter({
                   </tbody>
                 </table>
               </div>
-            </article>
-          </section>
-        ) : null}
+                </article>
+              </section>
+            ) : null}
 
-        {tab === "users" ? (
-          <section className="admin-grid">
-            <article className="surface-card">
+            {tab === "users" ? (
+              <section className="admin-grid">
+                <article className="surface-card">
               <div className="section-headline">
                 <div>
                   <p className="eyebrow">Directory</p>
-                  <h3>Org users</h3>
-                  <p>Control which people can be assigned into auction rooms.</p>
+                  <h3>Operators and viewers</h3>
+                  <p>Maintain the people who can be assigned into rooms before launch.</p>
                 </div>
                 <span className="status-pill">{activeUserCount} active</span>
               </div>
@@ -537,13 +601,13 @@ export function AdminCenter({
                   <tbody>{data.platformUsers.map(renderUserRow)}</tbody>
                 </table>
               </div>
-            </article>
+                </article>
 
-            <article className="surface-card form-section">
+                <article className="surface-card form-section">
               <div className="form-section__header">
                 <p className="eyebrow">Create User</p>
-                <h3>Add directory user</h3>
-                <p>Create a reusable admin or viewer account for future sessions.</p>
+                <h3>Add platform directory user</h3>
+                <p>Create reusable operator or viewer identities for future sessions.</p>
               </div>
               <form className="setup-shell" onSubmit={onCreateUser}>
                 <label className="field-shell">
@@ -586,13 +650,13 @@ export function AdminCenter({
                   </button>
                 </div>
               </form>
-            </article>
-          </section>
-        ) : null}
+                </article>
+              </section>
+            ) : null}
 
-        {tab === "syndicates" ? (
-          <section className="admin-grid">
-            <article className="surface-card">
+            {tab === "syndicates" ? (
+              <section className="admin-grid">
+                <article className="surface-card">
               <div className="section-headline">
                 <div>
                   <p className="eyebrow">Catalog</p>
@@ -615,9 +679,9 @@ export function AdminCenter({
                   <tbody>{data.syndicateCatalog.map(renderSyndicateRow)}</tbody>
                 </table>
               </div>
-            </article>
+                </article>
 
-            <article className="surface-card form-section">
+                <article className="surface-card form-section">
               <div className="form-section__header">
                 <p className="eyebrow">Create Syndicate</p>
                 <h3>Add catalog entry</h3>
@@ -666,18 +730,18 @@ export function AdminCenter({
                   </button>
                 </div>
               </form>
-            </article>
-          </section>
-        ) : null}
+                </article>
+              </section>
+            ) : null}
 
-        {tab === "data" ? (
-          <section className="admin-grid">
-            <article className="surface-card">
+            {tab === "data" ? (
+              <section className="admin-grid">
+                <article className="surface-card">
               <div className="section-headline">
                 <div>
-                  <p className="eyebrow">Projection Sources</p>
+                  <p className="eyebrow">Data Sources</p>
                   <h3>CSV uploads and API connectors</h3>
-                  <p>Keep feeds healthy so rooms can switch between mock and external data quickly.</p>
+                  <p>Keep sources healthy so rooms can import projections and analysis inputs without friction.</p>
                 </div>
                 <span className="status-pill">{activeDataSourceCount} available</span>
               </div>
@@ -708,9 +772,9 @@ export function AdminCenter({
                   </tbody>
                 </table>
               </div>
-            </article>
+                </article>
 
-            <article className="surface-card form-section">
+                <article className="surface-card form-section">
               <div className="form-section__header">
                 <p className="eyebrow">Create Source</p>
                 <h3>Add CSV or API connection</h3>
@@ -804,7 +868,7 @@ export function AdminCenter({
                   />
                   <div>
                     <strong>Active source</strong>
-                    <span>Make the feed selectable for session admins immediately.</span>
+                    <span>Make the feed selectable for room setup and analysis immediately.</span>
                   </div>
                 </label>
                 <div className="button-row">
@@ -813,9 +877,11 @@ export function AdminCenter({
                   </button>
                 </div>
               </form>
-            </article>
-          </section>
-        ) : null}
+                </article>
+              </section>
+            ) : null}
+          </div>
+        </div>
       </section>
     </main>
   );

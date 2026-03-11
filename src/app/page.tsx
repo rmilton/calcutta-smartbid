@@ -16,26 +16,25 @@ export default async function HomePage() {
     <main className="marketing-page">
       <section className="marketing-hero">
         <div className="surface-card marketing-copy">
-          <p className="eyebrow">Live NCAA Calcutta Intelligence</p>
-          <h1>Run the room with a premium live-market auction cockpit.</h1>
+          <p className="eyebrow">Platform control plane + live room</p>
+          <h1>Move from session setup to auction floor without losing the thread.</h1>
           <p>
-            Calcutta SmartBid gives one operator a focused decision board while the rest
-            of the syndicate watches the same bid pulse, sale feed, and portfolio posture
-            in sync.
+            Calcutta SmartBid separates platform setup, operator controls, and viewer access,
+            while keeping each role anchored to the same room context.
           </p>
 
           <div className="marketing-feature-list">
             <div className="feature-card">
-              <strong>Decision strip</strong>
-              <span>Current bid, model ceiling, bankroll impact, and key drivers stay visible.</span>
+              <strong>Sessions workspace</strong>
+              <span>Create rooms, configure access, manage data sources, and launch the room from one control plane.</span>
             </div>
             <div className="feature-card">
-              <strong>Shared board</strong>
-              <span>Viewer mode turns the current bid into the dominant room-facing signal.</span>
+              <strong>Operator board</strong>
+              <span>Keep the active team, live bid, portfolio posture, and model guidance in one continuous workspace.</span>
             </div>
             <div className="feature-card">
-              <strong>Portfolio discipline</strong>
-              <span>Track owned teams, expected value, and conflicts without breaking live flow.</span>
+              <strong>Viewer alignment</strong>
+              <span>Give passive viewers a read-only board that still looks and feels like the same room.</span>
             </div>
           </div>
         </div>
