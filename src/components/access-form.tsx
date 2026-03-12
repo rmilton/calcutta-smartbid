@@ -13,19 +13,19 @@ const accessModes: Array<{
   {
     id: "viewer",
     label: "Viewer",
-    title: "Join session",
+    title: "Mothership room",
     submitLabel: "Enter"
   },
   {
     id: "operator",
     label: "Operator",
-    title: "Operator access",
+    title: "Operator board",
     submitLabel: "Enter"
   },
   {
     id: "admin",
     label: "Platform admin",
-    title: "Platform admin",
+    title: "Admin center",
     submitLabel: "Enter admin"
   }
 ];

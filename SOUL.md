@@ -4,7 +4,7 @@ This file explains what Calcutta SmartBid is trying to be so future work does no
 
 ## Core Idea
 
-Calcutta SmartBid is not a bracket game and not a passive analytics site. It is a live decision-support system for a syndicate leader in the middle of a fast-moving auction, with an admin control plane that prepares the room before bidding starts.
+Calcutta SmartBid is not a bracket game and not a passive analytics site. It is a live decision-support system for Mothership in the middle of a fast-moving auction, with an admin control plane that prepares the room before bidding starts.
 
 The product succeeds when it helps the operator make a better bid decision in seconds, with enough confidence to act in the room.
 
@@ -15,13 +15,13 @@ Calcutta SmartBid currently has four product surfaces:
 - a shared landing/login entrypoint
 - an admin control plane for setup and governance
 - an operator live board for real-time decisions
-- a synchronized viewer board for passive teammates
+- a synchronized viewer board for trusted Mothership teammates
 
 These surfaces can look and feel related, but they should not converge into one generic dashboard. Each exists to serve a different job.
 
 ## Primary User
 
-The primary user is the auction operator for one syndicate.
+The primary user is the auction operator for Mothership.
 
 This person is:
 
@@ -34,10 +34,10 @@ Everything in the app should be optimized around that reality.
 
 ## Secondary Users
 
-- syndicate teammates watching the same board
+- Mothership teammates watching the same board
 - platform admins configuring access, syndicates, and data sources before the event
 - analysts who want to inspect auction outcomes after the event
-- future operators reusing the tool in later tournaments
+- future Mothership operators reusing the tool in later tournaments
 
 Secondary users matter, but they should not make the main live workflow slower or noisier.
 
@@ -72,6 +72,18 @@ At a minimum, recommendation output should make visible:
 
 A team is not valuable in isolation. Owning teams that likely collide early changes the real value of a bid. The app should keep modeling ownership exposure, not just pure team EV.
 
+### Mothership is the fixed strategy subject
+
+The app is not neutral between syndicates. Every room is evaluated from Mothership's perspective.
+
+Other syndicates still matter, but as opponents in the room:
+
+- they can win purchases
+- they shape ownership conflict and room spend
+- they provide market context against Mothership decisions
+
+The product should not ask admins or operators to choose which syndicate the model is optimizing for.
+
 ### Purchases are the truth
 
 Auction state should be anchored around completed purchases and current live nomination state. The product is not trying to be a perfect tick-by-tick bid history recorder in v1.
@@ -93,6 +105,7 @@ Recovery also applies to human error. High-impact actions such as purchases and 
 - projected pot is provisional and can drive recommendation math before the room closes
 - actual locked pot, once set, should override projected assumptions everywhere relevant
 - viewer state must be derived from the same persisted session truth as operator state
+- Mothership is the always-on strategy lens for recommendation math and bankroll framing
 
 ## Current Modeling Assumptions
 
@@ -110,7 +123,7 @@ Future work should improve these assumptions, but should not hide them.
 - current bid and recommended max should be visible at a glance
 - the ledger should answer "who owns what" and "how much do they have left"
 - the product should make clear whether "money left" is forecast headroom or locked actual room state
-- viewer mode should feel synchronized but never editable
+- viewer mode should feel synchronized, Mothership-centered, and never editable
 - validation errors should be domain language, not raw schema text
 - admin workflows should happen before the live room, not inside the live room
 

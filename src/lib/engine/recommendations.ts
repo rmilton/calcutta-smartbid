@@ -50,7 +50,7 @@ export function buildBidRecommendation(
   const rationale = [
     `${team.name} projects for ${teamResult.roundProbabilities.finalFour.toFixed(2)} Final Four probability and ${teamResult.roundProbabilities.champion.toFixed(2)} title probability.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
-    `Focus syndicate has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`
+    `${focusSyndicate.name} has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`
   ];
 
   if (ownershipExposure.likelyConflicts[0]) {

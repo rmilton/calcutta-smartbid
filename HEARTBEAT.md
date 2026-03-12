@@ -23,7 +23,7 @@ As of `2026-03-09`:
 - session admin supports:
   - access assignment
   - shared code rotation
-  - participating syndicates
+  - tracked syndicates
   - payout structure editing
   - active data source selection
   - import history
@@ -32,6 +32,7 @@ As of `2026-03-09`:
   - searchable single-control `Active Team for Bidding`
   - automatic board update on team selection
   - purchase recording and persistence
+- live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
 
@@ -45,13 +46,13 @@ Current product surfaces and their roles:
   - routes platform admins to `/admin`
   - routes session members into their assigned live room
 - `Admin center`
-  - platform-level setup and governance
-  - manages org users, syndicates, data sources, and session list
+  - platform-level setup and operations
+  - manages org users, tracked syndicates, data sources, and session list
 - `Session admin`
   - per-session configuration
-  - manages access, shared code, payout structure, syndicates, and data imports
+  - manages access, shared code, payout structure, tracked syndicates, and data imports
 - `Live room`
-  - operator and viewer share the same persisted session state
+  - operator and viewer share the same persisted Mothership room state
   - operator can update nomination, current bid, and purchases
   - viewer is read-only
 
@@ -71,6 +72,7 @@ Current product surfaces and their roles:
 - viewer state must always derive from the same persisted session truth as operator state
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
+- Mothership is the fixed recommendation lens for every session
 
 ## Deployment Shape
 
@@ -106,6 +108,7 @@ Key files:
 - platform-admin session creation is not exposed on the public landing page
 - session users authenticate with assigned email plus shared code
 - viewer mode remains read-only
+- viewers are trusted internal teammates and see the same Mothership-centered guidance as operators
 - validation errors should resolve to domain-language messages instead of raw schema failures where feasible
 - production-like deployment must run with `CALCUTTA_STORAGE_BACKEND=supabase`
 
@@ -119,6 +122,7 @@ Key files:
 - production deployments are guarded from running on local storage
 - session creation is no longer exposed on the public landing page
 - session users authenticate by assigned email plus shared code
+- session creation and session manage no longer expose a configurable focus syndicate
 - likely bidders were removed
 - `Nominated team` became `Active Team for Bidding`
 - the team selector is now a single searchable control
@@ -136,7 +140,7 @@ Key files:
 - recommendation explanations are still lighter than the target product standard
 - no full audit trail UI in admin center
 - no session archive/delete flow
-- session creation still allows rooms to be created from whatever syndicates are selected at creation time; updating the catalog does not retroactively change existing sessions
+- old sessions created before the Mothership-first rule may need admin correction if Mothership is not in the room
 - lint still uses deprecated `next lint`
 
 ## Manual Regression Checklist
@@ -161,6 +165,7 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 - local development can still use `CALCUTTA_STORAGE_BACKEND=local`, but do not treat that path as deployable
 - if dev runtime gets strange after large route/component changes, clear `.next` and restart
 - old stored sessions may still contain legacy payout keys; the repository normalizes them
+- `MOTHERSHIP_SYNDICATE_NAME` defaults to `Mothership` and is now the canonical strategy subject
 - the clearest visible signal that configuration is correct is the session badge reading `Backend supabase`
 - the winner picker on the live board is driven by the session's participating syndicates, not the global syndicate catalog
 - if a live-room mutation cannot be safely corrected or audited, treat that as a product gap rather than operator error

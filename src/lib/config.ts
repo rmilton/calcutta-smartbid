@@ -83,6 +83,16 @@ export function getConfiguredCsvProjectionFilePath() {
   return normalizeEnvPath(rawValue!);
 }
 
+export function getConfiguredMothershipSyndicateName() {
+  const rawValue = process.env.MOTHERSHIP_SYNDICATE_NAME;
+
+  if (isBlank(rawValue)) {
+    return "Mothership";
+  }
+
+  return rawValue!.trim();
+}
+
 function normalizeEnvPath(rawValue: string) {
   let value = rawValue.trim();
 

@@ -1,13 +1,31 @@
+import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
 
+function requireMothershipPerspective(session: AuctionSession) {
+  const mothershipName = getConfiguredMothershipSyndicateName().trim().toLowerCase();
+  const mothership =
+    session.syndicates.find((syndicate) => syndicate.name.trim().toLowerCase() === mothershipName) ??
+    null;
+
+  if (!mothership) {
+    throw new Error(
+      `${getConfiguredMothershipSyndicateName()} must be included in participating syndicates before opening the live room.`
+    );
+  }
+
+  return mothership;
+}
+
 function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession): AuctionSession {
+  const mothership = requireMothershipPerspective(session);
+
   return {
     id: session.id,
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
-    focusSyndicateId: session.focusSyndicateId,
+    focusSyndicateId: mothership.id,
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
     syndicates: session.syndicates,
@@ -42,10 +60,7 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  const focusSyndicate = publicSession.syndicates.find((syndicate) => syndicate.id === publicSession.focusSyndicateId);
-  if (!focusSyndicate) {
-    throw new Error("Focus syndicate is missing.");
-  }
+  const focusSyndicate = requireMothershipPerspective(publicSession);
 
   return {
     session: publicSession,

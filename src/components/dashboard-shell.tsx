@@ -31,7 +31,7 @@ interface DashboardShellProps {
   currentMember: AuthenticatedMember;
 }
 
-type WorkspaceView = "auction" | "portfolio" | "overrides" | "session";
+type WorkspaceView = "auction" | "portfolio" | "overrides";
 
 interface ActiveOverrideRow {
   override: ProjectionOverride;
@@ -41,8 +41,7 @@ interface ActiveOverrideRow {
 const viewLabels: Record<WorkspaceView, string> = {
   auction: "Auction",
   portfolio: "Portfolio",
-  overrides: "Overrides",
-  session: "Session"
+  overrides: "Overrides"
 };
 
 const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
@@ -50,6 +49,14 @@ const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
   caution: "Stay disciplined",
   pass: "Pass"
 };
+
+function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMember["scope"]) {
+  if (scope === "platform" && role === "admin") {
+    return "Platform admin";
+  }
+
+  return role === "admin" ? "Operator" : "Viewer";
+}
 
 export function DashboardShell({
   sessionId,
@@ -439,24 +446,14 @@ export function DashboardShell({
           <p className="eyebrow">Calcutta SmartBid</p>
           <h1>{dashboard.session.name}</h1>
           <p>
-            Premium live-auction control room for{" "}
-            <strong>{dashboard.focusSyndicate.name}</strong>.{" "}
-            {dashboard.availableTeams.length} teams remain on the board.
+            Mothership war room. {dashboard.availableTeams.length} teams remain on the board.
           </p>
         </div>
         <div className="session-hero__meta">
           <div className="status-pill">
-            Signed in as {currentMember.name} ({currentMember.role})
+            Signed in as {currentMember.name} ({getRoleLabel(currentMember.role, currentMember.scope)})
           </div>
           <div className="status-pill">Backend {dashboard.storageBackend}</div>
-          {!viewerMode && currentMember.role === "admin" ? (
-            <Link
-              href={`/csv-analysis?sessionId=${sessionId}`}
-              className="button button-secondary"
-            >
-              Open analysis
-            </Link>
-          ) : null}
           {!viewerMode ? (
             <div className="status-pill">Shortcuts /, B, W, Enter</div>
           ) : null}
@@ -491,6 +488,14 @@ export function DashboardShell({
                 {viewLabels[view]}
               </button>
             ))}
+            {currentMember.role === "admin" ? (
+              <Link
+                href={`/csv-analysis?sessionId=${sessionId}`}
+                className="workspace-tab"
+              >
+                Analysis
+              </Link>
+            ) : null}
           </nav>
 
           {activeView === "auction" ? (
@@ -784,7 +789,7 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Auction Pulse</p>
-                      <h3>Focus syndicate position</h3>
+                      <h3>Mothership position</h3>
                     </div>
                   </div>
                   <div className="mini-grid">
@@ -841,7 +846,7 @@ export function DashboardShell({
               <article className="surface-card">
                 <div className="section-headline">
                   <div>
-                    <p className="eyebrow">Focus Summary</p>
+                    <p className="eyebrow">Mothership Summary</p>
                     <h2>Portfolio position</h2>
                   </div>
                 </div>
@@ -1107,54 +1112,6 @@ export function DashboardShell({
             </section>
           ) : null}
 
-          {activeView === "session" ? (
-            <section className="detail-grid">
-              <article className="surface-card">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Session Status</p>
-                    <h2>Operational readiness</h2>
-                  </div>
-                </div>
-                <div className="metric-grid">
-                  <MetricCard label="Storage backend" value={dashboard.storageBackend} />
-                  <MetricCard
-                    label="Projection provider"
-                    value={dashboard.session.projectionProvider}
-                  />
-                  <MetricCard
-                    label="Simulation iterations"
-                    value={`${snapshot?.iterations ?? 0}`}
-                  />
-                  <MetricCard
-                    label="Simulation snapshot"
-                    value={
-                      snapshot?.generatedAt
-                        ? new Date(snapshot.generatedAt).toLocaleString()
-                        : "Not built"
-                    }
-                  />
-                </div>
-              </article>
-
-              <article className="surface-card">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Operator Notes</p>
-                    <h3>Keyboard and session guidance</h3>
-                  </div>
-                </div>
-                <div className="list-stack">
-                  <div className="list-line">/ focuses the active team picker.</div>
-                  <div className="list-line">B focuses the current bid input.</div>
-                  <div className="list-line">W focuses the winner picker.</div>
-                  <div className="list-line">
-                    Enter saves the live board while you are in the bid field.
-                  </div>
-                </div>
-              </article>
-            </section>
-          ) : null}
         </>
       )}
     </main>
@@ -1258,7 +1215,7 @@ function ViewerBoard({
           </div>
           <div className="mini-grid">
             <MetricCard
-              label="Focus bankroll"
+              label="Mothership bankroll"
               value={formatCurrency(potentialRemainingBankroll)}
               compact
             />

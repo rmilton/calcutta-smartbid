@@ -1,6 +1,6 @@
 # Calcutta SmartBid
 
-Calcutta SmartBid is a live NCAA Calcutta auction decision system built with Next.js. It is optimized for one operator making fast bid decisions during a live room, with synchronized viewer access and a separate admin control plane.
+Calcutta SmartBid is a live NCAA Calcutta auction decision system built for Mothership. It is optimized for one operator making fast bid decisions during a live room, with synchronized viewer access for trusted teammates and a separate admin control plane.
 
 The current implementation ships with:
 
@@ -8,9 +8,9 @@ The current implementation ships with:
 - an admin center for sessions, users, syndicates, and data sources
 - a session-admin surface for access, payout rules, syndicates, and imports
 - a live operator board with real-time bid support
-- a synchronized viewer mode with a read-only shared board
-- Monte Carlo tournament simulation and bid recommendations
-- a ledger for syndicate ownership, spend, and modeled remaining bankroll
+- a synchronized viewer mode with a read-only shared Mothership board
+- Monte Carlo tournament simulation and Mothership-centered bid recommendations
+- a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
 Additional project context lives in:
@@ -41,6 +41,7 @@ PLATFORM_ADMIN_EMAILS=...
 PLATFORM_ADMIN_NAMES=...
 PLATFORM_ADMIN_SHARED_CODE=...
 AUTH_SESSION_SECRET=...
+MOTHERSHIP_SYNDICATE_NAME=Mothership
 ```
 
 ### CSV analysis local quickstart
@@ -75,12 +76,12 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - routes platform admins to `/admin`
   - routes session members to `/session/[sessionId]`
 - `Admin center`
-  - platform-level setup and governance
-  - manages users, syndicates, data sources, and sessions
+  - platform-level setup and operations
+  - manages users, tracked syndicates, data sources, and sessions
 - `Session admin`
-  - per-session access, shared code, payout structure, syndicates, and imports
+  - per-session access, shared code, payout structure, tracked syndicates, and imports
 - `Live room`
-  - shared persisted session state for operator and viewer
+  - shared persisted Mothership session state for operator and viewer
   - operator can update active team, bid, and purchases
   - viewer is read-only
 
@@ -89,7 +90,7 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
 The landing page is login-only. It accepts an email address and shared code, then routes the user based on what those credentials match:
 
 - `platform admin` credentials route to the admin center
-- `session member` credentials route into their auction room as either `admin` or `viewer`
+- `session member` credentials route into their auction room as either `operator` or `viewer`
 
 Role is determined by the authenticated member record for that session, not by a landing-page toggle.
 
@@ -142,6 +143,8 @@ CALCUTTA_STORAGE_BACKEND=supabase
 - current bid and active nominated team are live operational state
 - `projectedPot` is a provisional model input used for EV and bankroll forecasting
 - current `remainingBankroll` / headroom values are still modeled assumptions, not final room accounting
+- every live room is evaluated from the configured `MOTHERSHIP_SYNDICATE_NAME` perspective
+- selected syndicates in a session represent Mothership plus tracked room opponents
 - viewer state should always reflect the same persisted session truth as operator state
 
 ## Projection providers

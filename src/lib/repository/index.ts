@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { getConfiguredStorageBackend } from "@/lib/config";
+import {
+  getConfiguredMothershipSyndicateName,
+  getConfiguredStorageBackend
+} from "@/lib/config";
 import { buildDashboard } from "@/lib/dashboard";
 import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings, getDefaultPayoutRules } from "@/lib/sample-data";
@@ -18,6 +21,7 @@ import {
   loadProjectionsFromSource,
   testDataSourceConnection
 } from "@/lib/providers/projections";
+import { getSyndicateBrandColor } from "@/lib/syndicate-colors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   AccessMember,
@@ -60,7 +64,6 @@ interface SessionStore {
 
 interface CreateSessionInput {
   name: string;
-  focusSyndicateName: string;
   sharedAccessCode: string;
   accessAssignments: Array<{ platformUserId: string; role: SessionRole }>;
   catalogSyndicateIds: string[];
@@ -75,17 +78,6 @@ interface ProjectionOverrideInput {
   defense?: number;
   tempo?: number;
 }
-
-const fallbackColors = [
-  "#ff6b57",
-  "#0a7ea4",
-  "#f1a208",
-  "#4b7f52",
-  "#7b4fff",
-  "#ab3428",
-  "#1f6feb",
-  "#4a4e69"
-];
 
 const storeFile =
   process.env.CALCUTTA_STORE_FILE ?? path.join(os.tmpdir(), "calcutta-smartbid-store.json");
@@ -120,12 +112,11 @@ export interface SessionRepository {
   ): Promise<PlatformUser>;
   createSyndicateCatalogEntry(input: {
     name: string;
-    color?: string;
     active?: boolean;
   }): Promise<SyndicateCatalogEntry>;
   updateSyndicateCatalogEntry(
     entryId: string,
-    input: Partial<{ name: string; color: string; active: boolean }>
+    input: Partial<{ name: string; active: boolean }>
   ): Promise<SyndicateCatalogEntry>;
   createDataSource(input: {
     name: string;
@@ -160,7 +151,6 @@ export interface SessionRepository {
   updateSessionSyndicates(
     sessionId: string,
     input: {
-      focusSyndicateName: string;
       catalogSyndicateIds: string[];
     }
   ): Promise<SessionAdminConfig>;
@@ -312,17 +302,17 @@ class LocalSessionRepository implements SessionRepository {
 
   async createSyndicateCatalogEntry(input: {
     name: string;
-    color?: string;
     active?: boolean;
   }) {
     const store = await this.readStore();
     const parsed = createSyndicateCatalogSchema.parse(input);
+    const name = parsed.name.trim();
     ensureUniqueCatalogSyndicateName(store.syndicateCatalog, parsed.name);
     const now = new Date().toISOString();
     const entry: SyndicateCatalogEntry = {
       id: createId("catalog"),
-      name: parsed.name.trim(),
-      color: parsed.color,
+      name,
+      color: getSyndicateBrandColor(name),
       active: parsed.active,
       createdAt: now,
       updatedAt: now
@@ -334,7 +324,7 @@ class LocalSessionRepository implements SessionRepository {
 
   async updateSyndicateCatalogEntry(
     entryId: string,
-    input: Partial<{ name: string; color: string; active: boolean }>
+    input: Partial<{ name: string; active: boolean }>
   ) {
     const store = await this.readStore();
     const entry = findById(store.syndicateCatalog, entryId, "Syndicate catalog entry not found.");
@@ -343,9 +333,7 @@ class LocalSessionRepository implements SessionRepository {
       ensureUniqueCatalogSyndicateName(store.syndicateCatalog, parsed.name, entryId);
       entry.name = parsed.name.trim();
     }
-    if (parsed.color) {
-      entry.color = parsed.color;
-    }
+    entry.color = getSyndicateBrandColor(entry.name);
     if (parsed.active !== undefined) {
       entry.active = parsed.active;
     }
@@ -480,7 +468,6 @@ class LocalSessionRepository implements SessionRepository {
   async updateSessionSyndicates(
     sessionId: string,
     input: {
-      focusSyndicateName: string;
       catalogSyndicateIds: string[];
     }
   ) {
@@ -491,15 +478,7 @@ class LocalSessionRepository implements SessionRepository {
       store.syndicateCatalog,
       input.catalogSyndicateIds
     );
-    const focusSyndicate =
-      session.syndicates.find(
-        (syndicate) =>
-          syndicate.name.trim().toLowerCase() === input.focusSyndicateName.trim().toLowerCase()
-      ) ?? null;
-    if (!focusSyndicate) {
-      throw new Error("Focus syndicate must be in the participating syndicate list.");
-    }
-    session.focusSyndicateId = focusSyndicate.id;
+    session.focusSyndicateId = requireMothershipSyndicate(session.syndicates).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
@@ -999,18 +978,18 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async createSyndicateCatalogEntry(input: {
     name: string;
-    color?: string;
     active?: boolean;
   }) {
     const parsed = createSyndicateCatalogSchema.parse(input);
+    const name = parsed.name.trim();
     const now = new Date().toISOString();
     const client = requireSupabaseClient();
     const result = await client
       .from("syndicate_catalog")
       .insert({
         id: createId("catalog"),
-        name: parsed.name.trim(),
-        color: parsed.color,
+        name,
+        color: getSyndicateBrandColor(name),
         active: parsed.active,
         created_at: now,
         updated_at: now
@@ -1023,15 +1002,23 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async updateSyndicateCatalogEntry(
     entryId: string,
-    input: Partial<{ name: string; color: string; active: boolean }>
+    input: Partial<{ name: string; active: boolean }>
   ) {
     const parsed = updateSyndicateCatalogSchema.parse(input);
     const client = requireSupabaseClient();
+    const currentResult = await client
+      .from("syndicate_catalog")
+      .select("*")
+      .eq("id", entryId)
+      .single();
+    throwOnSupabaseError(currentResult.error);
+    const currentEntry = mapSyndicateCatalog([currentResult.data])[0];
+    const nextName = parsed.name ? parsed.name.trim() : currentEntry.name;
     const result = await client
       .from("syndicate_catalog")
       .update({
-        ...(parsed.name ? { name: parsed.name.trim() } : {}),
-        ...(parsed.color ? { color: parsed.color } : {}),
+        name: nextName,
+        color: getSyndicateBrandColor(nextName),
         ...(parsed.active !== undefined ? { active: parsed.active } : {}),
         updated_at: new Date().toISOString()
       })
@@ -1206,7 +1193,6 @@ class SupabaseSessionRepository implements SessionRepository {
   async updateSessionSyndicates(
     sessionId: string,
     input: {
-      focusSyndicateName: string;
       catalogSyndicateIds: string[];
     }
   ) {
@@ -1217,15 +1203,7 @@ class SupabaseSessionRepository implements SessionRepository {
       refs.syndicateCatalog,
       input.catalogSyndicateIds
     );
-    const focusSyndicate =
-      session.syndicates.find(
-        (syndicate) =>
-          syndicate.name.trim().toLowerCase() === input.focusSyndicateName.trim().toLowerCase()
-      ) ?? null;
-    if (!focusSyndicate) {
-      throw new Error("Focus syndicate must be in the participating syndicate list.");
-    }
-    session.focusSyndicateId = focusSyndicate.id;
+    session.focusSyndicateId = requireMothershipSyndicate(session.syndicates).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.persistSessionMeta(session);
@@ -1669,13 +1647,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     parsed.catalogSyndicateIds,
     parsed.payoutRules.projectedPot
   );
-  const focusName = parsed.focusSyndicateName.trim().toLowerCase();
-  const focusSyndicate =
-    syndicates.find((syndicate) => syndicate.name.toLowerCase() === focusName) ?? syndicates[0];
-
-  if (!focusSyndicate) {
-    throw new Error("At least one participating syndicate is required.");
-  }
+  const focusSyndicate = requireMothershipSyndicate(syndicates);
 
   const session: StoredAuctionSession = normalizeSessionShape({
     id: sessionId,
@@ -1971,10 +1943,10 @@ function buildInitialSessionSyndicates(
     .sort(sortByName);
   const syndicateBudget = deriveSyndicateBudget(projectedPot, selectedCatalogEntries.length);
 
-  const syndicates = selectedCatalogEntries.map((entry, index) => ({
+  const syndicates = selectedCatalogEntries.map((entry) => ({
       id: createId("syn"),
       name: entry.name,
-      color: entry.color || fallbackColors[index % fallbackColors.length],
+      color: entry.color,
       spend: 0,
       remainingBankroll: syndicateBudget,
       ownedTeamIds: [],
@@ -2003,7 +1975,7 @@ function rebuildSessionSyndicates(
     color: entry.color
   }));
 
-  const nextSyndicates = nextEntries.map((entry, index) => {
+  const nextSyndicates = nextEntries.map((entry) => {
     const existing =
       session.syndicates.find(
         (candidate) =>
@@ -2013,7 +1985,7 @@ function rebuildSessionSyndicates(
     return {
       id: existing?.id ?? createId("syn"),
       name: entry.name,
-      color: entry.color ?? fallbackColors[index % fallbackColors.length],
+      color: entry.color,
       spend: existing?.spend ?? 0,
       remainingBankroll:
         existing?.remainingBankroll ??
@@ -2041,6 +2013,20 @@ function rebuildSessionSyndicates(
   }
 
   return nextSyndicates;
+}
+
+function requireMothershipSyndicate(syndicates: Syndicate[]) {
+  const mothershipName = getConfiguredMothershipSyndicateName().trim().toLowerCase();
+  const mothership =
+    syndicates.find((syndicate) => syndicate.name.trim().toLowerCase() === mothershipName) ?? null;
+
+  if (!mothership) {
+    throw new Error(
+      `${getConfiguredMothershipSyndicateName()} must be included in participating syndicates.`
+    );
+  }
+
+  return mothership;
 }
 
 function buildAccessMembers(
@@ -2222,7 +2208,7 @@ function syncSessionSyndicatesForCatalogEntry(
         ? {
             ...syndicate,
             name: entry.name,
-            color: entry.color
+            color: getSyndicateBrandColor(entry.name)
           }
         : syndicate
     );
@@ -2388,7 +2374,7 @@ function mapSyndicateCatalog(rows: Array<Record<string, unknown>> | null | undef
   return (((rows ?? []).map((row) => ({
     id: String(row.id),
     name: String(row.name),
-    color: String(row.color),
+    color: getSyndicateBrandColor(String(row.name)),
     active: Boolean(row.active),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
@@ -2434,7 +2420,7 @@ function mapSessionSyndicates(rows: Array<Record<string, unknown>> | null | unde
   return (((rows ?? []).map((row) => ({
     id: String(row.id),
     name: String(row.name),
-    color: String(row.color),
+    color: getSyndicateBrandColor(String(row.name)),
     spend: Number(row.spend),
     remainingBankroll: Number(row.remaining_bankroll),
     ownedTeamIds: ((row.owned_team_ids as string[]) ?? []).map(String),

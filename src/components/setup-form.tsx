@@ -1,22 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
-import { DataSource, PlatformUser, SyndicateCatalogEntry } from "@/lib/types";
+import { FormEvent, useMemo, useState, useTransition } from "react";
+import { DataSource, PlatformUser, SyndicateCatalogEntry, PayoutRules } from "@/lib/types";
 import { getDefaultPayoutRules } from "@/lib/sample-data";
+import { titleCaseStage } from "@/lib/utils";
 
 const defaults = getDefaultPayoutRules();
+const payoutStages: Array<
+  keyof Pick<PayoutRules, "roundOf64" | "roundOf32" | "sweet16" | "elite8" | "finalFour" | "champion">
+> = ["roundOf64", "roundOf32", "sweet16", "elite8", "finalFour", "champion"];
 
 interface SetupFormProps {
   platformUsers: PlatformUser[];
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
+  mothershipSyndicateName: string;
 }
 
 export function SetupForm({
   platformUsers,
   syndicateCatalog,
-  dataSources
+  dataSources,
+  mothershipSyndicateName
 }: SetupFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -30,6 +37,14 @@ export function SetupForm({
     () => syndicateCatalog.filter((entry) => entry.active),
     [syndicateCatalog]
   );
+  const mothershipCatalogEntry = useMemo(
+    () =>
+      activeSyndicates.find(
+        (entry) =>
+          entry.name.trim().toLowerCase() === mothershipSyndicateName.trim().toLowerCase()
+      ) ?? null,
+    [activeSyndicates, mothershipSyndicateName]
+  );
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     activeUsers.slice(0, 1).map((user) => user.id)
   );
@@ -37,33 +52,24 @@ export function SetupForm({
     Object.fromEntries(activeUsers.slice(0, 1).map((user) => [user.id, "admin"]))
   );
   const [selectedSyndicateIds, setSelectedSyndicateIds] = useState<string[]>(
-    activeSyndicates.slice(0, 4).map((entry) => entry.id)
-  );
-  const [focusSyndicateName, setFocusSyndicateName] = useState(
-    activeSyndicates[0]?.name ?? "SmartBid Capital"
+    Array.from(
+      new Set(
+        [mothershipCatalogEntry?.id, ...activeSyndicates.slice(0, 4).map((entry) => entry.id)].filter(
+          Boolean
+        )
+      )
+    ) as string[]
   );
   const [sharedAccessCode, setSharedAccessCode] = useState("march26");
-  const [projectedPot, setProjectedPot] = useState(defaults.projectedPot);
   const [iterations, setIterations] = useState(4000);
   const [dataSourceKey, setDataSourceKey] = useState("builtin:mock");
-
-  const focusOptions = useMemo(
-    () =>
-      activeSyndicates
-        .filter((entry) => selectedSyndicateIds.includes(entry.id))
-        .map((entry) => entry.name),
-    [activeSyndicates, selectedSyndicateIds]
+  const [payoutRules, setPayoutRules] = useState<PayoutRules>(defaults);
+  const mothershipSelected =
+    mothershipCatalogEntry !== null && selectedSyndicateIds.includes(mothershipCatalogEntry.id);
+  const totalPayoutPercent = useMemo(
+    () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
+    [payoutRules]
   );
-
-  useEffect(() => {
-    if (focusOptions.length === 0) {
-      return;
-    }
-
-    if (!focusOptions.includes(focusSyndicateName)) {
-      setFocusSyndicateName(focusOptions[0]);
-    }
-  }, [focusOptions, focusSyndicateName]);
 
   function toggleUser(userId: string) {
     setSelectedUserIds((current) =>
@@ -100,21 +106,12 @@ export function SetupForm({
         },
         body: JSON.stringify({
           name: sessionName,
-          focusSyndicateName,
           sharedAccessCode,
           accessAssignments,
           catalogSyndicateIds: selectedSyndicateIds,
           dataSourceKey,
           simulationIterations: iterations,
-          payoutRules: {
-            roundOf64: defaults.roundOf64,
-            roundOf32: defaults.roundOf32,
-            sweet16: defaults.sweet16,
-            elite8: defaults.elite8,
-            finalFour: defaults.finalFour,
-            champion: defaults.champion,
-            projectedPot
-          }
+          payoutRules
         })
       });
 
@@ -130,20 +127,29 @@ export function SetupForm({
   }
 
   return (
-    <form className="setup-shell" onSubmit={onSubmit}>
-      <section className="surface-card form-section">
-        <div className="form-section__header">
-          <p className="eyebrow">Session Identity</p>
-          <h2>Core auction setup</h2>
-          <p>
-            Assign the room, select the focus syndicate, and choose the active data
-            source before the auction starts.
-          </p>
+    <form id="new-session-form" className="admin-form-layout" onSubmit={onSubmit}>
+      <header className="surface-card admin-form-header">
+        <div className="admin-form-header__copy">
+          <p className="eyebrow">Session</p>
+          <h1>New session</h1>
         </div>
+        <div className="admin-form-header__actions">
+          <Link href="/admin" className="button button-secondary button--small">
+            Back
+          </Link>
+          <button type="submit" className="button button--small" disabled={isPending}>
+            {isPending ? "Creating..." : "Create session"}
+          </button>
+        </div>
+      </header>
 
-        <div className="form-grid form-grid--three">
+      <section className="surface-card admin-form-section">
+        <div className="admin-form-section__heading">
+          <h2>Session</h2>
+        </div>
+        <div className="compact-field-grid compact-field-grid--three">
           <label className="field-shell">
-            <span>Session name</span>
+            <span>Name</span>
             <input
               value={sessionName}
               onChange={(event) => setSessionName(event.target.value)}
@@ -151,36 +157,13 @@ export function SetupForm({
             />
           </label>
           <label className="field-shell">
-            <span>Focus syndicate</span>
-            <select
-              value={focusSyndicateName}
-              onChange={(event) => setFocusSyndicateName(event.target.value)}
-            >
-              {focusOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-shell">
-            <span>Shared access code</span>
+            <span>Shared code</span>
             <input
               value={sharedAccessCode}
               onChange={(event) => setSharedAccessCode(event.target.value)}
               required
             />
           </label>
-        </div>
-      </section>
-
-      <section className="surface-card form-section">
-        <div className="form-section__header">
-          <p className="eyebrow">Auction Economics</p>
-          <h3>Pot sizing, simulation, and projections</h3>
-        </div>
-
-        <div className="form-grid form-grid--three">
           <label className="field-shell">
             <span>Projection source</span>
             <select value={dataSourceKey} onChange={(event) => setDataSourceKey(event.target.value)}>
@@ -200,13 +183,18 @@ export function SetupForm({
               type="number"
               min={1000}
               step={1000}
-              value={projectedPot}
-              onChange={(event) => setProjectedPot(Number(event.target.value))}
+              value={payoutRules.projectedPot}
+              onChange={(event) =>
+                setPayoutRules((current) => ({
+                  ...current,
+                  projectedPot: Number(event.target.value)
+                }))
+              }
               required
             />
           </label>
           <label className="field-shell">
-            <span>Simulation iterations</span>
+            <span>Iterations</span>
             <input
               type="number"
               min={1000}
@@ -220,85 +208,162 @@ export function SetupForm({
         </div>
       </section>
 
-      <section className="form-grid form-grid--two">
-        <section className="surface-card form-section">
-          <div className="form-section__header">
-            <p className="eyebrow">Session Access</p>
-            <h3>Assign users and roles</h3>
-          </div>
+      <section className="surface-card admin-form-section">
+        <div className="admin-form-section__heading">
+          <h2>Tracked syndicates</h2>
+          <span className="status-pill">
+            {selectedSyndicateIds.length} selected
+          </span>
+        </div>
+        {mothershipCatalogEntry ? (
+          <p className={mothershipSelected ? "support-copy" : "error-text"}>
+            {mothershipSelected
+              ? `${mothershipSyndicateName} is locked as the room perspective.`
+              : `${mothershipSyndicateName} must be included in the room.`}
+          </p>
+        ) : (
+          <p className="error-text">
+            {mothershipSyndicateName} is missing from the syndicate catalog.
+          </p>
+        )}
+        <div className="table-wrap admin-table-wrap">
+          <table className="admin-table admin-table--dense">
+            <thead>
+              <tr>
+                <th>Use</th>
+                <th>Name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeSyndicates.map((entry) => (
+                <tr key={entry.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedSyndicateIds.includes(entry.id)}
+                      onChange={() => toggleSyndicate(entry.id)}
+                    />
+                  </td>
+                  <td>
+                    <div className="syndicate-name">
+                      <span className="chip-dot" style={{ backgroundColor: entry.color }} />
+                      <strong>{entry.name}</strong>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-          {activeUsers.length === 0 ? (
-            <p className="empty-copy">Create org users in the admin center before creating a session.</p>
-          ) : (
-            <div className="selection-list">
-              {activeUsers.map((user) => {
-                const selected = selectedUserIds.includes(user.id);
-                return (
-                  <div key={user.id} className="selection-row">
-                    <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleUser(user.id)}
-                      />
-                      <span>
-                        {user.name} <small>{user.email}</small>
-                      </span>
-                    </label>
-                    <select
-                      className="inline-select"
-                      disabled={!selected}
-                      value={userRoles[user.id] ?? "viewer"}
-                      onChange={(event) =>
-                        setUserRoles((current) => ({
-                          ...current,
-                          [user.id]: event.target.value as "admin" | "viewer"
-                        }))
-                      }
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+      <section className="surface-card admin-form-section">
+        <div className="admin-form-section__heading">
+          <h2>Payouts</h2>
+          <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
+        </div>
+        <div className="compact-payout-grid">
+          {payoutStages.map((stage) => (
+            <label key={stage} className="field-shell">
+              <span>{titleCaseStage(stage)} %</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={payoutRules[stage]}
+                onChange={(event) =>
+                  setPayoutRules((current) => ({
+                    ...current,
+                    [stage]: Number(event.target.value)
+                  }))
+                }
+                required
+              />
+            </label>
+          ))}
+        </div>
+        <p className="support-copy">
+          Total payout: {totalPayoutPercent.toFixed(1)}%
+        </p>
+      </section>
 
-        <section className="surface-card form-section">
-          <div className="form-section__header">
-            <p className="eyebrow">Participating Syndicates</p>
-            <h3>Choose the room lineup</h3>
+      <section className="surface-card admin-form-section">
+        <div className="admin-form-section__heading">
+          <h2>Access</h2>
+          <span className="status-pill">
+            {selectedUserIds.length} selected
+          </span>
+        </div>
+        {activeUsers.length === 0 ? (
+          <p className="empty-copy">No active users</p>
+        ) : (
+          <div className="table-wrap admin-table-wrap">
+            <table className="admin-table admin-table--dense">
+              <thead>
+                <tr>
+                  <th>Use</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeUsers.map((user) => {
+                  const selected = selectedUserIds.includes(user.id);
+                  return (
+                    <tr key={user.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleUser(user.id)}
+                        />
+                      </td>
+                      <td>
+                        <strong>{user.name}</strong>
+                      </td>
+                      <td>{user.email}</td>
+                      <td>
+                        <select
+                          className="inline-select"
+                          disabled={!selected}
+                          value={userRoles[user.id] ?? "viewer"}
+                          onChange={(event) =>
+                            setUserRoles((current) => ({
+                              ...current,
+                              [user.id]: event.target.value as "admin" | "viewer"
+                            }))
+                          }
+                        >
+                          <option value="admin">Operator</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-
-          <div className="selection-list">
-            {activeSyndicates.map((entry) => (
-              <label key={entry.id} className="checkbox-row selection-row selection-row--stacked">
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={selectedSyndicateIds.includes(entry.id)}
-                    onChange={() => toggleSyndicate(entry.id)}
-                  />
-                  {entry.name}
-                </span>
-              </label>
-            ))}
-          </div>
-        </section>
+        )}
       </section>
 
       {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="button-row button-row--spread">
-        <button type="submit" className="button" disabled={isPending}>
-          {isPending ? "Building session..." : "Launch live auction"}
-        </button>
-        <p className="support-copy">
-          Use the session admin center after creation to fine-tune payouts, access,
-          syndicates, and data imports.
-        </p>
+      <div className="surface-card admin-sticky-actions">
+        <div className="admin-sticky-actions__meta">
+          <span>{selectedUserIds.length} users</span>
+          <span>{selectedSyndicateIds.length} syndicates</span>
+          <span>{payoutRules.projectedPot.toLocaleString()} projected pot</span>
+        </div>
+        <div className="button-row">
+          <Link href="/admin" className="button button-secondary button--small">
+            Back
+          </Link>
+          <button type="submit" className="button button--small" disabled={isPending}>
+            {isPending ? "Creating..." : "Create session"}
+          </button>
+        </div>
       </div>
     </form>
   );

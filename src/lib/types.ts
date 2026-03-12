@@ -322,7 +322,6 @@ export interface SessionAccessAssignmentInput {
 
 export interface SessionSyndicateInput {
   name: string;
-  color?: string;
 }
 
 export interface SessionAdminConfig {
@@ -370,7 +369,6 @@ export const updatePlatformUserSchema = createPlatformUserSchema.partial();
 
 export const createSyndicateCatalogSchema = z.object({
   name: z.string().min(2).max(40),
-  color: z.string().min(4).max(24).default("#0a7ea4"),
   active: z.boolean().default(true)
 });
 
@@ -410,7 +408,6 @@ export const updateDataSourceSchema = z
 
 export const createSessionSchema = z.object({
   name: z.string().min(3).max(80),
-  focusSyndicateName: z.string().min(2).max(40),
   sharedAccessCode: z.string().min(4).max(64),
   accessAssignments: z
     .array(
@@ -512,7 +509,6 @@ export const updateSessionSharedCodeSchema = z.object({
 });
 
 export const updateSessionSyndicatesSchema = z.object({
-  focusSyndicateName: z.string().min(2).max(40),
   catalogSyndicateIds: z.array(z.string()).max(16).default([])
 });
 

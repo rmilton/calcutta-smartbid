@@ -16,6 +16,8 @@ export async function GET(_request: Request, { params }: RouteProps) {
     const dashboard = await getSessionRepository().getDashboard(sessionId);
     return jsonOk(dashboard);
   } catch (error) {
-    return jsonError(error instanceof Error ? error.message : "Unable to load dashboard.", 404);
+    const message = error instanceof Error ? error.message : "Unable to load dashboard.";
+    const status = message === "Auction session not found." ? 404 : 400;
+    return jsonError(message, status);
   }
 }
