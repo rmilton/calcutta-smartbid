@@ -45,6 +45,7 @@ The admin center is the control plane. The live room is the shared Mothership ex
 - [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
 - [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
+- [src/components/theme-toggle.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/theme-toggle.tsx)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
 - [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
@@ -159,7 +160,9 @@ The admin center is the control plane. The live room is the shared Mothership ex
 
 ## Design System Expectations
 
-- The active visual direction is a dark premium live-market UI, not the legacy warm auction aesthetic.
+- The active visual direction is a premium minimal live-market UI with dual dark/light theme support, not the legacy warm auction aesthetic.
+- All colours must come from CSS custom properties in `src/app/globals.css`. Never hardcode hex or rgba values in components — both themes must work automatically via `var(--token-name)`.
+- `ThemeToggle` (`src/components/theme-toggle.tsx`) controls the `data-theme` attribute on `<html>` and persists to `localStorage`. It is rendered in session, admin center, and session admin headers.
 - Prefer the shared primitives in `src/app/globals.css` such as `surface-card`, `button`, `field-shell`, `workspace-tab`, and `status-pill`.
 - New admin or live-session UI should match the current shell and spacing patterns before introducing new layout systems.
 - Avoid extending the old compatibility classes unless the goal is temporary migration support.
