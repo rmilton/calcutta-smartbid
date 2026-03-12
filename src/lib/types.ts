@@ -297,11 +297,20 @@ export interface AuthenticatedMember {
   role: "admin" | SessionRole;
 }
 
+export interface SessionLifecycleState {
+  archivedAt: string | null;
+  archivedByName: string | null;
+  archivedByEmail: string | null;
+}
+
 export interface AuctionSession {
   id: string;
   name: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt: string | null;
+  archivedByName: string | null;
+  archivedByEmail: string | null;
   focusSyndicateId: string;
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
@@ -374,6 +383,8 @@ export interface AdminSessionSummary {
   name: string;
   createdAt: string;
   updatedAt: string;
+  isArchived: boolean;
+  archivedAt: string | null;
   projectionProvider: string;
   activeDataSourceName: string;
   purchaseCount: number;
@@ -610,4 +621,12 @@ export const updateSessionAnalysisSettingsSchema = z.object({
     targetTeamCount: z.number().int().min(2).max(24),
     maxSingleTeamPct: z.number().min(8).max(45)
   })
+});
+
+export const archiveSessionSchema = z.object({
+  action: z.literal("archive")
+});
+
+export const deleteSessionSchema = z.object({
+  confirmationName: z.string().min(1).max(120)
 });

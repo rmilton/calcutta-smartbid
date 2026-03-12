@@ -42,6 +42,7 @@ describe("buildCsvProjectionFeed", () => {
     const feed = buildCsvProjectionFeed(buildCsvFixture(), "csv-test");
     expect(feed.provider).toBe("csv-test");
     expect(feed.teams).toHaveLength(64);
+    expect(feed.teams.every((team) => team.source === "csv-test")).toBe(true);
 
     const byRegion = feed.teams.reduce<Record<string, number[]>>((accumulator, team) => {
       accumulator[team.region] = accumulator[team.region] ?? [];

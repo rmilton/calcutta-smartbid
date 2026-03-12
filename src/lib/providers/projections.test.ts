@@ -1,4 +1,9 @@
-import { applyProjectionOverrides, normalizeProjectionFeed, validateProjectionFieldShape } from "@/lib/providers/projections";
+import {
+  applyProjectionOverrides,
+  loadProjectionsFromSource,
+  normalizeProjectionFeed,
+  validateProjectionFieldShape
+} from "@/lib/providers/projections";
 
 describe("normalizeProjectionFeed", () => {
   it("normalizes names and removes duplicate team ids", () => {
@@ -94,5 +99,45 @@ describe("validateProjectionFieldShape", () => {
         }
       ])
     ).toThrow("exactly four tournament regions");
+  });
+});
+
+describe("csv source loading", () => {
+  it("accepts NCAA analysis-style CSV data sources and regionizes them into a field", async () => {
+    const rows = [
+      "Team Name,Adjusted Offense Efficiency,Adjusted Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo",
+      ...Array.from({ length: 64 }, (_, index) => {
+        const rank = index + 1;
+        return `Team ${rank},${120 - index * 0.2},${90 + index * 0.15},${95 - index * 0.35},${68 + (index % 5)}`;
+      })
+    ];
+
+    const result = await loadProjectionsFromSource(
+      {
+        key: "data-source:ncaa-data",
+        name: "NCAA DATA",
+        kind: "csv"
+      },
+      [
+        {
+          id: "ncaa-data",
+          name: "NCAA DATA",
+          kind: "csv",
+          active: true,
+          config: {
+            csvContent: rows.join("\n"),
+            fileName: "ncaa.csv"
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          lastTestedAt: null
+        }
+      ]
+    );
+
+    expect(result.teams).toHaveLength(64);
+    expect(new Set(result.teams.map((team) => team.region)).size).toBe(4);
+    expect(Math.min(...result.teams.map((team) => team.seed))).toBe(1);
+    expect(Math.max(...result.teams.map((team) => team.seed))).toBe(16);
   });
 });

@@ -483,6 +483,15 @@ export function DashboardShell({
           {!viewerMode ? (
             <div className="status-pill">Shortcuts /, B, W, Enter</div>
           ) : null}
+          {currentMember.scope === "platform" ? (
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => router.push("/admin")}
+            >
+              Admin center
+            </button>
+          ) : null}
           <button type="button" className="button button-ghost" onClick={() => void logout()}>
             Log out
           </button>

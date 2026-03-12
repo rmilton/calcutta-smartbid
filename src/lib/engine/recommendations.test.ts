@@ -22,6 +22,9 @@ function buildSession(): AuctionSession {
     name: "Test",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    archivedAt: null,
+    archivedByName: null,
+    archivedByEmail: null,
     focusSyndicateId: "syn_focus",
     eventAccess: {
       sharedCodeConfigured: true

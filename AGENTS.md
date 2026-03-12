@@ -196,6 +196,8 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 11. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
 12. Refresh and confirm persistence.
 13. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
+14. Archive a session and confirm it is hidden until archived sessions are shown.
+15. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
 
 ## Test Commands
 
@@ -240,3 +242,4 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - Older stored sessions may still contain legacy payout fields. The repository normalizes them on load.
 - The live board still uses `remainingBankroll` as derived headroom from `projectedPot / syndicateCount`. If that business model changes, update repository math and recommendation language together.
 - `/csv-analysis` is now a compatibility redirect. The maintained workflow is the in-room `Analysis` tab.
+- Session lifecycle now supports archive plus permanent delete. Permanent delete is intentionally gated behind archive plus typed confirmation.

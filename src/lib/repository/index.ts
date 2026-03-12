@@ -28,6 +28,7 @@ import {
   AnalysisSettings,
   AdminCenterData,
   AdminSessionSummary,
+  AuthenticatedMember,
   AuctionDashboard,
   AuctionSession,
   CsvAnalysisPortfolio,
@@ -154,6 +155,15 @@ export interface SessionRepository {
     sessionId: string,
     analysisSettings: AnalysisSettings
   ): Promise<SessionAdminConfig>;
+  archiveSession(
+    sessionId: string,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ): Promise<void>;
+  deleteSession(
+    sessionId: string,
+    actor: Pick<AuthenticatedMember, "name" | "email">,
+    confirmationName: string
+  ): Promise<void>;
   updateSessionSyndicates(
     sessionId: string,
     input: {
@@ -480,6 +490,46 @@ class LocalSessionRepository implements SessionRepository {
     return buildSessionAdminConfig(session, store);
   }
 
+  async archiveSession(
+    sessionId: string,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+
+    if (!session.archivedAt) {
+      session.archivedAt = new Date().toISOString();
+      session.archivedByName = actor.name;
+      session.archivedByEmail = actor.email;
+      session.updatedAt = session.archivedAt;
+      await this.writeStore(store);
+    }
+  }
+
+  async deleteSession(
+    sessionId: string,
+    _actor: Pick<AuthenticatedMember, "name" | "email">,
+    confirmationName: string
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+
+    if (!session.archivedAt) {
+      throw new Error("Archive the session before deleting it permanently.");
+    }
+
+    if (confirmationName !== session.name) {
+      throw new Error("Session name confirmation does not match.");
+    }
+
+    store.sessions = store.sessions.filter((candidate) => candidate.id !== sessionId);
+    store.dataImportRuns = store.dataImportRuns.filter((run) => run.sessionId !== sessionId);
+    store.csvAnalysisPortfolios = store.csvAnalysisPortfolios.filter(
+      (portfolio) => portfolio.sessionId !== sessionId
+    );
+    await this.writeStore(store);
+  }
+
   async updateSessionSyndicates(
     sessionId: string,
     input: {
@@ -695,7 +745,7 @@ class SupabaseSessionRepository implements SessionRepository {
       client
         .from("auction_sessions")
         .select(
-          "id, name, created_at, updated_at, projection_provider, active_data_source_name"
+          "id, name, created_at, updated_at, archived_at, projection_provider, active_data_source_name"
         )
         .order("updated_at", { ascending: false }),
       client.from("syndicates").select("session_id"),
@@ -743,6 +793,8 @@ class SupabaseSessionRepository implements SessionRepository {
             name: String(row.name),
             createdAt: String(row.created_at),
             updatedAt: String(row.updated_at),
+            isArchived: row.archived_at !== null,
+            archivedAt: row.archived_at ? String(row.archived_at) : null,
             projectionProvider: String(row.projection_provider),
             activeDataSourceName: String(row.active_data_source_name ?? "Built-in Mock Field"),
             purchaseCount: purchaseCounts.get(sessionId) ?? 0,
@@ -858,6 +910,13 @@ class SupabaseSessionRepository implements SessionRepository {
       name: String(sessionResult.data.name),
       createdAt: String(sessionResult.data.created_at),
       updatedAt: String(sessionResult.data.updated_at),
+      archivedAt: sessionResult.data.archived_at ? String(sessionResult.data.archived_at) : null,
+      archivedByName: sessionResult.data.archived_by_name
+        ? String(sessionResult.data.archived_by_name)
+        : null,
+      archivedByEmail: sessionResult.data.archived_by_email
+        ? String(sessionResult.data.archived_by_email)
+        : null,
       focusSyndicateId: String(sessionResult.data.focus_syndicate_id),
       eventAccess: { sharedCodeConfigured: true },
       sharedAccessCodeHash: String(sessionResult.data.shared_code_hash ?? ""),
@@ -1215,6 +1274,41 @@ class SupabaseSessionRepository implements SessionRepository {
     return this.getSessionAdminConfig(sessionId);
   }
 
+  async archiveSession(
+    sessionId: string,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ) {
+    const session = await this.requireSession(sessionId);
+
+    if (!session.archivedAt) {
+      session.archivedAt = new Date().toISOString();
+      session.archivedByName = actor.name;
+      session.archivedByEmail = actor.email;
+      session.updatedAt = session.archivedAt;
+      await this.persistSessionMeta(session);
+    }
+  }
+
+  async deleteSession(
+    sessionId: string,
+    _actor: Pick<AuthenticatedMember, "name" | "email">,
+    confirmationName: string
+  ) {
+    const session = await this.requireSession(sessionId);
+
+    if (!session.archivedAt) {
+      throw new Error("Archive the session before deleting it permanently.");
+    }
+
+    if (confirmationName !== session.name) {
+      throw new Error("Session name confirmation does not match.");
+    }
+
+    const client = requireSupabaseClient();
+    const result = await client.from("auction_sessions").delete().eq("id", sessionId);
+    throwOnSupabaseError(result.error);
+  }
+
   async updateSessionSyndicates(
     sessionId: string,
     input: {
@@ -1497,6 +1591,9 @@ class SupabaseSessionRepository implements SessionRepository {
       shared_code_hash: session.sharedAccessCodeHash,
       shared_code_lookup: session.sharedAccessCodeLookup,
       shared_code_ciphertext: session.sharedAccessCodeCiphertext,
+      archived_at: session.archivedAt,
+      archived_by_name: session.archivedByName,
+      archived_by_email: session.archivedByEmail,
       payout_rules: session.payoutRules,
       analysis_settings: session.analysisSettings,
       projection_provider: session.projectionProvider,
@@ -1680,6 +1777,9 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     name: parsed.name,
     createdAt: timestamp,
     updatedAt: timestamp,
+    archivedAt: null,
+    archivedByName: null,
+    archivedByEmail: null,
     focusSyndicateId: focusSyndicate.id,
     eventAccess: {
       sharedCodeConfigured: true
@@ -2195,6 +2295,8 @@ function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSu
     name: session.name,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    isArchived: Boolean(session.archivedAt),
+    archivedAt: session.archivedAt,
     projectionProvider: session.projectionProvider,
     activeDataSourceName: session.activeDataSource?.name ?? builtinMockSource.name,
     purchaseCount: session.purchases.length,
@@ -2309,6 +2411,9 @@ function normalizeSessionShape(session: StoredAuctionSession) {
     eventAccess: {
       sharedCodeConfigured: true
     },
+    archivedAt: session.archivedAt ?? null,
+    archivedByName: session.archivedByName ?? null,
+    archivedByEmail: session.archivedByEmail ?? null,
     sharedAccessCodeHash: session.sharedAccessCodeHash ?? "",
     sharedAccessCodeLookup: session.sharedAccessCodeLookup ?? "",
     sharedAccessCodeCiphertext: session.sharedAccessCodeCiphertext ?? "",
@@ -2538,10 +2643,34 @@ async function replaceRows(
   }
 }
 
-function throwOnSupabaseError(error: { message?: string } | null) {
+function throwOnSupabaseError(
+  error: { message?: string; code?: string; details?: string | null } | null
+) {
   if (error) {
+    if (isSharedCodeLookupConflict(error)) {
+      throw new Error(
+        "Shared code is already in use by another session. Use a different code, or permanently delete the archived session that already uses it."
+      );
+    }
+
     throw new Error(error.message ?? "Supabase request failed.");
   }
+}
+
+function isSharedCodeLookupConflict(error: {
+  message?: string;
+  code?: string;
+  details?: string | null;
+}) {
+  const rawText = [error.message, error.details, error.code]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    rawText.includes("auction_sessions_shared_code_lookup_idx") ||
+    (rawText.includes("shared_code_lookup") && rawText.includes("duplicate key value"))
+  );
 }
 
 function numberOrUndefined(value: unknown) {

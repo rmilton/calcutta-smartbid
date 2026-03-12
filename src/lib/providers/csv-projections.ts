@@ -8,7 +8,7 @@ const REGIONS = ["South", "West", "East", "Midwest"] as const;
 const TEAM_COUNT = 64;
 const TEAMS_PER_REGION = 16;
 
-type CsvProjectionTeam = Omit<TeamProjection, "source">;
+type CsvProjectionTeam = TeamProjection;
 
 interface ParsedCsvRow {
   teamName: string;
@@ -123,7 +123,7 @@ export function buildCsvProjectionFeed(
 
   return {
     provider: providerName,
-    teams: seedAndRegionize(rankedRows.slice(0, TEAM_COUNT))
+    teams: seedAndRegionize(rankedRows.slice(0, TEAM_COUNT), providerName)
   };
 }
 
@@ -316,7 +316,7 @@ function parseAndRankRows(csvText: string) {
   return parsedRows.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
-function seedAndRegionize(teams: RankedCsvRow[]): CsvProjectionTeam[] {
+function seedAndRegionize(teams: RankedCsvRow[], providerName: string): CsvProjectionTeam[] {
   const seeded: CsvProjectionTeam[] = [];
   const usedIds = new Set<string>();
 
@@ -340,6 +340,7 @@ function seedAndRegionize(teams: RankedCsvRow[]): CsvProjectionTeam[] {
         offense: roundMetric(team.offense, 3),
         defense: roundMetric(team.defense, 3),
         tempo: roundMetric(team.tempo, 3),
+        source: providerName,
         scouting: buildScouting(team)
       });
     }

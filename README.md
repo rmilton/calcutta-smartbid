@@ -82,7 +82,7 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - platform-level setup and operations
   - manages users, tracked syndicates, data sources, and sessions
 - `Session admin`
-  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, and imports
+  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, imports, and lifecycle controls
 - `Live room`
   - shared persisted Mothership session state for operator and viewer
   - operator can update active team, bid, and purchases
@@ -155,6 +155,8 @@ CALCUTTA_STORAGE_BACKEND=supabase
   - `targetTeamCount` default `8`
   - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
+- archived sessions are hidden from the default admin sessions list but remain readable to platform admins
+- permanent delete is archive-gated and requires exact session-name confirmation
 
 ## Projection providers
 

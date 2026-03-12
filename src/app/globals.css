@@ -977,6 +977,11 @@ p {
   background: rgba(200, 255, 98, 0.06);
 }
 
+.admin-table--dense tbody tr.table-row--muted td {
+  background: rgba(255, 255, 255, 0.018);
+  color: rgba(226, 234, 245, 0.72);
+}
+
 .admin-table--dense tr:last-child td {
   border-bottom: 0;
 }
@@ -1094,6 +1099,26 @@ p {
 .admin-log-row__meta {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(4, 8, 14, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.confirm-modal {
+  width: min(100%, 34rem);
+}
+
+.confirm-modal__content {
+  display: grid;
+  gap: 0.9rem;
 }
 
 .admin-form-layout {

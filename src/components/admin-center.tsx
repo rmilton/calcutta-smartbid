@@ -35,6 +35,11 @@ interface SourceDraft {
   active: boolean;
 }
 
+interface SessionDeleteState {
+  sessionId: string;
+  sessionName: string;
+}
+
 const emptyUserDraft = (): UserDraft => ({
   name: "",
   email: "",
@@ -127,6 +132,7 @@ export function AdminCenter({
   const [notice, setNotice] = useState<string | null>(null);
 
   const [sessionSearch, setSessionSearch] = useState("");
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false);
   const [userSearch, setUserSearch] = useState("");
   const [userFilter, setUserFilter] = useState<StatusFilter>("all");
   const [syndicateSearch, setSyndicateSearch] = useState("");
@@ -148,20 +154,25 @@ export function AdminCenter({
   const [editingSyndicate, setEditingSyndicate] = useState<SyndicateDraft>(emptySyndicateDraft);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingSource, setEditingSource] = useState<SourceDraft>(emptySourceDraft);
+  const [deleteTarget, setDeleteTarget] = useState<SessionDeleteState | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
 
   const filteredSessions = useMemo(() => {
+    const scopedSessions = data.sessions.filter((session) =>
+      showArchivedSessions ? session.isArchived : !session.isArchived
+    );
     const query = sessionSearch.trim().toLowerCase();
     if (!query) {
-      return data.sessions;
+      return scopedSessions;
     }
 
-    return data.sessions.filter((session) =>
+    return scopedSessions.filter((session) =>
       [session.name, session.activeDataSourceName, session.projectionProvider]
         .join(" ")
         .toLowerCase()
         .includes(query)
     );
-  }, [data.sessions, sessionSearch]);
+  }, [data.sessions, sessionSearch, showArchivedSessions]);
 
   const filteredUsers = useMemo(() => {
     const scoped = applyStatusFilter(data.platformUsers, userFilter);
@@ -235,6 +246,46 @@ export function AdminCenter({
 
     await refreshData();
     setNotice(successMessage);
+  }
+
+  async function archiveSession(sessionId: string) {
+    resetMessages();
+    const response = await fetch(`/api/admin/sessions/${sessionId}/lifecycle`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action: "archive" })
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Unable to archive session.");
+    }
+
+    await refreshData();
+    setNotice("Session archived.");
+  }
+
+  async function deleteSessionPermanently(sessionId: string, confirmationName: string) {
+    resetMessages();
+    const response = await fetch(`/api/admin/sessions/${sessionId}/lifecycle`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ confirmationName })
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Unable to delete session.");
+    }
+
+    await refreshData();
+    setDeleteTarget(null);
+    setDeleteConfirmationName("");
+    setNotice("Session deleted permanently.");
   }
 
   function onCsvFileSelect(
@@ -496,6 +547,17 @@ export function AdminCenter({
                   onChange={(event) => setSessionSearch(event.target.value)}
                   placeholder="Search sessions"
                 />
+                <button
+                  type="button"
+                  className={
+                    showArchivedSessions
+                      ? "button button-secondary button--small"
+                      : "button button-ghost button--small"
+                  }
+                  onClick={() => setShowArchivedSessions((current) => !current)}
+                >
+                  {showArchivedSessions ? "Hide archived" : "Show archived"}
+                </button>
               </div>
             </div>
 
@@ -514,10 +576,16 @@ export function AdminCenter({
                 </thead>
                 <tbody>
                   {filteredSessions.map((session) => (
-                    <tr key={session.id}>
+                    <tr
+                      key={session.id}
+                      className={session.isArchived ? "table-row--muted" : undefined}
+                    >
                       <td>
                         <strong>{session.name}</strong>
                         <div className="support-copy">Created {formatDate(session.createdAt)}</div>
+                        {session.isArchived ? (
+                          <div className="support-copy">Archived {formatDate(session.archivedAt)}</div>
+                        ) : null}
                       </td>
                       <td>{formatDate(session.updatedAt)}</td>
                       <td>{session.activeDataSourceName}</td>
@@ -532,18 +600,50 @@ export function AdminCenter({
                           >
                             Manage
                           </Link>
-                          <Link
-                            href={`/session/${session.id}`}
-                            className="button button-ghost button--small"
-                          >
-                            Board
-                          </Link>
-                          <Link
-                            href={`/session/${session.id}?view=analysis`}
-                            className="button button-ghost button--small"
-                          >
-                            Analysis
-                          </Link>
+                          {session.isArchived ? (
+                            <button
+                              type="button"
+                              className="button button-danger button--small"
+                              onClick={() => {
+                                setDeleteTarget({
+                                  sessionId: session.id,
+                                  sessionName: session.name
+                                });
+                                setDeleteConfirmationName("");
+                              }}
+                            >
+                              Delete permanently
+                            </button>
+                          ) : (
+                            <>
+                              <Link
+                                href={`/session/${session.id}`}
+                                className="button button-ghost button--small"
+                              >
+                                Board
+                              </Link>
+                              <button
+                                type="button"
+                                className="button button-ghost button--small"
+                                disabled={isPending}
+                                onClick={() =>
+                                  startTransition(async () => {
+                                    try {
+                                      await archiveSession(session.id);
+                                    } catch (submitError) {
+                                      setError(
+                                        submitError instanceof Error
+                                          ? submitError.message
+                                          : "Unable to archive session."
+                                      );
+                                    }
+                                  })
+                                }
+                              >
+                                Archive
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1403,6 +1503,71 @@ export function AdminCenter({
               </table>
             </div>
           </section>
+        ) : null}
+
+        {deleteTarget ? (
+          <div className="confirm-modal-backdrop" role="presentation">
+            <div
+              className="surface-card confirm-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admin-delete-session-title"
+            >
+              <div className="confirm-modal__content">
+                <p className="eyebrow">Permanent delete</p>
+                <h2 id="admin-delete-session-title">
+                  Delete {deleteTarget.sessionName} permanently
+                </h2>
+                <p className="support-copy">
+                  This permanently removes the session and all related records. Archive is the
+                  safety gate; delete is irreversible.
+                </p>
+                <label className="field-shell">
+                  <span>Type the exact session name to confirm</span>
+                  <input
+                    value={deleteConfirmationName}
+                    onChange={(event) => setDeleteConfirmationName(event.target.value)}
+                    autoFocus
+                  />
+                </label>
+                <div className="button-row button-row--spread">
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    onClick={() => {
+                      setDeleteTarget(null);
+                      setDeleteConfirmationName("");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-danger button--small"
+                    disabled={deleteConfirmationName !== deleteTarget.sessionName || isPending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        try {
+                          await deleteSessionPermanently(
+                            deleteTarget.sessionId,
+                            deleteConfirmationName
+                          );
+                        } catch (submitError) {
+                          setError(
+                            submitError instanceof Error
+                              ? submitError.message
+                              : "Unable to delete session."
+                          );
+                        }
+                      })
+                    }
+                  >
+                    Delete permanently
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : null}
       </section>
     </main>

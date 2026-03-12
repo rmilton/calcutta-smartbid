@@ -8,6 +8,7 @@ import {
   TeamScoutingProfile,
   teamScoutingProfileSchema
 } from "@/lib/types";
+import { buildCsvProjectionFeed } from "@/lib/providers/csv-projections";
 import { getMockProjections } from "@/lib/sample-data";
 import { uniqueBy } from "@/lib/utils";
 import { z } from "zod";
@@ -140,11 +141,26 @@ async function loadApiProjectionSource(dataSource: DataSource) {
 
 function loadCsvProjectionSource(dataSource: DataSource) {
   const config = dataSource.config as CsvDataSourceConfig;
-  const teams = parseProjectionCsv(config.csvContent, dataSource.name);
-  return {
-    provider: `${dataSource.name} CSV`,
-    teams: validateProjectionFieldShape(teams)
-  };
+  const providerName = `${dataSource.name} CSV`;
+
+  try {
+    const teams = parseProjectionCsv(config.csvContent, dataSource.name);
+    return {
+      provider: providerName,
+      teams: validateProjectionFieldShape(teams)
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to parse CSV.";
+    if (!message.startsWith("CSV import is missing headers:")) {
+      throw error;
+    }
+
+    const fallbackFeed = buildCsvProjectionFeed(config.csvContent, providerName);
+    return {
+      provider: fallbackFeed.provider,
+      teams: validateProjectionFieldShape(fallbackFeed.teams)
+    };
+  }
 }
 
 export function parseProjectionCsv(csvContent: string, provider: string) {

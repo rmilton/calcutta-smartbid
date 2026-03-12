@@ -28,6 +28,7 @@ As of `2026-03-09`:
   - payout structure editing
   - active data source selection
   - import history
+  - session archive and permanent delete
 - live board supports:
   - role-driven admin/viewer access
   - searchable single-control `Active Team for Bidding`
@@ -149,7 +150,6 @@ Key files:
 - recommendation math still uses a simplified bankroll/headroom assumption
 - recommendation explanations are still lighter than the target product standard
 - no full audit trail UI in admin center
-- no session archive/delete flow
 - old sessions created before the Mothership-first rule may need admin correction if Mothership is not in the room
 - lint still uses deprecated `next lint`
 
@@ -172,6 +172,10 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 12. Refresh and confirm persistence.
 13. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
 14. Log in as a viewer and confirm the room is synchronized but not editable.
+15. Archive a session and confirm it is hidden by default in the admin sessions list.
+16. Show archived sessions and confirm the archived session appears with archived state.
+17. Confirm permanent delete is blocked until the exact session name is entered.
+18. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
 
 ## Operational Notes
 

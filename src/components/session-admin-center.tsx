@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
 import { titleCaseStage } from "@/lib/utils";
@@ -27,10 +28,13 @@ export function SessionAdminCenter({
   initialConfig,
   mothershipSyndicateName
 }: SessionAdminCenterProps) {
+  const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
   const [showCurrentCode, setShowCurrentCode] = useState(false);
   const [sharedAccessCode, setSharedAccessCode] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
@@ -73,6 +77,9 @@ export function SessionAdminCenter({
   );
   const mothershipSelected =
     mothershipCatalogEntry !== null && selectedSyndicateIds.includes(mothershipCatalogEntry.id);
+  const allTrackedSyndicatesSelected =
+    activeSyndicates.length > 0 &&
+    activeSyndicates.every((entry) => selectedSyndicateIds.includes(entry.id));
   const totalPayoutPercent = useMemo(
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
@@ -161,6 +168,15 @@ export function SessionAdminCenter({
         ? current.filter((id) => id !== entryId)
         : [...current, entryId]
     );
+  }
+
+  function toggleAllSyndicates(checked: boolean) {
+    if (checked) {
+      setSelectedSyndicateIds(activeSyndicates.map((entry) => entry.id));
+      return;
+    }
+
+    setSelectedSyndicateIds(mothershipCatalogEntry ? [mothershipCatalogEntry.id] : []);
   }
 
   function onSaveAccess(event: FormEvent<HTMLFormElement>) {
@@ -310,6 +326,68 @@ export function SessionAdminCenter({
         );
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : "Unable to run import.");
+      }
+    });
+  }
+
+  function onArchiveSession() {
+    startTransition(async () => {
+      try {
+        setError(null);
+        setNotice(null);
+        const response = await fetch(
+          `/api/admin/sessions/${config.session.id}/lifecycle`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ action: "archive" })
+          }
+        );
+
+        if (!response.ok) {
+          const payload = (await response.json()) as { error?: string };
+          throw new Error(payload.error ?? "Unable to archive session.");
+        }
+
+        await refreshConfig();
+        setNotice("Session archived.");
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "Unable to archive session."
+        );
+      }
+    });
+  }
+
+  function onDeleteSession() {
+    startTransition(async () => {
+      try {
+        setError(null);
+        setNotice(null);
+        const response = await fetch(
+          `/api/admin/sessions/${config.session.id}/lifecycle`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ confirmationName: deleteConfirmationName })
+          }
+        );
+
+        if (!response.ok) {
+          const payload = (await response.json()) as { error?: string };
+          throw new Error(payload.error ?? "Unable to delete session.");
+        }
+
+        router.push("/admin");
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "Unable to delete session."
+        );
       }
     });
   }
@@ -483,7 +561,18 @@ export function SessionAdminCenter({
               <table className="admin-table admin-table--dense">
               <thead>
                 <tr>
-                  <th>Use</th>
+                  <th>
+                    <input
+                      type="checkbox"
+                      aria-label={
+                        allTrackedSyndicatesSelected
+                          ? "Keep only Mothership selected"
+                          : "Select all tracked syndicates"
+                      }
+                      checked={allTrackedSyndicatesSelected}
+                      onChange={(event) => toggleAllSyndicates(event.target.checked)}
+                    />
+                  </th>
                   <th>Name</th>
                 </tr>
               </thead>
@@ -672,7 +761,108 @@ export function SessionAdminCenter({
             </div>
           </form>
         </section>
+
+        <section className="surface-card admin-form-section admin-form-section--wide">
+          <div className="admin-section-form">
+            <div className="admin-form-section__heading">
+              <h2>Lifecycle</h2>
+              {config.session.archivedAt ? (
+                <span className="status-pill status-pill--muted">Archived</span>
+              ) : null}
+            </div>
+            {config.session.archivedAt ? (
+              <>
+                <p className="support-copy">
+                  Archived {formatDateTime(config.session.archivedAt)}
+                  {config.session.archivedByName
+                    ? ` by ${config.session.archivedByName}`
+                    : ""}
+                  .
+                </p>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-danger button--small"
+                    onClick={() => {
+                      setShowDeleteConfirm(true);
+                      setDeleteConfirmationName("");
+                    }}
+                  >
+                    Delete permanently
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="support-copy">
+                  Archive hides this session from the default admin list without changing board
+                  access or stored auction history.
+                </p>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    disabled={isPending}
+                    onClick={onArchiveSession}
+                  >
+                    Archive session
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
       </div>
+
+      {showDeleteConfirm ? (
+        <div className="confirm-modal-backdrop" role="presentation">
+          <div
+            className="surface-card confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="session-delete-title"
+          >
+            <div className="confirm-modal__content">
+              <p className="eyebrow">Permanent delete</p>
+              <h2 id="session-delete-title">
+                Delete {config.session.name} permanently
+              </h2>
+              <p className="support-copy">
+                This permanently removes the session and all related records, including purchases,
+                members, projections, overrides, imports, and snapshots.
+              </p>
+              <label className="field-shell">
+                <span>Type the exact session name to confirm</span>
+                <input
+                  value={deleteConfirmationName}
+                  onChange={(event) => setDeleteConfirmationName(event.target.value)}
+                  autoFocus
+                />
+              </label>
+              <div className="button-row button-row--spread">
+                <button
+                  type="button"
+                  className="button button-ghost button--small"
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteConfirmationName("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button button-danger button--small"
+                  disabled={deleteConfirmationName !== config.session.name || isPending}
+                  onClick={onDeleteSession}
+                >
+                  Delete permanently
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
