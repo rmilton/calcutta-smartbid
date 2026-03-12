@@ -539,7 +539,7 @@ export function AdminCenter({
                             Board
                           </Link>
                           <Link
-                            href={`/csv-analysis?sessionId=${session.id}`}
+                            href={`/session/${session.id}?view=analysis`}
                             className="button button-ghost button--small"
                           >
                             Analysis

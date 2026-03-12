@@ -63,14 +63,18 @@ Opaque scores without drivers are not enough.
 
 At a minimum, recommendation output should make visible:
 
-- the current recommended max bid
+- the current target bid and max bid
 - what changed since the last recommendation state
 - the top drivers behind the recommendation
 - the main caution or ownership risk suppressing aggression
 
+The operator should not have to reconcile two different recommendation engines. `Auction` and `Analysis` should present the same recommendation truth at different depths.
+
 ### Portfolio context matters
 
 A team is not valuable in isolation. Owning teams that likely collide early changes the real value of a bid. The app should keep modeling ownership exposure, not just pure team EV.
+
+Live portfolio truth should come from actual Mothership purchases in the session, not a parallel manual-owned list in a separate tool.
 
 ### Mothership is the fixed strategy subject
 
@@ -120,7 +124,8 @@ Future work should improve these assumptions, but should not hide them.
 ## UX Truths
 
 - the operator should always know the currently nominated team
-- current bid and recommended max should be visible at a glance
+- current bid, target bid, and max bid should be visible at a glance
+- `Analysis` should exist inside the live room, not as a second disconnected product surface
 - the ledger should answer "who owns what" and "how much do they have left"
 - the product should make clear whether "money left" is forecast headroom or locked actual room state
 - viewer mode should feel synchronized, Mothership-centered, and never editable
@@ -141,7 +146,7 @@ Those may inform future features, but they are not the product center.
 The strongest next product improvements are:
 
 1. better live-room correction workflows
-2. richer explanation of recommendation changes
+2. richer explanation of recommendation changes inside the in-room `Analysis` workspace
 3. stronger actual-pot modeling as teams are sold
 4. better external projection ingestion and import ergonomics
 

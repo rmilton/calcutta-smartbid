@@ -28,6 +28,11 @@ export interface PayoutRules {
   projectedPot: number;
 }
 
+export interface AnalysisSettings {
+  targetTeamCount: number;
+  maxSingleTeamPct: number;
+}
+
 export interface Syndicate {
   id: string;
   name: string;
@@ -105,6 +110,73 @@ export interface MatchupConflict {
   opponentId: string;
   probability: number;
   earliestRound: Stage;
+}
+
+export interface AnalysisRankingRow {
+  teamId: string;
+  teamName: string;
+  shortName: string;
+  seed: number;
+  region: string;
+  compositeScore: number;
+  percentile: number;
+  scoutingCoverage: number;
+  q1Wins: number | null;
+  q2Wins: number | null;
+  q3Wins: number | null;
+  q4Wins: number | null;
+  rankedWins: number | null;
+  threePointPct: number | null;
+  kenpomRank: number | null;
+  atsRecord: string | null;
+  atsWinPct: number | null;
+  offenseStyle: string | null;
+  defenseStyle: string | null;
+  strengths: string[];
+  risks: string[];
+}
+
+export interface AnalysisFieldAverages {
+  q1Wins: number | null;
+  q2Wins: number | null;
+  q3Wins: number | null;
+  q4Wins: number | null;
+  rankedWins: number | null;
+  threePointPct: number | null;
+  kenpomRank: number | null;
+  atsWinPct: number | null;
+}
+
+export interface AnalysisBudgetRow {
+  teamId: string;
+  teamName: string;
+  rank: number;
+  percentile: number;
+  convictionScore: number;
+  investableShare: number;
+  openingBid: number;
+  targetBid: number;
+  maxBid: number;
+  tier: "core" | "flex" | "depth";
+}
+
+export interface AnalysisOwnedTeamSummary {
+  teamId: string;
+  paidPrice: number;
+  targetBid: number | null;
+  maxBid: number | null;
+}
+
+export interface SessionAnalysisSnapshot {
+  ranking: AnalysisRankingRow[];
+  fieldAverages: AnalysisFieldAverages;
+  budgetRows: AnalysisBudgetRow[];
+  ownedTeams: AnalysisOwnedTeamSummary[];
+  investableCash: number;
+  actualPaidSpend: number;
+  remainingBankroll: number;
+  targetTeamCount: number;
+  maxSingleTeamPct: number;
 }
 
 export interface OwnershipExposure {
@@ -233,6 +305,7 @@ export interface AuctionSession {
   focusSyndicateId: string;
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
+  analysisSettings: AnalysisSettings;
   syndicates: Syndicate[];
   baseProjections: TeamProjection[];
   projections: TeamProjection[];
@@ -261,7 +334,9 @@ export interface RecommendationDriver {
 export interface BidRecommendation {
   teamId: string;
   currentBid: number;
-  recommendedMaxBid: number;
+  openingBid: number;
+  targetBid: number;
+  maxBid: number;
   expectedGrossPayout: number;
   expectedNetValue: number;
   valueGap: number;
@@ -287,6 +362,7 @@ export interface AuctionDashboard {
   availableTeams: TeamProjection[];
   soldTeams: SoldTeamSummary[];
   ledger: Syndicate[];
+  analysis: SessionAnalysisSnapshot;
   recommendation: BidRecommendation | null;
   lastPurchase: PurchaseRecord | null;
   projectionOverrideCount: number;
@@ -420,6 +496,15 @@ export const createSessionSchema = z.object({
     .max(40),
   catalogSyndicateIds: z.array(z.string()).max(16).default([]),
   payoutRules: payoutRulesSchema,
+  analysisSettings: z
+    .object({
+      targetTeamCount: z.number().int().min(2).max(24).default(8),
+      maxSingleTeamPct: z.number().min(8).max(45).default(22)
+    })
+    .default({
+      targetTeamCount: 8,
+      maxSingleTeamPct: 22
+    }),
   dataSourceKey: z.string().default("builtin:mock"),
   simulationIterations: z.number().int().min(1000).max(50000).default(4000)
 });
@@ -518,4 +603,11 @@ export const updateSessionDataSourceSchema = z.object({
 
 export const updateSessionPayoutRulesSchema = z.object({
   payoutRules: payoutRulesSchema
+});
+
+export const updateSessionAnalysisSettingsSchema = z.object({
+  analysisSettings: z.object({
+    targetTeamCount: z.number().int().min(2).max(24),
+    maxSingleTeamPct: z.number().min(8).max(45)
+  })
 });

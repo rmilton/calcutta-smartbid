@@ -6,10 +6,12 @@ import { getSessionRepository } from "@/lib/repository";
 
 interface SessionPageProps {
   params: Promise<{ sessionId: string }>;
+  searchParams: Promise<{ view?: string }>;
 }
 
-export default async function SessionPage({ params }: SessionPageProps) {
+export default async function SessionPage({ params, searchParams }: SessionPageProps) {
   const { sessionId } = await params;
+  const { view } = await searchParams;
   const repository = getSessionRepository();
   const currentMember = await requireAuthenticatedPageSession(sessionId);
 
@@ -19,6 +21,7 @@ export default async function SessionPage({ params }: SessionPageProps) {
       <DashboardShell
         sessionId={sessionId}
         initialDashboard={dashboard}
+        initialView={view === "analysis" ? "analysis" : "auction"}
         viewerMode={currentMember.role === "viewer"}
         currentMember={currentMember}
       />

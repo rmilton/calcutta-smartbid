@@ -1,5 +1,6 @@
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
+import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
 import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
 
 function requireMothershipPerspective(session: AuctionSession) {
@@ -35,6 +36,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     focusSyndicateId: mothership.id,
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
+    analysisSettings: session.analysisSettings,
     syndicates: session.syndicates,
     baseProjections: session.baseProjections,
     projections: session.projections,
@@ -68,6 +70,7 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
   const focusSyndicate = requireMothershipPerspective(publicSession);
+  const analysis = buildSessionAnalysisSnapshot(publicSession, focusSyndicate);
 
   return {
     session: publicSession,
@@ -76,7 +79,8 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     availableTeams,
     soldTeams,
     ledger: publicSession.syndicates,
-    recommendation: buildBidRecommendation(publicSession, nominatedTeam, focusSyndicate),
+    analysis,
+    recommendation: buildBidRecommendation(publicSession, nominatedTeam, focusSyndicate, analysis),
     lastPurchase: publicSession.purchases[publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(publicSession.projectionOverrides).length,
     storageBackend

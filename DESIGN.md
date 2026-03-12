@@ -8,7 +8,7 @@ The app uses a premium live-market interface:
 
 - dark neutral surfaces with high contrast text
 - sharp signal colors for buy, caution, pass, success, and destructive actions
-- strong hierarchy around the current nomination, live bid, and max-bid recommendation
+- strong hierarchy around the current nomination, live bid, and target/max recommendation
 - sportsbook-inspired urgency without turning the product into a betting app
 - predictable grid layouts and reusable components over bespoke one-off styling
 
@@ -18,8 +18,10 @@ The app uses a premium live-market interface:
 
 - centered on a live decision board and recommendation call
 - keyboard-assisted workflow for team focus, bid entry, winner selection, and save
-- split navigation model: `Auction`, `Portfolio`, `Overrides`, `Session`
+- workspace navigation model: `Auction`, `Analysis`, `Portfolio`, `Overrides`
 - action controls should feel compact, direct, and operational
+- `Auction` is the fast action surface
+- `Analysis` is the deeper reasoning surface using the same selected team and recommendation payload
 
 ### Viewer board
 
@@ -30,8 +32,8 @@ The app uses a premium live-market interface:
 ### Admin surfaces
 
 - use the same shell, spacing, buttons, and field treatments as the operator experience
-- prefer summary cards plus structured forms, not legacy panel stacks
-- session admin should clearly separate access, payouts, syndicates, and data-source controls
+- prefer dense tables and compact settings forms over decorative cards
+- session admin should clearly separate payouts, analysis settings, shared code, tracked participants, and access controls
 
 ## Visual Rules
 
@@ -45,7 +47,8 @@ The app uses a premium live-market interface:
 
 - The primary decision area should always stay above secondary detail.
 - Forms should be grouped into clear sections with consistent spacing.
-- Tables are acceptable when precision matters, but summary cards or structured rows should lead when readability matters more than density.
+- Admin surfaces should prefer table density and short, direct labels.
+- `Auction` and `Analysis` should feel like two views into one model, not two separate apps stitched together.
 - Mobile support matters most for viewer mode. Operator mode can remain desktop-first as long as it degrades cleanly.
 
 ## Implementation Guardrails

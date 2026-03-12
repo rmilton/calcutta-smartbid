@@ -597,7 +597,7 @@ p {
 
 .decision-strip,
 .metric-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin-top: 1.2rem;
 }
 
@@ -971,6 +971,10 @@ p {
   padding: 0.8rem 0.7rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   vertical-align: middle;
+}
+
+.admin-table--dense tbody tr.table-row--focus td {
+  background: rgba(200, 255, 98, 0.06);
 }
 
 .admin-table--dense tr:last-child td {

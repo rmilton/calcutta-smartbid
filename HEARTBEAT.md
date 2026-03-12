@@ -24,6 +24,7 @@ As of `2026-03-09`:
   - access assignment
   - shared code rotation
   - tracked syndicates
+  - analysis settings
   - payout structure editing
   - active data source selection
   - import history
@@ -32,6 +33,7 @@ As of `2026-03-09`:
   - searchable single-control `Active Team for Bidding`
   - automatic board update on team selection
   - purchase recording and persistence
+  - in-room `Analysis` workspace backed by the same recommendation payload as `Auction`
 - live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
@@ -64,6 +66,9 @@ Current product surfaces and their roles:
 - per-syndicate `remainingBankroll` is currently derived as:
   - `projectedPot / syndicateCount - spend`
 - this is still an assumption layer, not the final real-pot model
+- shared analysis settings are:
+  - `targetTeamCount`
+  - `maxSingleTeamPct`
 
 ## State Truth Rules
 
@@ -73,6 +78,8 @@ Current product surfaces and their roles:
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
 - Mothership is the fixed recommendation lens for every session
+- Mothership purchases are the owned-portfolio truth for live analysis and bid planning
+- `Auction` and `Analysis` must remain consistent because they share one analysis snapshot
 
 ## Deployment Shape
 
@@ -98,6 +105,7 @@ Key files:
 - session admin configuration
 - session member login
 - live board load
+- in-room analysis load
 - active-team selection with automatic board update
 - current bid entry
 - purchase recording
@@ -109,6 +117,7 @@ Key files:
 - session users authenticate with assigned email plus shared code
 - viewer mode remains read-only
 - viewers are trusted internal teammates and see the same Mothership-centered guidance as operators
+- the standalone `/csv-analysis` page is legacy compatibility only and should redirect into the live room
 - validation errors should resolve to domain-language messages instead of raw schema failures where feasible
 - production-like deployment must run with `CALCUTTA_STORAGE_BACKEND=supabase`
 
@@ -117,6 +126,7 @@ Key files:
 - purchase route now returns a clean message when price is `<= 0`
 - operator local form state no longer resets while polling/realtime refresh is active
 - live dashboard now refreshes when session syndicates change
+- live-room `Analysis` now shares the same recommendation engine as `Auction`
 - admin pages no longer rely on the legacy panel shell for primary layouts
 - runtime config errors no longer masquerade as missing-session 404s
 - production deployments are guarded from running on local storage
@@ -151,14 +161,17 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 2. Confirm redirect to `/admin`.
 3. Create a session or open an existing one.
 4. On session admin, save access, rotate the code, and save payout structure.
+5. Save analysis settings and confirm they persist.
 5. Log in as a session user with assigned email plus shared code.
 6. Confirm the live board loads with the right role.
 7. Change `Active Team for Bidding` and confirm the board updates immediately.
-8. Change current bid and confirm it persists.
-9. Record a purchase with a valid bid.
-10. Try recording a purchase with `0` and confirm the friendly validation error.
-11. Refresh and confirm persistence.
-12. Log in as a viewer and confirm the room is synchronized but not editable.
+8. Open `Analysis` and confirm the selected team matches `Auction` on target/max bid.
+9. Change current bid and confirm it persists.
+10. Record a purchase with a valid bid.
+11. Try recording a purchase with `0` and confirm the friendly validation error.
+12. Refresh and confirm persistence.
+13. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
+14. Log in as a viewer and confirm the room is synchronized but not editable.
 
 ## Operational Notes
 
@@ -170,6 +183,7 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 - the winner picker on the live board is driven by the session's participating syndicates, not the global syndicate catalog
 - if a live-room mutation cannot be safely corrected or audited, treat that as a product gap rather than operator error
 - any future work that changes bankroll/headroom language should update UI copy, recommendation logic, and this document together
+- any future work that changes analysis scoring or bid allocation should update both `src/lib/session-analysis.ts` and `src/lib/engine/recommendations.ts` together
 
 ## Backlog References
 

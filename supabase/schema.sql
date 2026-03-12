@@ -30,6 +30,9 @@ alter table public.auction_sessions
 alter table public.auction_sessions
   add column if not exists active_data_source_kind text default 'builtin';
 
+alter table public.auction_sessions
+  add column if not exists analysis_settings jsonb default '{"targetTeamCount":8,"maxSingleTeamPct":22}'::jsonb;
+
 create unique index if not exists auction_sessions_shared_code_lookup_idx
   on public.auction_sessions(shared_code_lookup);
 
