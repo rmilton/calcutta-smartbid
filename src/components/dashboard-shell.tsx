@@ -86,7 +86,7 @@ export function DashboardShell({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
-  const teamSelectRef = useRef<HTMLSelectElement | null>(null);
+  const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
   const activeTeamSaveInFlightRef = useRef(false);
@@ -467,22 +467,18 @@ export function DashboardShell({
 
   return (
     <main className="dashboard-page">
-      <header className="surface-card session-hero">
+      <header className="surface-card session-hero session-hero--slim">
         <div className="session-hero__copy">
           <p className="eyebrow">Calcutta SmartBid</p>
           <h1>{dashboard.session.name}</h1>
-          <p>
-            Mothership war room. {dashboard.availableTeams.length} teams remain on the board.
-          </p>
         </div>
         <div className="session-hero__meta">
           <div className="status-pill">
-            Signed in as {currentMember.name} ({getRoleLabel(currentMember.role, currentMember.scope)})
+            {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
           </div>
-          <div className="status-pill">Backend {dashboard.storageBackend}</div>
-          {!viewerMode ? (
-            <div className="status-pill">Shortcuts /, B, W, Enter</div>
-          ) : null}
+          <div className="status-pill">
+            {dashboard.availableTeams.length} teams available
+          </div>
           {currentMember.scope === "platform" ? (
             <button
               type="button"
@@ -572,7 +568,7 @@ export function DashboardShell({
                         </strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Bankroll after buy</span>
+                        <span>Bankroll after buy (est.)</span>
                         <strong>{formatCurrency(potentialRemainingBankroll)}</strong>
                       </div>
                       <div className="decision-stat">
@@ -734,37 +730,32 @@ export function DashboardShell({
                       <p className="eyebrow">Live Controls</p>
                       <h3>Keyboard-first board updates</h3>
                     </div>
-                    <p className="section-kicker">/, B, W, Enter</p>
+                  </div>
+                  <div className="shortcut-legend">
+                    <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
+                    <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
+                    <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
+                    <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
                   </div>
 
                   <div className="field-stack">
                     <label className="field-shell">
                       <span>Active team</span>
-                      <select
-                        ref={teamSelectRef}
+                      <TeamCombobox
+                        teams={dashboard.session.projections}
+                        soldLookup={soldLookup}
                         value={selectedTeamId}
-                        onChange={(event) => {
-                          const nextTeamId = event.target.value;
+                        inputRef={teamSelectRef}
+                        onChange={(nextTeamId) => {
                           setSelectedTeamId(nextTeamId);
                           setCurrentBid(0);
                           void saveActiveTeam(nextTeamId);
                         }}
-                      >
-                        <option value="">Select a team</option>
-                        {dashboard.session.projections.map((team) => (
-                          <option
-                            key={team.id}
-                            value={team.id}
-                            disabled={soldLookup.has(team.id)}
-                          >
-                            {team.seed}. {team.name} ({team.region})
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </label>
 
                     <label className="field-shell field-shell--accent">
-                      <span>Current bid</span>
+                      <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
                       <input
                         ref={bidInputRef}
                         type="number"
@@ -800,7 +791,7 @@ export function DashboardShell({
                     </button>
                     <button
                       type="button"
-                      className="button button-danger"
+                      className="button"
                       disabled={currentBid <= 0 || !selectedTeamId}
                       onClick={() => void recordPurchase()}
                     >
@@ -826,7 +817,7 @@ export function DashboardShell({
                       compact
                     />
                     <MetricCard
-                      label="Remaining"
+                      label="Remaining (est.)"
                       value={formatCurrency(dashboard.focusSyndicate.remainingBankroll)}
                       compact
                     />
@@ -886,7 +877,7 @@ export function DashboardShell({
                   </div>
                 </div>
 
-                <div className="form-grid form-grid--two">
+                <div className="form-grid">
                   <label className="field-shell">
                     <span>Search</span>
                     <input
@@ -895,20 +886,6 @@ export function DashboardShell({
                       onChange={(event) => setAnalysisSearch(event.target.value)}
                       placeholder="Type team or abbreviation"
                     />
-                  </label>
-                  <label className="field-shell">
-                    <span>Quick select</span>
-                    <select
-                      value={selectedTeamId}
-                      onChange={(event) => setSelectedTeamId(event.target.value)}
-                    >
-                      <option value="">Select a team</option>
-                      {filteredAnalysisRows.map((row) => (
-                        <option key={row.teamId} value={row.teamId}>
-                          #{row.rank} {row.teamName}
-                        </option>
-                      ))}
-                    </select>
                   </label>
                 </div>
 
@@ -1120,7 +1097,7 @@ export function DashboardShell({
                     value={formatCurrency(dashboard.focusSyndicate.spend)}
                   />
                   <MetricCard
-                    label="Remaining bankroll"
+                    label="Remaining (est.)"
                     value={formatCurrency(dashboard.focusSyndicate.remainingBankroll)}
                   />
                   <MetricCard
@@ -1550,6 +1527,140 @@ function SaleRow({
         <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
+    </div>
+  );
+}
+
+function TeamCombobox({
+  teams,
+  soldLookup,
+  value,
+  inputRef,
+  onChange
+}: {
+  teams: TeamProjection[];
+  soldLookup: Set<string>;
+  value: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onChange: (teamId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const selectedTeam = useMemo(() => teams.find((t) => t.id === value) ?? null, [teams, value]);
+
+  const sorted = useMemo(() => {
+    const available = teams.filter((t) => !soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
+    const sold = teams.filter((t) => soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
+    return [...available, ...sold];
+  }, [teams, soldLookup]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return sorted;
+    const lower = search.toLowerCase();
+    return sorted.filter(
+      (t) =>
+        t.name.toLowerCase().includes(lower) ||
+        t.shortName.toLowerCase().includes(lower) ||
+        t.region.toLowerCase().includes(lower) ||
+        String(t.seed) === lower
+    );
+  }, [sorted, search]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  function handleFocus() {
+    setOpen(true);
+    setSearch("");
+    setHighlightIndex(0);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const team = filtered[highlightIndex];
+      if (team && !soldLookup.has(team.id)) {
+        onChange(team.id);
+        setOpen(false);
+        setSearch("");
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setSearch("");
+    }
+  }
+
+  const displayValue = open ? search : selectedTeam ? `${selectedTeam.seed}. ${selectedTeam.name}` : "";
+
+  return (
+    <div className="combobox" ref={containerRef}>
+      <input
+        ref={inputRef}
+        className="combobox__input"
+        value={displayValue}
+        placeholder={open ? "Search teams…" : "Select a team"}
+        readOnly={!open}
+        autoComplete="off"
+        onFocus={handleFocus}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setHighlightIndex(0);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      {open && (
+        <ul className="combobox__list">
+          {filtered.length === 0 ? (
+            <li className="combobox__empty">No teams found</li>
+          ) : (
+            filtered.map((team, index) => {
+              const sold = soldLookup.has(team.id);
+              return (
+                <li
+                  key={team.id}
+                  className={cn(
+                    "combobox__item",
+                    index === highlightIndex && "combobox__item--highlighted",
+                    sold && "combobox__item--sold"
+                  )}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!sold) {
+                      onChange(team.id);
+                      setOpen(false);
+                      setSearch("");
+                    }
+                  }}
+                  onMouseEnter={() => setHighlightIndex(index)}
+                >
+                  <span className="combobox__seed">{team.seed}</span>
+                  <span className="combobox__name">{team.name}</span>
+                  <span className="combobox__region">{team.region}</span>
+                  {sold ? <span className="combobox__sold-badge">sold</span> : null}
+                </li>
+              );
+            })
+          )}
+        </ul>
+      )}
     </div>
   );
 }

@@ -2,42 +2,11 @@
 
 import { FormEvent, useState, useTransition } from "react";
 
-type AccessMode = "viewer" | "operator" | "admin";
-
-const accessModes: Array<{
-  id: AccessMode;
-  label: string;
-  title: string;
-  submitLabel: string;
-}> = [
-  {
-    id: "viewer",
-    label: "Viewer",
-    title: "Mothership room",
-    submitLabel: "Enter"
-  },
-  {
-    id: "operator",
-    label: "Operator",
-    title: "Operator board",
-    submitLabel: "Enter"
-  },
-  {
-    id: "admin",
-    label: "Platform admin",
-    title: "Admin center",
-    submitLabel: "Enter admin"
-  }
-];
-
 export function AccessForm() {
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [sharedCode, setSharedCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<AccessMode>("viewer");
-
-  const activeMode = accessModes.find((candidate) => candidate.id === mode) ?? accessModes[0];
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,30 +39,7 @@ export function AccessForm() {
     <form className="minimal-auth-card" onSubmit={onSubmit}>
       <div className="minimal-auth-card__header">
         <p className="minimal-auth-card__brand">Mothership</p>
-        <h1 className="minimal-auth-card__title">{activeMode.title}</h1>
-        <div className="access-tier-row" role="tablist" aria-label="Access mode">
-          {accessModes.map((candidate) => {
-            const isActive = candidate.id === mode;
-            return (
-              <button
-                key={candidate.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className={[
-                  "access-tier",
-                  `access-tier--${candidate.id}`,
-                  isActive ? "access-tier--active" : ""
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => setMode(candidate.id)}
-              >
-                {candidate.label}
-              </button>
-            );
-          })}
-        </div>
+        <h1 className="minimal-auth-card__title">Enter room</h1>
       </div>
 
       <div className="minimal-auth-form">
@@ -104,6 +50,7 @@ export function AccessForm() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
+            autoFocus
             placeholder="name@domain.com"
             required
           />
@@ -123,7 +70,7 @@ export function AccessForm() {
       {error ? <p className="minimal-auth-error">{error}</p> : null}
 
       <button type="submit" className="minimal-auth-submit" disabled={isPending}>
-        {isPending ? "Checking access..." : activeMode.submitLabel}
+        {isPending ? "Checking access..." : "Enter"}
       </button>
     </form>
   );
