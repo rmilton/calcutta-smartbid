@@ -6,7 +6,10 @@ This file captures the current visual and interaction direction for Calcutta Sma
 
 The app uses a premium live-market interface:
 
-- dark neutral surfaces with high contrast text
+- dual dark/light theme controlled by `data-theme` on `<html>`; dark is the default
+- `ThemeToggle` in session, admin center, and session admin headers persists choice to `localStorage`; an inline `<script>` in `<head>` reads it before first paint to prevent flash of wrong theme
+- all colours come from CSS custom properties defined in `src/app/globals.css` — never hardcode rgba or hex values directly in components
+- dark neutral surfaces (`--bg: #0c0c0e`, `--panel`) with high contrast text; light surfaces (`--bg: #f7f7f9`) with matching hierarchy
 - sharp signal colors for buy, caution, pass, success, and destructive actions
 - strong hierarchy around the current nomination, live bid, and target/max recommendation
 - sportsbook-inspired urgency without turning the product into a betting app
@@ -42,6 +45,7 @@ The app uses a premium live-market interface:
 - Keep section headers consistent with `eyebrow` plus a strong heading and one short support line when needed.
 - Avoid reintroducing the old warm parchment or vintage auction look.
 - Avoid flat utility-only layouts that weaken hierarchy.
+- Never hardcode colours that should vary by theme — use `var(--token-name)` so both dark and light modes work automatically.
 
 ## Layout Rules
 
@@ -56,4 +60,4 @@ The app uses a premium live-market interface:
 - Designs should map cleanly to reusable React components and predictable CSS grids.
 - Avoid fragile absolute positioning and complex custom CSS for core flows.
 - Prefer additive extensions to the design system over reviving legacy compatibility classes.
-- If a new screen is added, it should look like it belongs to the current dark premium system on first render.
+- If a new screen is added, it should look like it belongs to the current system in both dark and light modes on first render.

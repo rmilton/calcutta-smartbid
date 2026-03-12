@@ -4,7 +4,7 @@ This is the current-state handoff document. Update it when behavior, architectur
 
 ## Last Known Good State
 
-As of `2026-03-09`:
+As of `2026-03-12`:
 
 - app runs locally against Supabase via `.env.local`
 - local smoke test passed:
@@ -14,6 +14,7 @@ As of `2026-03-09`:
   - refresh and confirm persistence
 - production deployment on `Vercel + Supabase` has been confirmed working
 - redesigned UI is live across landing, setup, live session, viewer board, and admin surfaces
+- dark/light theme toggle is live; theme persists to `localStorage` and initialises via an inline `<script>` in `<head>` to avoid flash of wrong theme
 - platform-admin login routes to `/admin`
 - admin center supports:
   - org users
@@ -124,6 +125,10 @@ Key files:
 
 ## Important Recent Changes
 
+- visual design overhauled to a premium minimal token system using CSS custom properties; all surfaces use `--bg`, `--panel`, `--panel-muted`, and semantic vars instead of hardcoded colours
+- dark/light theme toggle added via `ThemeToggle` component; toggle appears in session, admin center, and session admin headers; theme written to `data-theme` on `<html>` and persisted to `localStorage`
+- Inter + JetBrains Mono loaded via `next/font/google`; FOUC eliminated via inline bootstrap script in `<head>`
+- border-radius tightened from 28 px to 12 px max; `color-mix(in srgb, ...)` used for all semantic derived colours
 - purchase route now returns a clean message when price is `<= 0`
 - operator local form state no longer resets while polling/realtime refresh is active
 - live dashboard now refreshes when session syndicates change
