@@ -2,6 +2,7 @@ import {
   AuctionSession,
   BidRecommendation,
   OwnershipExposure,
+  SessionAnalysisSnapshot,
   Stage,
   Syndicate,
   TeamProjection
@@ -11,7 +12,8 @@ import { clamp, roundCurrency, titleCaseStage } from "@/lib/utils";
 export function buildBidRecommendation(
   session: AuctionSession,
   team: TeamProjection | null,
-  focusSyndicate: Syndicate
+  focusSyndicate: Syndicate,
+  analysis: SessionAnalysisSnapshot
 ): BidRecommendation | null {
   if (!team || !session.simulationSnapshot) {
     return null;
@@ -23,32 +25,38 @@ export function buildBidRecommendation(
   }
 
   const ownershipExposure = computeOwnershipExposure(session, team.id, focusSyndicate);
+  const budgetRow = analysis.budgetRows.find((row) => row.teamId === team.id) ?? null;
   const currentBid = session.liveState.currentBid;
   const expectedGrossPayout = teamResult.expectedGrossPayout;
-  const remainingBankroll = focusSyndicate.remainingBankroll;
-  const conservativeHeadroom = remainingBankroll * 0.92;
-  const convictionMultiplier =
+  const remainingBankroll = analysis.remainingBankroll;
+  const openingBid = budgetRow?.openingBid ?? 0;
+  const targetBid = budgetRow?.targetBid ?? 0;
+  const baseMaxBid = budgetRow?.maxBid ?? 0;
+  const conflictPenaltyMultiplier =
     1 -
     clamp(
-      ownershipExposure.overlapScore * 0.55 +
-        ownershipExposure.concentrationScore * 0.22,
+      ownershipExposure.overlapScore * 0.18 +
+        ownershipExposure.concentrationScore * 0.12,
       0,
-      0.6
+      0.22
     );
-  const baseMaxBid = expectedGrossPayout * convictionMultiplier;
-  const recommendedMaxBid = roundCurrency(Math.max(0, Math.min(baseMaxBid, conservativeHeadroom)));
-  const expectedNetValue = roundCurrency(expectedGrossPayout - currentBid - ownershipExposure.overlapScore * 850);
-  const valueGap = roundCurrency(recommendedMaxBid - currentBid);
+  const maxBid = roundCurrency(Math.max(0, baseMaxBid * conflictPenaltyMultiplier));
+  const expectedNetValue = roundCurrency(
+    expectedGrossPayout - currentBid - ownershipExposure.overlapScore * 850
+  );
+  const valueGap = roundCurrency(maxBid - currentBid);
+  const buyThreshold = Math.min(targetBid, maxBid);
+  const hasBudgetWindow = buyThreshold > 0 || maxBid > 0;
 
   let stoplight: BidRecommendation["stoplight"] = "pass";
-  if (currentBid <= recommendedMaxBid * 0.85 && expectedNetValue > 0) {
+  if (hasBudgetWindow && buyThreshold > 0 && currentBid <= buyThreshold && expectedNetValue > 0) {
     stoplight = "buy";
-  } else if (currentBid <= recommendedMaxBid && expectedNetValue >= -750) {
+  } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
     stoplight = "caution";
   }
 
   const rationale = [
-    `${team.name} projects for ${teamResult.roundProbabilities.finalFour.toFixed(2)} Final Four probability and ${teamResult.roundProbabilities.champion.toFixed(2)} title probability.`,
+    `${team.name} carries a ${budgetRow ? budgetRow.convictionScore.toFixed(3) : "0.000"} conviction score with ${budgetRow ? Math.round(budgetRow.investableShare * 100) : 0}% of the current investable budget.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
     `${focusSyndicate.name} has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`
   ];
@@ -62,8 +70,8 @@ export function buildBidRecommendation(
 
   const drivers = [
     {
-      label: "Value gap",
-      value: `${valueGap >= 0 ? "+" : ""}${roundCurrency(valueGap)}`,
+      label: "Target / max",
+      value: `${roundCurrency(targetBid)} / ${roundCurrency(maxBid)}`,
       tone: valueGap >= 0 ? "positive" : "negative"
     },
     {
@@ -76,14 +84,16 @@ export function buildBidRecommendation(
   return {
     teamId: team.id,
     currentBid,
-    recommendedMaxBid,
+    openingBid,
+    targetBid,
+    maxBid,
     expectedGrossPayout,
     expectedNetValue,
     valueGap,
     confidenceBand: teamResult.confidenceBand,
     stoplight,
     ownershipPenalty: roundCurrency(ownershipExposure.overlapScore * 850),
-    bankrollHeadroom: roundCurrency(conservativeHeadroom),
+    bankrollHeadroom: roundCurrency(remainingBankroll),
     concentrationScore: ownershipExposure.concentrationScore,
     drivers: [...drivers],
     rationale

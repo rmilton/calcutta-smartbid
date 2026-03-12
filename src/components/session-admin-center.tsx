@@ -50,6 +50,9 @@ export function SessionAdminCenter({
   );
   const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
+  const [analysisSettings, setAnalysisSettings] = useState(
+    initialConfig.session.analysisSettings
+  );
 
   const activeUsers = useMemo(
     () => config.platformUsers.filter((user) => user.active),
@@ -93,6 +96,7 @@ export function SessionAdminCenter({
     );
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
+    setAnalysisSettings(config.session.analysisSettings);
   }, [config]);
 
   useEffect(() => {
@@ -275,6 +279,26 @@ export function SessionAdminCenter({
     });
   }
 
+  function onSaveAnalysisSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    startTransition(async () => {
+      try {
+        await submitJson(
+          `/api/admin/sessions/${config.session.id}/analysis`,
+          "PUT",
+          { analysisSettings },
+          "Analysis settings updated."
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to update analysis settings."
+        );
+      }
+    });
+  }
+
   function onRunImport() {
     startTransition(async () => {
       try {
@@ -312,7 +336,7 @@ export function SessionAdminCenter({
             Open board
           </Link>
           <Link
-            href={`/csv-analysis?sessionId=${config.session.id}`}
+            href={`/session/${config.session.id}?view=analysis`}
             className="button button-ghost button--small"
           >
             Open analysis
@@ -483,6 +507,55 @@ export function SessionAdminCenter({
                   ))}
                 </tbody>
               </table>
+            </div>
+          </form>
+        </section>
+
+        <section className="surface-card admin-form-section admin-form-section--wide">
+          <form className="admin-section-form" onSubmit={onSaveAnalysisSettings}>
+            <div className="admin-form-section__heading">
+              <h2>Analysis strategy</h2>
+              <div className="button-row">
+                <button type="submit" className="button button--small" disabled={isPending}>
+                  Save strategy
+                </button>
+              </div>
+            </div>
+            <div className="compact-field-grid compact-field-grid--three">
+              <label className="field-shell">
+                <span>Target teams</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={24}
+                  step={1}
+                  value={analysisSettings.targetTeamCount}
+                  onChange={(event) =>
+                    setAnalysisSettings((current) => ({
+                      ...current,
+                      targetTeamCount: Number(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Max per-team %</span>
+                <input
+                  type="number"
+                  min={8}
+                  max={45}
+                  step={1}
+                  value={analysisSettings.maxSingleTeamPct}
+                  onChange={(event) =>
+                    setAnalysisSettings((current) => ({
+                      ...current,
+                      maxSingleTeamPct: Number(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
             </div>
           </form>
         </section>

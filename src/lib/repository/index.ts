@@ -25,6 +25,7 @@ import { getSyndicateBrandColor } from "@/lib/syndicate-colors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   AccessMember,
+  AnalysisSettings,
   AdminCenterData,
   AdminSessionSummary,
   AuctionDashboard,
@@ -51,7 +52,7 @@ import {
   updatePlatformUserSchema,
   updateSyndicateCatalogSchema
 } from "@/lib/types";
-import { createId, roundCurrency } from "@/lib/utils";
+import { clamp, createId, roundCurrency } from "@/lib/utils";
 
 interface SessionStore {
   sessions: StoredAuctionSession[];
@@ -68,6 +69,7 @@ interface CreateSessionInput {
   accessAssignments: Array<{ platformUserId: string; role: SessionRole }>;
   catalogSyndicateIds: string[];
   payoutRules: PayoutRules;
+  analysisSettings: AnalysisSettings;
   dataSourceKey: string;
   simulationIterations: number;
 }
@@ -147,6 +149,10 @@ export interface SessionRepository {
   updateSessionPayoutRules(
     sessionId: string,
     payoutRules: PayoutRules
+  ): Promise<SessionAdminConfig>;
+  updateSessionAnalysisSettings(
+    sessionId: string,
+    analysisSettings: AnalysisSettings
   ): Promise<SessionAdminConfig>;
   updateSessionSyndicates(
     sessionId: string,
@@ -461,6 +467,15 @@ class LocalSessionRepository implements SessionRepository {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     applyPayoutRulesMutation(session, payoutRules);
+    await this.writeStore(store);
+    return buildSessionAdminConfig(session, store);
+  }
+
+  async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    session.analysisSettings = normalizeAnalysisSettings(analysisSettings);
+    session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
     return buildSessionAdminConfig(session, store);
   }
@@ -853,6 +868,8 @@ class SupabaseSessionRepository implements SessionRepository {
         platformUsers
       ),
       payoutRules: sessionResult.data.payout_rules as PayoutRules,
+      analysisSettings:
+        (sessionResult.data.analysis_settings as AnalysisSettings | null) ?? defaultAnalysisSettings(),
       syndicates: mapSessionSyndicates(syndicatesResult.data),
       baseProjections,
       projections: applyProjectionOverrides(baseProjections, overrides),
@@ -1190,6 +1207,14 @@ class SupabaseSessionRepository implements SessionRepository {
     return this.getSessionAdminConfig(sessionId);
   }
 
+  async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
+    const session = await this.requireSession(sessionId);
+    session.analysisSettings = normalizeAnalysisSettings(analysisSettings);
+    session.updatedAt = new Date().toISOString();
+    await this.persistSessionMeta(session);
+    return this.getSessionAdminConfig(sessionId);
+  }
+
   async updateSessionSyndicates(
     sessionId: string,
     input: {
@@ -1473,6 +1498,7 @@ class SupabaseSessionRepository implements SessionRepository {
       shared_code_lookup: session.sharedAccessCodeLookup,
       shared_code_ciphertext: session.sharedAccessCodeCiphertext,
       payout_rules: session.payoutRules,
+      analysis_settings: session.analysisSettings,
       projection_provider: session.projectionProvider,
       active_data_source_key: session.activeDataSource.key,
       active_data_source_name: session.activeDataSource.name,
@@ -1663,6 +1689,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     sharedAccessCodeCiphertext: encryptSharedCode(parsed.sharedAccessCode),
     accessMembers,
     payoutRules: parsed.payoutRules,
+    analysisSettings: normalizeAnalysisSettings(parsed.analysisSettings),
     syndicates,
     baseProjections: projectionFeed.teams,
     projections: projectionFeed.teams,
@@ -2287,6 +2314,7 @@ function normalizeSessionShape(session: StoredAuctionSession) {
     sharedAccessCodeCiphertext: session.sharedAccessCodeCiphertext ?? "",
     accessMembers: session.accessMembers ?? [],
     payoutRules,
+    analysisSettings: normalizeAnalysisSettings(session.analysisSettings),
     baseProjections,
     projections,
     projectionOverrides,
@@ -2331,6 +2359,30 @@ function normalizePayoutRules(
         : typeof payoutRules.startingBankroll === "number"
           ? payoutRules.startingBankroll * Math.max(1, syndicateCount)
           : defaults.projectedPot
+  };
+}
+
+function defaultAnalysisSettings(): AnalysisSettings {
+  return {
+    targetTeamCount: 8,
+    maxSingleTeamPct: 22
+  };
+}
+
+function normalizeAnalysisSettings(
+  analysisSettings: Partial<AnalysisSettings> | undefined
+): AnalysisSettings {
+  const defaults = defaultAnalysisSettings();
+
+  return {
+    targetTeamCount:
+      typeof analysisSettings?.targetTeamCount === "number"
+        ? clamp(Math.round(analysisSettings.targetTeamCount), 2, 24)
+        : defaults.targetTeamCount,
+    maxSingleTeamPct:
+      typeof analysisSettings?.maxSingleTeamPct === "number"
+        ? clamp(analysisSettings.maxSingleTeamPct, 8, 45)
+        : defaults.maxSingleTeamPct
   };
 }
 

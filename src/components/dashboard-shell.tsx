@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import {
   useCallback,
   startTransition,
@@ -27,11 +25,12 @@ import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 interface DashboardShellProps {
   sessionId: string;
   initialDashboard: AuctionDashboard;
+  initialView?: WorkspaceView;
   viewerMode: boolean;
   currentMember: AuthenticatedMember;
 }
 
-type WorkspaceView = "auction" | "portfolio" | "overrides";
+type WorkspaceView = "auction" | "analysis" | "portfolio" | "overrides";
 
 interface ActiveOverrideRow {
   override: ProjectionOverride;
@@ -40,6 +39,7 @@ interface ActiveOverrideRow {
 
 const viewLabels: Record<WorkspaceView, string> = {
   auction: "Auction",
+  analysis: "Analysis",
   portfolio: "Portfolio",
   overrides: "Overrides"
 };
@@ -61,6 +61,7 @@ function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMem
 export function DashboardShell({
   sessionId,
   initialDashboard,
+  initialView = "auction",
   viewerMode,
   currentMember
 }: DashboardShellProps) {
@@ -69,7 +70,7 @@ export function DashboardShell({
     sessionId,
     initialDashboard
   );
-  const [activeView, setActiveView] = useState<WorkspaceView>("auction");
+  const [activeView, setActiveView] = useState<WorkspaceView>(initialView);
   const [selectedTeamId, setSelectedTeamId] = useState(
     dashboard.session.liveState.nominatedTeamId ?? ""
   );
@@ -84,6 +85,7 @@ export function DashboardShell({
   });
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analysisSearch, setAnalysisSearch] = useState("");
   const teamSelectRef = useRef<HTMLSelectElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -125,9 +127,10 @@ export function DashboardShell({
       buildBidRecommendation(
         liveSession,
         selectedTeam,
-        dashboard.focusSyndicate
+        dashboard.focusSyndicate,
+        dashboard.analysis
       ),
-    [dashboard.focusSyndicate, liveSession, selectedTeam]
+    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedTeam]
   );
   const selectedOverride =
     (selectedTeamId && dashboard.session.projectionOverrides[selectedTeamId]) || null;
@@ -143,6 +146,10 @@ export function DashboardShell({
     () => new Map(dashboard.ledger.map((syndicate) => [syndicate.id, syndicate])),
     [dashboard.ledger]
   );
+  const analysisRow =
+    dashboard.analysis.ranking.find((row) => row.teamId === selectedTeamId) ?? null;
+  const analysisBudgetRow =
+    dashboard.analysis.budgetRows.find((row) => row.teamId === selectedTeamId) ?? null;
   const focusOwnedTeams = useMemo(
     () =>
       dashboard.soldTeams.filter(
@@ -154,6 +161,22 @@ export function DashboardShell({
     () => [...dashboard.soldTeams].slice(-4).reverse(),
     [dashboard.soldTeams]
   );
+  const ownedTeamLookup = useMemo(
+    () => new Map(dashboard.analysis.ownedTeams.map((team) => [team.teamId, team])),
+    [dashboard.analysis.ownedTeams]
+  );
+  const filteredAnalysisRows = useMemo(() => {
+    const normalized = analysisSearch.trim().toLowerCase();
+    if (!normalized) {
+      return dashboard.analysis.budgetRows;
+    }
+
+    return dashboard.analysis.budgetRows.filter((row) => {
+      const analysisItem = dashboard.analysis.ranking.find((candidate) => candidate.teamId === row.teamId);
+      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""}`.toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
   const filteredRationale = useMemo(
     () =>
       recommendation?.rationale.filter(
@@ -179,6 +202,9 @@ export function DashboardShell({
     0,
     dashboard.focusSyndicate.remainingBankroll - currentBid
   );
+  const selectedSimulation = selectedTeam
+    ? snapshot?.teamResults[selectedTeam.id] ?? null
+    : null;
 
   useEffect(() => {
     if (!selectedTeam) {
@@ -488,14 +514,6 @@ export function DashboardShell({
                 {viewLabels[view]}
               </button>
             ))}
-            {currentMember.role === "admin" ? (
-              <Link
-                href={`/csv-analysis?sessionId=${sessionId}`}
-                className="workspace-tab"
-              >
-                Analysis
-              </Link>
-            ) : null}
           </nav>
 
           {activeView === "auction" ? (
@@ -531,11 +549,17 @@ export function DashboardShell({
                         <strong>{formatCurrency(currentBid)}</strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Recommended max</span>
+                        <span>Target bid</span>
                         <strong>
                           {recommendation
-                            ? formatCurrency(recommendation.recommendedMaxBid)
+                            ? formatCurrency(recommendation.targetBid)
                             : "--"}
+                        </strong>
+                      </div>
+                      <div className="decision-stat">
+                        <span>Max bid</span>
+                        <strong>
+                          {recommendation ? formatCurrency(recommendation.maxBid) : "--"}
                         </strong>
                       </div>
                       <div className="decision-stat">
@@ -543,7 +567,7 @@ export function DashboardShell({
                         <strong>{formatCurrency(potentialRemainingBankroll)}</strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Portfolio EV impact</span>
+                        <span>Simulated net</span>
                         <strong>
                           {recommendation
                             ? formatCurrency(recommendation.expectedNetValue)
@@ -558,23 +582,19 @@ export function DashboardShell({
                     <h3>
                       {recommendation
                         ? recommendation.stoplight === "buy"
-                          ? `Bid to ${formatCurrency(recommendation.recommendedMaxBid)}`
+                          ? `Bid through ${formatCurrency(recommendation.targetBid)}`
                           : recommendation.stoplight === "caution"
-                            ? `Stay disciplined to ${formatCurrency(
-                                recommendation.recommendedMaxBid
-                              )}`
-                            : `Pass above ${formatCurrency(
-                                recommendation.recommendedMaxBid
-                              )}`
+                            ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
+                            : `Pass above ${formatCurrency(recommendation.maxBid)}`
                         : "Pick a team to set the board"}
                     </h3>
                     <p>
                       {recommendation
                         ? recommendation.stoplight === "buy"
-                          ? "Value remains positive through the next bidding step. Keep the live board moving and confirm the winner with W when the sale closes."
+                          ? "The shared analysis model still supports an aggressive price in the current range. Keep the board moving and confirm the winner when the sale closes."
                           : recommendation.stoplight === "caution"
-                            ? "The room is nearing the model ceiling. Stay on price discipline and only push if you want the portfolio exposure."
-                            : "The market is above the model range. Preserve bankroll and wait for a better nomination."
+                            ? "The room is into stretch pricing. Stay disciplined and only push if you want the portfolio exposure."
+                            : "The room is above the current model cap. Preserve bankroll and wait for a better nomination."
                         : "The auction surface stays focused on one decision strip at a time."}
                     </p>
                   </article>
@@ -605,7 +625,7 @@ export function DashboardShell({
                       }
                     />
                     <MetricCard
-                      label="Confidence band"
+                      label="Sim confidence"
                       value={
                         recommendation
                           ? `${formatCurrency(recommendation.confidenceBand[0])}-${formatCurrency(
@@ -615,11 +635,9 @@ export function DashboardShell({
                       }
                     />
                     <MetricCard
-                      label="Bankroll headroom"
+                      label="Opening bid"
                       value={
-                        recommendation
-                          ? formatCurrency(recommendation.bankrollHeadroom)
-                          : "--"
+                        recommendation ? formatCurrency(recommendation.openingBid) : "--"
                       }
                     />
                     <MetricCard
@@ -631,7 +649,7 @@ export function DashboardShell({
                       }
                     />
                     <MetricCard
-                      label="Value gap"
+                      label="Value gap to max"
                       value={
                         recommendation
                           ? formatCurrency(recommendation.valueGap)
@@ -838,6 +856,242 @@ export function DashboardShell({
                   )}
                 </article>
               </aside>
+            </section>
+          ) : null}
+
+          {activeView === "analysis" ? (
+            <section className="detail-grid">
+              <article className="surface-card">
+                <div className="section-headline">
+                  <div>
+                    <p className="eyebrow">Analysis</p>
+                    <h2>Session ranking and budget plan</h2>
+                  </div>
+                  <div className="button-row">
+                    <span className="status-pill">
+                      {dashboard.analysis.targetTeamCount} target teams
+                    </span>
+                    <span className="status-pill">
+                      {dashboard.analysis.maxSingleTeamPct}% max cap
+                    </span>
+                  </div>
+                </div>
+
+                <div className="form-grid form-grid--two">
+                  <label className="field-shell">
+                    <span>Search</span>
+                    <input
+                      type="search"
+                      value={analysisSearch}
+                      onChange={(event) => setAnalysisSearch(event.target.value)}
+                      placeholder="Type team or abbreviation"
+                    />
+                  </label>
+                  <label className="field-shell">
+                    <span>Quick select</span>
+                    <select
+                      value={selectedTeamId}
+                      onChange={(event) => setSelectedTeamId(event.target.value)}
+                    >
+                      <option value="">Select a team</option>
+                      {filteredAnalysisRows.map((row) => (
+                        <option key={row.teamId} value={row.teamId}>
+                          #{row.rank} {row.teamName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="mini-grid">
+                  <MetricCard
+                    label="Investable cash"
+                    value={formatCurrency(dashboard.analysis.investableCash)}
+                    compact
+                  />
+                  <MetricCard
+                    label="Actual paid"
+                    value={formatCurrency(dashboard.analysis.actualPaidSpend)}
+                    compact
+                  />
+                  <MetricCard
+                    label="Cash remaining"
+                    value={formatCurrency(dashboard.analysis.remainingBankroll)}
+                    compact
+                  />
+                </div>
+
+                <div className="table-wrap admin-table-wrap">
+                  <table className="admin-table admin-table--dense">
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Score</th>
+                        <th>Target</th>
+                        <th>Max</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAnalysisRows.map((row) => (
+                        <tr
+                          key={row.teamId}
+                          className={cn(selectedTeamId === row.teamId && "table-row--focus")}
+                          onClick={() => setSelectedTeamId(row.teamId)}
+                        >
+                          <td>#{row.rank}</td>
+                          <td>
+                            <strong>{row.teamName}</strong>
+                          </td>
+                          <td>
+                            {dashboard.analysis.ranking
+                              .find((candidate) => candidate.teamId === row.teamId)
+                              ?.compositeScore.toFixed(3) ?? "--"}
+                          </td>
+                          <td>{formatCurrency(row.targetBid)}</td>
+                          <td>{formatCurrency(row.maxBid)}</td>
+                          <td>{ownedTeamLookup.has(row.teamId) ? "Owned" : "Available"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article className="surface-card">
+                <div className="section-headline">
+                  <div>
+                    <p className="eyebrow">Selected Team</p>
+                    <h3>{selectedTeam?.name ?? "No team selected"}</h3>
+                  </div>
+                </div>
+
+                {selectedTeam && analysisRow ? (
+                  <div className="stack-layout">
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Rank / percentile"
+                        value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === selectedTeam.id) + 1} / ${analysisRow.percentile}th`}
+                      />
+                      <MetricCard
+                        label="Composite score"
+                        value={analysisRow.compositeScore.toFixed(3)}
+                      />
+                      <MetricCard
+                        label="Model rating"
+                        value={selectedTeam.rating.toFixed(3)}
+                      />
+                      <MetricCard
+                        label="Target / max"
+                        value={
+                          analysisBudgetRow
+                            ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
+                            : "Sold / unavailable"
+                        }
+                      />
+                    </div>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Off / Def / Tempo"
+                        value={`${selectedTeam.offense.toFixed(1)} / ${selectedTeam.defense.toFixed(1)} / ${selectedTeam.tempo.toFixed(1)}`}
+                      />
+                      <MetricCard
+                        label="Q1 wins"
+                        value={displayNullableNumber(analysisRow.q1Wins)}
+                      />
+                      <MetricCard
+                        label="Ranked wins"
+                        value={displayNullableNumber(analysisRow.rankedWins)}
+                      />
+                      <MetricCard
+                        label="3PT / KenPom"
+                        value={`${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
+                      />
+                    </div>
+
+                    <div className="detail-grid">
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Strengths</p>
+                            <h3>Why it scores well</h3>
+                          </div>
+                        </div>
+                        {analysisRow.strengths.length ? (
+                          <div className="list-stack">
+                            {analysisRow.strengths.map((strength) => (
+                              <div key={strength} className="list-line">
+                                {strength}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">No standout strengths from available scouting data.</p>
+                        )}
+                      </article>
+
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Risks</p>
+                            <h3>What can suppress conviction</h3>
+                          </div>
+                        </div>
+                        {analysisRow.risks.length ? (
+                          <div className="list-stack">
+                            {analysisRow.risks.map((risk) => (
+                              <div key={risk} className="list-line">
+                                {risk}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">No material risk flags from available scouting data.</p>
+                        )}
+                      </article>
+                    </div>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Sim expected gross"
+                        value={
+                          selectedSimulation
+                            ? formatCurrency(selectedSimulation.expectedGrossPayout)
+                            : "--"
+                        }
+                      />
+                      <MetricCard
+                        label="Sim confidence"
+                        value={
+                          selectedSimulation
+                            ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
+                            : "--"
+                        }
+                      />
+                      <MetricCard
+                        label="Conviction share"
+                        value={
+                          analysisBudgetRow
+                            ? formatPercent(analysisBudgetRow.investableShare)
+                            : "--"
+                        }
+                      />
+                      <MetricCard
+                        label="Opening bid"
+                        value={
+                          analysisBudgetRow
+                            ? formatCurrency(analysisBudgetRow.openingBid)
+                            : "--"
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="empty-copy">Select a team to inspect deeper analysis.</p>
+                )}
+              </article>
             </section>
           ) : null}
 
@@ -1158,9 +1412,11 @@ function ViewerBoard({
 
           <div className="metric-grid">
             <MetricCard
-              label="Recommended max"
+              label="Target / max"
               value={
-                recommendation ? formatCurrency(recommendation.recommendedMaxBid) : "--"
+                recommendation
+                  ? `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
+                  : "--"
               }
             />
             <MetricCard
@@ -1287,4 +1543,20 @@ function SaleRow({
       <strong>{formatCurrency(sale.price)}</strong>
     </div>
   );
+}
+
+function displayNullableNumber(value: number | null) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+
+  return `${value}`;
+}
+
+function displayNullablePercent(value: number | null) {
+  if (value === null || value === undefined) {
+    return "--";
+  }
+
+  return `${value.toFixed(1)}%`;
 }

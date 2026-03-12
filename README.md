@@ -8,6 +8,7 @@ The current implementation ships with:
 - an admin center for sessions, users, syndicates, and data sources
 - a session-admin surface for access, payout rules, syndicates, and imports
 - a live operator board with real-time bid support
+- an in-room analysis workspace that shares the same recommendation model as the auction view
 - a synchronized viewer mode with a read-only shared Mothership board
 - Monte Carlo tournament simulation and Mothership-centered bid recommendations
 - a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
@@ -44,9 +45,9 @@ AUTH_SESSION_SECRET=...
 MOTHERSHIP_SYNDICATE_NAME=Mothership
 ```
 
-### CSV analysis local quickstart
+### CSV-backed analysis local quickstart
 
-Use this when you want to run the CSV analysis page directly.
+Use this when you want CSV scouting data to drive the in-room `Analysis` workspace.
 
 1. Set `.env.local` values:
    - `SPORTS_PROJECTIONS_CSV_FILE=/absolute/path/to/your.csv`
@@ -54,12 +55,14 @@ Use this when you want to run the CSV analysis page directly.
 2. If using `supabase`, run `supabase/schema.sql` in your Supabase SQL editor before starting the app.
 3. Start dev server:
    - `npm run dev`
-4. Create a session (needed for owned-team persistence):
+4. Create a session:
    - Go to `http://localhost:3000/admin/sessions/new`
-   - Create/save the session
-   - Copy the session id (format like `session_xxxxxxxx`)
-5. Open CSV analysis:
-   - `http://localhost:3000/csv-analysis?sessionId=<your-session-id>`
+   - Include `Mothership` in the tracked room participants
+5. Open the session and switch to `Analysis`.
+
+Legacy compatibility note:
+
+- `http://localhost:3000/csv-analysis?sessionId=<your-session-id>` now redirects to the in-room `Analysis` workspace.
 
 Optional for local development only (skip login flow):
 
@@ -79,10 +82,11 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - platform-level setup and operations
   - manages users, tracked syndicates, data sources, and sessions
 - `Session admin`
-  - per-session access, shared code, payout structure, tracked syndicates, and imports
+  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, and imports
 - `Live room`
   - shared persisted Mothership session state for operator and viewer
   - operator can update active team, bid, and purchases
+  - operator also has an `Analysis` workspace for deeper team and bid review
   - viewer is read-only
 
 ## Access model
@@ -145,6 +149,11 @@ CALCUTTA_STORAGE_BACKEND=supabase
 - current `remainingBankroll` / headroom values are still modeled assumptions, not final room accounting
 - every live room is evaluated from the configured `MOTHERSHIP_SYNDICATE_NAME` perspective
 - selected syndicates in a session represent Mothership plus tracked room opponents
+- Mothership-owned purchases are the source of truth for owned-team portfolio state in live analysis
+- `Auction` and `Analysis` read from the same session-native recommendation payload
+- session analysis settings are:
+  - `targetTeamCount` default `8`
+  - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
 
 ## Projection providers
@@ -172,18 +181,21 @@ The CSV import pipeline:
 
 Use the existing **Import remote feed** button to load this dataset into a session.
 
-### CSV analysis mode (no bracket import required)
+### CSV analysis APIs
 
-If you only want team analysis from the CSV (without region/seed bracket constraints), use:
+The standalone CSV-analysis page is now legacy compatibility only. The maintained product flow is:
 
-- app page: `/csv-analysis`
-- API: `/api/projections/csv/analysis`
-- budget API: `/api/projections/csv/budget?bankroll=10000&team=Arizona&targetTeams=8`
+- import CSV-backed projections into a session
+- open the session
+- use the in-room `Analysis` tab
 
-This mode analyzes all valid teams found in the CSV and returns team intelligence rankings directly.
-Budget recommendations in this mode default to `reservePct=0` (100% of bankroll is allocated).
-Owned teams and actual paid prices are persisted server-side per authenticated session member via
-`/api/sessions/:sessionId/csv-analysis/portfolio`.
+The CSV helper APIs still exist for ingestion and model-building support:
+
+- feed bridge: `/api/projections/csv`
+- team analysis: `/api/projections/csv/analysis`
+- budget helper: `/api/projections/csv/budget?bankroll=10000&team=Arizona&targetTeams=8`
+
+These endpoints are implementation support for the shared analysis engine, not a separate primary UI.
 
 The remote endpoint should return:
 

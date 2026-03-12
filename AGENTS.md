@@ -19,11 +19,12 @@ Calcutta SmartBid now has two major surfaces:
   - admin landing at `/admin`
   - session creation at `/admin/sessions/new`
   - per-session admin management at `/admin/sessions/[sessionId]`
-- `Live auction board`
+- `Live room`
   - session member login with `email + shared code`
-  - role-driven `admin` vs `viewer` behavior at `/session/[sessionId]`
+  - role-driven `operator` vs `viewer` behavior at `/session/[sessionId]`
+  - in-room workspaces for `Auction`, `Analysis`, `Portfolio`, and `Overrides`
 
-The admin center is the control plane. The live board is the auction execution surface.
+The admin center is the control plane. The live room is the shared Mothership execution surface. `Auction` and `Analysis` are now two views over the same session-native recommendation model, not two separate tools.
 
 ## Current Stack
 
@@ -40,10 +41,12 @@ The admin center is the control plane. The live board is the auction execution s
 - [src/lib/types.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/types.ts)
 - [src/lib/repository/index.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/repository/index.ts)
 - [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
+- [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
 - [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
 - [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
+- [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
 
 ## Architectural Map
@@ -61,7 +64,11 @@ The admin center is the control plane. The live board is the auction execution s
 - [src/app/admin/sessions/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/admin/sessions/[sessionId]/page.tsx)
   - session management
 - [src/app/session/[sessionId]/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/session/[sessionId]/page.tsx)
-  - live board entry
+  - live room entry
+  - `?view=analysis` opens the deeper in-room analysis workspace
+- [src/app/csv-analysis/page.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/app/csv-analysis/page.tsx)
+  - legacy compatibility route
+  - redirects into `/session/[sessionId]?view=analysis`
 
 ### Admin UI
 
@@ -79,6 +86,7 @@ The admin center is the control plane. The live board is the auction execution s
   - shared code rotation
   - participating syndicates
   - payout structure
+  - shared analysis settings
   - data source selection and import history
 - [src/app/globals.css](/Users/rmilton/Code/Calcutta-SmartBid/src/app/globals.css)
   - shared design tokens and UI primitives
@@ -86,12 +94,11 @@ The admin center is the control plane. The live board is the auction execution s
 ### Live Board UI
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
-  - role-aware board
+  - role-aware live room
+  - `Auction`, `Analysis`, `Portfolio`, and `Overrides` workspaces
   - single searchable `Active Team for Bidding` control
   - auto-save on team selection
-  - no `likely bidders`
-  - no manual overrides panel
-  - no `Update live board` button
+  - shared selected-team state between `Auction` and `Analysis`
 
 ### Domain and orchestration
 
@@ -99,11 +106,14 @@ The admin center is the control plane. The live board is the auction execution s
   - shared contracts
   - session/admin request schemas
 - [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts)
-  - builds board payload
+  - builds the shared live-room payload
 - [src/lib/config.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/config.ts)
   - environment validation
 - [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
   - platform-admin and session-member auth
+- [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
+  - session-native ranking and bid-planning model
+  - builds the shared analysis snapshot consumed by `Auction` and `Analysis`
 
 ### Persistence
 
@@ -129,7 +139,9 @@ The admin center is the control plane. The live board is the auction execution s
   - Monte Carlo engine
   - payout model uses stage percentages plus `projectedPot`
 - [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
-  - max-bid guidance and ownership conflict signals
+  - live recommendation contract for opening, target, and max bids
+- [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
+  - CSV-style team intelligence and budget planning, adapted to the live session field
 
 ## Invariants
 
@@ -138,7 +150,9 @@ The admin center is the control plane. The live board is the auction execution s
 - Session users authenticate with assigned email plus the session shared code.
 - Viewer mode is role-driven and read-only.
 - Purchases are authoritative. Do not let UI-only state become the source of truth.
+- Session purchases are the owned-portfolio truth for live recommendation math.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
+- `Auction` and `Analysis` must stay consistent for the same selected team because they read from the same analysis payload.
 - The active-team control must stay fast and low-friction under live auction use.
 - The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw schema errors should not leak to the operator if a clean domain message can be returned.
@@ -177,8 +191,11 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 6. Confirm the live board loads in the expected role.
 7. Change `Active Team for Bidding` and confirm the board updates automatically.
 8. Change current bid and confirm it persists.
-9. Record a purchase and confirm ledger and sold-team state update.
-10. Refresh and confirm persistence.
+9. Open `Analysis` and confirm the selected team shows the same `target bid` and `max bid` as `Auction`.
+10. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
+11. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
+12. Refresh and confirm persistence.
+13. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
 
 ## Test Commands
 
@@ -203,6 +220,7 @@ The cleanest parallel split remains:
 ### Track B: Live board UX and auction intelligence
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
+- [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
 - [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
 - [src/lib/providers/projections.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/providers/projections.ts)
@@ -221,3 +239,4 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - The repository still supports a local JSON backend for development only.
 - Older stored sessions may still contain legacy payout fields. The repository normalizes them on load.
 - The live board still uses `remainingBankroll` as derived headroom from `projectedPot / syndicateCount`. If that business model changes, update repository math and recommendation language together.
+- `/csv-analysis` is now a compatibility redirect. The maintained workflow is the in-room `Analysis` tab.
