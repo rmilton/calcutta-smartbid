@@ -1027,29 +1027,6 @@ kbd {
   font-size: 1.02rem;
 }
 
-.viewer-bid-hero__bid {
-  display: grid;
-  gap: 0.3rem;
-  margin-top: 0.45rem;
-  justify-items: center;
-}
-
-.viewer-bid-hero__bid span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-family: var(--font-mono);
-}
-
-.viewer-bid-hero__bid strong {
-  margin: 0;
-  font-size: clamp(2rem, 4vw, 2.9rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-}
-
 .viewer-ledger,
 .viewer-ledger-group,
 .viewer-ledger-group__rows {

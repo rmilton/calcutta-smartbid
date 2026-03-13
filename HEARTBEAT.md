@@ -77,6 +77,7 @@ Current product surfaces and their roles:
 - completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
 - active nominated team and current bid are live operational state, not the primary historical record
 - viewer state must always derive from the same persisted session truth as operator state
+- viewer mode intentionally does not display current bid; it centers the active team and room outcomes instead
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
 - Mothership is the fixed recommendation lens for every session
