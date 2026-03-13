@@ -476,15 +476,13 @@ export function DashboardShell({
     <main className="dashboard-page">
       <header className="surface-card session-hero session-hero--slim">
         <div className="session-hero__copy">
-          <p className="eyebrow">Calcutta SmartBid</p>
+          <p className="eyebrow">mothership smartbid™</p>
           <h1>{dashboard.session.name}</h1>
         </div>
         <div className="session-hero__meta">
+          <ThemeToggle />
           <div className="status-pill">
             {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
-          </div>
-          <div className="status-pill">
-            {dashboard.availableTeams.length} teams available
           </div>
           {currentMember.scope === "platform" ? (
             <button
@@ -495,7 +493,6 @@ export function DashboardShell({
               Admin center
             </button>
           ) : null}
-          <ThemeToggle />
           <button type="button" className="button button-ghost" onClick={() => void logout()}>
             Log out
           </button>
@@ -506,10 +503,6 @@ export function DashboardShell({
         <ViewerBoard
           dashboard={dashboard}
           recommendation={recommendation}
-          titleOdds={titleOdds}
-          recentSales={recentSales}
-          potentialRemainingBankroll={potentialRemainingBankroll}
-          syndicateLookup={syndicateLookup}
         />
       ) : (
         <>
@@ -1370,43 +1363,66 @@ export function DashboardShell({
 
 function ViewerBoard({
   dashboard,
-  recommendation,
-  titleOdds,
-  recentSales,
-  potentialRemainingBankroll,
-  syndicateLookup
+  recommendation
 }: {
   dashboard: AuctionDashboard;
   recommendation: BidRecommendation | null;
-  titleOdds: number;
-  recentSales: SoldTeamSummary[];
-  potentialRemainingBankroll: number;
-  syndicateLookup: Map<string, Syndicate>;
 }) {
   const nominatedTeam = dashboard.nominatedTeam;
+  const [ownershipSearch, setOwnershipSearch] = useState("");
+  const soldFeed = useMemo(() => [...dashboard.soldTeams].reverse(), [dashboard.soldTeams]);
+  const ownershipGroups = useMemo(() => {
+    const normalized = ownershipSearch.trim().toLowerCase();
+    const hasActiveSearch = normalized.length > 0;
+    const matchesSearch = (sale: SoldTeamSummary) =>
+      !normalized || sale.team.name.toLowerCase().includes(normalized);
 
+    return [
+      ...[
+        {
+          syndicate: dashboard.focusSyndicate,
+          sales: dashboard.soldTeams.filter(
+            (sale) =>
+              sale.buyerSyndicateId === dashboard.focusSyndicate.id && matchesSearch(sale)
+          ),
+          highlight: true
+        }
+      ].filter((group) => group.sales.length > 0 || !hasActiveSearch),
+      ...dashboard.ledger
+        .filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
+        .map((syndicate) => ({
+          syndicate,
+          sales: dashboard.soldTeams.filter(
+            (sale) => sale.buyerSyndicateId === syndicate.id && matchesSearch(sale)
+          ),
+          highlight: false
+        }))
+        .filter((group) => group.sales.length > 0 || !hasActiveSearch)
+      ];
+  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldTeams, ownershipSearch]);
   return (
     <section className="viewer-layout">
       <div className="viewer-layout__main">
-        <article className="surface-card viewer-board">
+        <article className="surface-card viewer-board viewer-board--spotlight">
           <p className="eyebrow">Shared Board</p>
-          <h2>{nominatedTeam ? nominatedTeam.name : "Waiting for nomination"}</h2>
-          <p className="viewer-board__subcopy">
-            {recommendation
-              ? "Recommendation still in range. This board is optimized for passive viewing."
-              : "The current bid will pulse here as soon as the operator sets a nomination."}
-          </p>
-
-          <div className="viewer-bid-hero">
+          <div className="viewer-bid-hero viewer-bid-hero--team">
             <div className="viewer-bid-hero__pulse">
               <span className="pulse-dot" />
-              <span>Current bid</span>
+              <span>{nominatedTeam ? "Active team" : "Awaiting nomination"}</span>
             </div>
-            <strong>{formatCurrency(dashboard.session.liveState.currentBid)}</strong>
-            <p>Live market ticker for the room. The bid stays dominant at a distance.</p>
+            <strong
+              className={cn(!nominatedTeam && "viewer-bid-hero__title--waiting")}
+            >
+              {nominatedTeam ? nominatedTeam.name : "Waiting for next team"}
+            </strong>
+            <p className="viewer-board__subcopy">
+              {nominatedTeam
+                ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
+                : "The next active team will take over this board as soon as the operator makes a nomination."}
+            </p>
           </div>
 
-          <div className="metric-grid">
+          <div className="metric-grid viewer-board__metrics">
             <MetricCard
               label="Target / max"
               value={
@@ -1421,16 +1437,12 @@ function ViewerBoard({
               value={recommendation ? stoplightLabels[recommendation.stoplight] : "Idle"}
             />
             <MetricCard
-              label="Expected net"
-              value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
+              label="Mothership total spent"
+              value={formatCurrency(dashboard.focusSyndicate.spend)}
             />
             <MetricCard
-              label="Last sale"
-              value={
-                recentSales[0]
-                  ? `${recentSales[0].team.shortName} ${formatCurrency(recentSales[0].price)}`
-                  : "No sales"
-              }
+              label="Teams remaining"
+              value={`${dashboard.availableTeams.length}`}
             />
           </div>
         </article>
@@ -1438,50 +1450,98 @@ function ViewerBoard({
         <article className="surface-card">
           <div className="section-headline">
             <div>
-              <p className="eyebrow">Recent Sales</p>
-              <h3>Read-only market feed</h3>
+              <p className="eyebrow">Ownership Ledger</p>
+              <h3>Syndicate Holdings</h3>
+            </div>
+            <div className="viewer-ledger-search">
+              <input
+                type="search"
+                value={ownershipSearch}
+                onChange={(event) => setOwnershipSearch(event.target.value)}
+                placeholder="Filter by team name"
+              />
             </div>
           </div>
-          {recentSales.length ? (
-            <div className="list-stack">
-              {recentSales.map((sale) => (
-                <SaleRow
-                  key={`${sale.team.id}-${sale.price}`}
-                  sale={sale}
-                  syndicateLookup={syndicateLookup}
+          {ownershipGroups.length ? (
+            <div className="viewer-ledger">
+              {ownershipGroups.map((group) => (
+                <ViewerOwnershipLedgerGroup
+                  key={group.syndicate.id}
+                  group={group}
+                  isMothership={group.highlight}
+                  hasActiveSearch={ownershipSearch.trim().length > 0}
                 />
               ))}
             </div>
           ) : (
-            <p className="empty-copy">No sales yet.</p>
+            <p className="empty-copy">No matching teams in current syndicate holdings.</p>
           )}
         </article>
       </div>
 
       <aside className="viewer-layout__side">
+        {recommendation ? (
+          <article className="surface-card viewer-guidance-card">
+            <div className="section-headline">
+              <div>
+                <p className="eyebrow">Live Guidance</p>
+                <h3>What Mothership should keep in view</h3>
+              </div>
+            </div>
+            <div className="list-stack">
+              {recommendation.rationale.slice(0, 3).map((line) => (
+                <div key={line} className="list-line">
+                  {line}
+                </div>
+              ))}
+            </div>
+          </article>
+        ) : null}
+
         <article className="surface-card">
           <div className="section-headline">
             <div>
-              <p className="eyebrow">Market Snapshot</p>
-              <h3>Session state</h3>
+              <p className="eyebrow">Sold Teams</p>
+              <h3>Most recent sales first</h3>
             </div>
           </div>
-          <div className="mini-grid">
-            <MetricCard
-              label="Mothership bankroll"
-              value={formatCurrency(potentialRemainingBankroll)}
-              compact
-            />
-            <MetricCard
-              label="Teams sold"
-              value={`${dashboard.soldTeams.length}`}
-              compact
-            />
-            <MetricCard label="Title odds" value={formatPercent(titleOdds)} compact />
-          </div>
+          {soldFeed.length ? (
+            <div className="list-stack">
+              {soldFeed.map((sale) => (
+                <ViewerSoldTeamRow
+                  key={`${sale.team.id}-${sale.price}-${sale.buyerSyndicateId}`}
+                  sale={sale}
+                  buyerName={
+                    dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
+                      ?.name ?? sale.buyerSyndicateId
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="empty-copy">No teams have sold yet.</p>
+          )}
         </article>
       </aside>
     </section>
+  );
+}
+
+function ViewerSoldTeamRow({
+  sale,
+  buyerName
+}: {
+  sale: SoldTeamSummary;
+  buyerName: string;
+}) {
+  return (
+    <div className="list-row">
+      <div>
+        <strong>{sale.team.name}</strong>
+        <span>To {buyerName}</span>
+      </div>
+      <strong>{formatCurrency(sale.price)}</strong>
+    </div>
   );
 }
 
@@ -1547,6 +1607,63 @@ function SaleRow({
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
     </div>
+  );
+}
+
+function ViewerOwnershipLedgerGroup({
+  group,
+  isMothership,
+  hasActiveSearch
+}: {
+  group: { syndicate: Syndicate; sales: SoldTeamSummary[] };
+  isMothership: boolean;
+  hasActiveSearch: boolean;
+}) {
+  return (
+    <article
+      className={cn("viewer-ledger-group", isMothership && "viewer-ledger-group--focus")}
+    >
+      <div className="viewer-ledger-group__header">
+        <div className="viewer-ledger-group__title">
+          <span
+            className="syndicate-dot"
+            style={{ backgroundColor: group.syndicate.color }}
+          />
+          <div>
+            <strong>{group.syndicate.name}</strong>
+          </div>
+        </div>
+        <div className="viewer-ledger-group__total">
+          <strong>
+            {formatCurrency(group.syndicate.spend)} · {group.sales.length}{" "}
+            {group.sales.length === 1 ? "team" : "teams"}
+          </strong>
+        </div>
+      </div>
+      {group.sales.length ? (
+        <div className="viewer-ledger-group__rows">
+          {group.sales.map((sale) => (
+            <div key={`${group.syndicate.id}-${sale.team.id}-${sale.price}`} className="viewer-ledger-row">
+              <div className="viewer-ledger-row__team">
+                <strong>{sale.team.name}</strong>
+                <span>
+                  {sale.team.seed}-seed, {sale.team.region} region
+                </span>
+              </div>
+              <div className="viewer-ledger-row__price">
+                <strong>{formatCurrency(sale.price)}</strong>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">
+          {hasActiveSearch
+            ? `No matching teams for ${group.syndicate.name}.`
+            : `No purchased teams yet for ${group.syndicate.name}.`}
+        </p>
+      )}
+    </article>
   );
 }
 

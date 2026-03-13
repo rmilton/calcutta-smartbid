@@ -408,7 +408,7 @@ export function SessionAdminCenter({
     <div className="admin-shell">
       <header className="surface-card admin-form-header">
         <div className="admin-form-header__copy">
-          <p className="eyebrow">Session</p>
+          <p className="eyebrow">mothership smartbid™</p>
           <h1>{config.session.name}</h1>
         </div>
         <div className="admin-form-header__actions">

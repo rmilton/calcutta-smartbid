@@ -124,7 +124,8 @@ Future work should improve these assumptions, but should not hide them.
 ## UX Truths
 
 - the operator should always know the currently nominated team
-- current bid, target bid, and max bid should be visible at a glance
+- operator mode should keep current bid, target bid, and max bid visible at a glance
+- viewer mode should center the nominated team and Mothership context, not the current bid
 - `Analysis` should exist inside the live room, not as a second disconnected product surface
 - the ledger should answer "who owns what" and "how much do they have left"
 - the product should make clear whether "money left" is forecast headroom or locked actual room state

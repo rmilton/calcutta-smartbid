@@ -29,7 +29,9 @@ The app uses a premium live-market interface:
 ### Viewer board
 
 - read-only and optimized for passive watching
-- current bid should be the dominant visual signal
+- active team should be the dominant visual signal
+- current bid is intentionally hidden from viewers, even though it remains live operator state
+- viewer layout should emphasize Mothership context, sold-team flow, and compact ownership scanning
 - live-update affordances can pulse or animate, but should stay clean and readable
 
 ### Admin surfaces

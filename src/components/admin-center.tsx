@@ -497,7 +497,7 @@ export function AdminCenter({
       <section className="admin-shell admin-shell--dense">
         <header className="surface-card admin-topbar">
           <div className="admin-topbar__title">
-            <p className="eyebrow">Admin</p>
+            <p className="eyebrow">mothership smartbid™</p>
             <h1>Admin center</h1>
           </div>
           <div className="admin-topbar__meta">

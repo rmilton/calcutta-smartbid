@@ -155,6 +155,7 @@ CALCUTTA_STORAGE_BACKEND=supabase
   - `targetTeamCount` default `8`
   - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
+- viewer mode intentionally hides the live current bid and instead centers the active team plus Mothership context
 - archived sessions are hidden from the default admin sessions list but remain readable to platform admins
 - permanent delete is archive-gated and requires exact session-name confirmation
 

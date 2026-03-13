@@ -905,12 +905,24 @@ kbd {
 }
 
 .viewer-layout {
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  align-items: start;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
   margin-top: 1rem;
 }
 
 .viewer-board {
-  padding: 1.6rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1.75rem;
+}
+
+.viewer-layout__side {
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
+.viewer-board__metrics {
+  margin-top: 0.25rem;
 }
 
 .viewer-bid-hero {
@@ -923,12 +935,32 @@ kbd {
   background: color-mix(in srgb, var(--accent) 6%, var(--panel));
 }
 
+.viewer-bid-hero--team {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+  margin: 0;
+  padding: 2.25rem 1.75rem 2rem;
+  text-align: center;
+  background:
+    radial-gradient(
+      circle at top,
+      color-mix(in srgb, var(--accent) 16%, transparent),
+      transparent 58%
+    ),
+    color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+
 .viewer-bid-hero__pulse {
   position: relative;
   z-index: 1;
   display: flex;
   gap: 0.7rem;
   align-items: center;
+}
+
+.viewer-bid-hero--team .viewer-bid-hero__pulse {
+  justify-content: center;
 }
 
 .pulse-dot {
@@ -967,12 +999,146 @@ kbd {
   text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+.viewer-bid-hero--team strong {
+  max-width: 14ch;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: clamp(3.25rem, 6.8vw, 5.8rem);
+  line-height: 0.96;
+}
+
+.viewer-bid-hero__title--waiting {
+  max-width: none;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  white-space: nowrap;
+}
+
 .viewer-bid-hero p {
   position: relative;
   z-index: 1;
   margin-top: 0.85rem;
   color: var(--muted-strong);
   line-height: 1.55;
+}
+
+.viewer-bid-hero--team p {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.viewer-ledger,
+.viewer-ledger-group,
+.viewer-ledger-group__rows {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.viewer-ledger {
+  margin-top: 0.85rem;
+}
+
+.viewer-ledger-search {
+  margin-left: auto;
+  width: min(100%, 22rem);
+}
+
+.viewer-ledger-search input {
+  width: 100%;
+}
+
+.viewer-ledger-group {
+  padding: 0.95rem 1rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--panel-muted);
+}
+
+.viewer-ledger-group--focus {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 7%, var(--panel-muted)),
+      var(--panel-muted)
+    );
+}
+
+.viewer-ledger-group__header,
+.viewer-ledger-group__title,
+.viewer-ledger-row {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.viewer-ledger-group__header {
+  justify-content: space-between;
+}
+
+.viewer-ledger-group__title div,
+.viewer-ledger-row__team,
+.viewer-ledger-group__total {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.viewer-ledger-group__title strong,
+.viewer-ledger-row__team strong {
+  margin: 0;
+  font-size: 1.02rem;
+  line-height: 1.1;
+}
+
+.viewer-ledger-group__title span,
+.viewer-ledger-group__total span,
+.viewer-ledger-row__team span,
+.viewer-ledger-row__price span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.viewer-ledger-group__total,
+.viewer-ledger-row__price {
+  text-align: right;
+}
+
+.viewer-ledger-group__total strong,
+.viewer-ledger-row__price strong {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-ledger-row {
+  justify-content: space-between;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
+  background: var(--panel);
+}
+
+.viewer-ledger-row__team,
+.viewer-ledger-row__price {
+  min-width: 0;
+}
+
+.viewer-guidance-card {
+  align-self: start;
+  padding: 1.25rem;
+}
+
+.viewer-guidance-card .section-headline {
+  margin-bottom: 0.8rem;
+}
+
+.viewer-guidance-card .list-stack {
+  gap: 0.65rem;
+}
+
+.viewer-guidance-card .list-line {
+  padding: 0.8rem 0.9rem;
 }
 
 .admin-shell--dense {
@@ -1482,6 +1648,25 @@ kbd {
 
   .viewer-bid-hero strong {
     font-size: 3.8rem;
+  }
+
+  .viewer-bid-hero--team {
+    padding: 1.75rem 1.25rem 1.5rem;
+  }
+
+  .viewer-bid-hero--team strong {
+    max-width: none;
+  }
+
+  .viewer-ledger-group__header,
+  .viewer-ledger-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .viewer-ledger-group__total,
+  .viewer-ledger-row__price {
+    text-align: left;
   }
 
   .selection-row,
