@@ -37,6 +37,9 @@ alter table public.auction_sessions
   add column if not exists analysis_settings jsonb default '{"targetTeamCount":8,"maxSingleTeamPct":22}'::jsonb;
 
 alter table public.auction_sessions
+  add column if not exists mothership_funding jsonb null;
+
+alter table public.auction_sessions
   add column if not exists archived_at timestamptz null;
 
 alter table public.auction_sessions
@@ -115,6 +118,15 @@ alter table public.syndicates
 
 alter table public.syndicates
   add column if not exists session_only boolean not null default false;
+
+alter table public.syndicates
+  add column if not exists estimated_budget numeric null;
+
+alter table public.syndicates
+  add column if not exists budget_confidence text null;
+
+alter table public.syndicates
+  add column if not exists budget_notes text null;
 
 create table if not exists public.team_projections (
   id text not null,

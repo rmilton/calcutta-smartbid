@@ -1,3 +1,4 @@
+import { deriveBudgetHeadroom, deriveFundingStatus } from "@/lib/funding";
 import {
   AuctionSession,
   BidRecommendation,
@@ -28,10 +29,23 @@ export function buildBidRecommendation(
   const budgetRow = analysis.budgetRows.find((row) => row.teamId === team.id) ?? null;
   const currentBid = session.liveState.currentBid;
   const expectedGrossPayout = teamResult.expectedGrossPayout;
-  const remainingBankroll = analysis.remainingBankroll;
   const openingBid = budgetRow?.openingBid ?? 0;
   const targetBid = budgetRow?.targetBid ?? 0;
   const baseMaxBid = budgetRow?.maxBid ?? 0;
+  const baseBudgetHeadroom = deriveBudgetHeadroom(
+    session.mothershipFunding.budgetBase,
+    focusSyndicate.spend,
+    currentBid
+  );
+  const stretchBudgetHeadroom = deriveBudgetHeadroom(
+    session.mothershipFunding.budgetStretch,
+    focusSyndicate.spend,
+    currentBid
+  );
+  const fundingStatus = deriveFundingStatus(
+    focusSyndicate.spend + currentBid,
+    session.mothershipFunding
+  );
   const conflictPenaltyMultiplier =
     1 -
     clamp(
@@ -58,7 +72,7 @@ export function buildBidRecommendation(
   const rationale = [
     `${team.name} carries a ${budgetRow ? budgetRow.convictionScore.toFixed(3) : "0.000"} conviction score with ${budgetRow ? Math.round(budgetRow.investableShare * 100) : 0}% of the current investable budget.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
-    `${focusSyndicate.name} has ${roundCurrency(remainingBankroll)} in remaining bankroll after ${roundCurrency(focusSyndicate.spend)} spent.`
+    `${focusSyndicate.name} sits ${fundingStatus === "safe" ? "within base funding" : fundingStatus === "stretch" ? "inside stretch funding" : "above the current funding plan"} with ${roundCurrency(baseBudgetHeadroom)} base room and ${roundCurrency(stretchBudgetHeadroom)} stretch room after this bid.`
   ];
 
   if (ownershipExposure.likelyConflicts[0]) {
@@ -73,6 +87,21 @@ export function buildBidRecommendation(
       label: "Target / max",
       value: `${roundCurrency(targetBid)} / ${roundCurrency(maxBid)}`,
       tone: valueGap >= 0 ? "positive" : "negative"
+    },
+    {
+      label: "Funding plan",
+      value:
+        fundingStatus === "safe"
+          ? "Within base budget"
+          : fundingStatus === "stretch"
+            ? "Requires stretch budget"
+            : "Above current plan",
+      tone:
+        fundingStatus === "safe"
+          ? "positive"
+          : fundingStatus === "stretch"
+            ? "neutral"
+            : "negative"
     },
     {
       label: "Portfolio concentration",
@@ -93,7 +122,10 @@ export function buildBidRecommendation(
     confidenceBand: teamResult.confidenceBand,
     stoplight,
     ownershipPenalty: roundCurrency(ownershipExposure.overlapScore * 850),
-    bankrollHeadroom: roundCurrency(remainingBankroll),
+    bankrollHeadroom: roundCurrency(Math.max(0, analysis.remainingBankroll)),
+    baseBudgetHeadroom: roundCurrency(baseBudgetHeadroom),
+    stretchBudgetHeadroom: roundCurrency(stretchBudgetHeadroom),
+    fundingStatus,
     concentrationScore: ownershipExposure.concentrationScore,
     drivers: [...drivers],
     rationale

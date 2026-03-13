@@ -17,6 +17,8 @@ export type StorageBackend = "local" | "supabase";
 export type DataSourceKind = "csv" | "api";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
+export type BudgetConfidence = "low" | "medium" | "high";
+export type FundingStatus = "safe" | "stretch" | "above-plan";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -33,12 +35,36 @@ export interface AnalysisSettings {
   maxSingleTeamPct: number;
 }
 
+export interface MothershipFundingModel {
+  targetSharePrice: number;
+  allowHalfShares: boolean;
+  fullSharesSold: number;
+  halfSharesSold: number;
+  budgetLow: number;
+  budgetBase: number;
+  budgetStretch: number;
+}
+
+export interface MothershipFundingSnapshot extends MothershipFundingModel {
+  equivalentShares: number;
+  committedCash: number;
+  impliedSharePrice: number | null;
+  lowBidRoom: number;
+  baseBidRoom: number;
+  stretchBidRoom: number;
+}
+
 export interface Syndicate {
   id: string;
   name: string;
   color: string;
   spend: number;
   remainingBankroll: number;
+  estimatedBudget: number;
+  budgetConfidence: BudgetConfidence;
+  budgetNotes: string;
+  estimatedRemainingBudget: number;
+  estimateExceeded: boolean;
   ownedTeamIds: string[];
   portfolioExpectedValue: number;
   catalogEntryId?: string | null;
@@ -172,6 +198,7 @@ export interface SessionAnalysisSnapshot {
   fieldAverages: AnalysisFieldAverages;
   budgetRows: AnalysisBudgetRow[];
   ownedTeams: AnalysisOwnedTeamSummary[];
+  funding: MothershipFundingSnapshot;
   investableCash: number;
   actualPaidSpend: number;
   remainingBankroll: number;
@@ -315,6 +342,7 @@ export interface AuctionSession {
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
   analysisSettings: AnalysisSettings;
+  mothershipFunding: MothershipFundingModel;
   syndicates: Syndicate[];
   baseProjections: TeamProjection[];
   projections: TeamProjection[];
@@ -354,6 +382,9 @@ export interface BidRecommendation {
   stoplight: Stoplight;
   ownershipPenalty: number;
   bankrollHeadroom: number;
+  baseBudgetHeadroom: number;
+  stretchBudgetHeadroom: number;
+  fundingStatus: FundingStatus;
   concentrationScore: number;
   drivers: RecommendationDriver[];
   rationale: string[];
@@ -437,6 +468,13 @@ export interface RemoteProjectionFeed {
   }>;
 }
 
+export interface SessionSyndicateFundingInput {
+  catalogEntryId: string;
+  estimatedBudget: number;
+  budgetConfidence: BudgetConfidence;
+  budgetNotes: string;
+}
+
 export const payoutRulesSchema = z.object({
   roundOf64: z.number().nonnegative(),
   roundOf32: z.number().nonnegative(),
@@ -446,6 +484,36 @@ export const payoutRulesSchema = z.object({
   champion: z.number().nonnegative(),
   projectedPot: z.number().positive()
 });
+
+export const budgetConfidenceSchema = z.enum(["low", "medium", "high"]);
+
+export const mothershipFundingSchema = z
+  .object({
+    targetSharePrice: z.number().positive(),
+    allowHalfShares: z.boolean().default(true),
+    fullSharesSold: z.number().int().nonnegative(),
+    halfSharesSold: z.number().int().nonnegative(),
+    budgetLow: z.number().nonnegative(),
+    budgetBase: z.number().nonnegative(),
+    budgetStretch: z.number().nonnegative()
+  })
+  .superRefine((value, context) => {
+    if (value.budgetLow > value.budgetBase) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["budgetLow"],
+        message: "Low budget must be less than or equal to base budget."
+      });
+    }
+
+    if (value.budgetBase > value.budgetStretch) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["budgetStretch"],
+        message: "Stretch budget must be greater than or equal to base budget."
+      });
+    }
+  });
 
 export const createPlatformUserSchema = z.object({
   name: z.string().min(2).max(60),
@@ -610,7 +678,18 @@ export const updateSessionSharedCodeSchema = z.object({
 });
 
 export const updateSessionSyndicatesSchema = z.object({
-  catalogSyndicateIds: z.array(z.string()).max(16).default([])
+  catalogSyndicateIds: z.array(z.string()).max(16).default([]),
+  syndicateFunding: z
+    .array(
+      z.object({
+        catalogEntryId: z.string(),
+        estimatedBudget: z.number().nonnegative(),
+        budgetConfidence: budgetConfidenceSchema.default("medium"),
+        budgetNotes: z.string().max(400).default("")
+      })
+    )
+    .max(16)
+    .default([])
 });
 
 export const updateSessionDataSourceSchema = z.object({
@@ -626,6 +705,10 @@ export const updateSessionAnalysisSettingsSchema = z.object({
     targetTeamCount: z.number().int().min(2).max(24),
     maxSingleTeamPct: z.number().min(8).max(45)
   })
+});
+
+export const updateSessionFundingSchema = z.object({
+  mothershipFunding: mothershipFundingSchema
 });
 
 export const archiveSessionSchema = z.object({
