@@ -2,20 +2,41 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
+import { accessImportSampleCsv } from "@/lib/access-import";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
-import { titleCaseStage } from "@/lib/utils";
+import { formatCurrency, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const payoutStages: Array<
   keyof Pick<PayoutRules, "roundOf64" | "roundOf32" | "sweet16" | "elite8" | "finalFour" | "champion">
 > = ["roundOf64", "roundOf32", "sweet16", "elite8", "finalFour", "champion"];
 
-type SessionTab = "access" | "settings" | "data" | "lifecycle";
+type SessionTab = "settings" | "access" | "syndicates" | "data" | "lifecycle";
 
 interface SessionAdminCenterProps {
   initialConfig: SessionAdminConfig;
   mothershipSyndicateName: string;
+}
+
+function formatDollarInput(value: number) {
+  return formatCurrency(Math.max(0, value));
+}
+
+function parseDollarInput(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) {
+    return 0;
+  }
+
+  return Number(digits);
 }
 
 function formatDateTime(value: string) {
@@ -36,12 +57,12 @@ export function SessionAdminCenter({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SessionTab>("access");
+  const [activeTab, setActiveTab] = useState<SessionTab>("settings");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
-  const [showCurrentCode, setShowCurrentCode] = useState(false);
   const [sharedAccessCode, setSharedAccessCode] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "viewer">("all");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     initialConfig.accessMembers.map((member) => member.platformUserId ?? "").filter(Boolean)
   );
@@ -59,9 +80,13 @@ export function SessionAdminCenter({
   );
   const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
+  const [projectedPotInput, setProjectedPotInput] = useState(
+    formatDollarInput(initialConfig.session.payoutRules.projectedPot)
+  );
   const [analysisSettings, setAnalysisSettings] = useState(
     initialConfig.session.analysisSettings
   );
+  const accessCsvInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeUsers = useMemo(
     () => config.platformUsers.filter((user) => user.active),
@@ -69,11 +94,14 @@ export function SessionAdminCenter({
   );
   const filteredUsers = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
-    if (!query) return activeUsers;
-    return activeUsers.filter((user) =>
-      [user.name, user.email].join(" ").toLowerCase().includes(query)
-    );
-  }, [activeUsers, userSearch]);
+    return activeUsers.filter((user) => {
+      const matchesSearch =
+        !query || [user.name, user.email].join(" ").toLowerCase().includes(query);
+      const role = userRoles[user.id] ?? "viewer";
+      const matchesRole = userRoleFilter === "all" || role === userRoleFilter;
+      return matchesSearch && matchesRole;
+    });
+  }, [activeUsers, userRoleFilter, userRoles, userSearch]);
   const activeSyndicates = useMemo(
     () => config.syndicateCatalog.filter((entry) => entry.active),
     [config.syndicateCatalog]
@@ -96,6 +124,13 @@ export function SessionAdminCenter({
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
   );
+  const projectedMothershipBudget = useMemo(
+    () =>
+      selectedSyndicateIds.length > 0
+        ? Math.round(payoutRules.projectedPot / selectedSyndicateIds.length)
+        : 0,
+    [payoutRules.projectedPot, selectedSyndicateIds.length]
+  );
 
   useEffect(() => {
     setSelectedUserIds(
@@ -115,12 +150,9 @@ export function SessionAdminCenter({
     );
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
+    setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
     setAnalysisSettings(config.session.analysisSettings);
   }, [config]);
-
-  useEffect(() => {
-    setShowCurrentCode(false);
-  }, [config.currentSharedAccessCode]);
 
   async function refreshConfig() {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
@@ -224,7 +256,6 @@ export function SessionAdminCenter({
           "Shared access code rotated."
         );
         setSharedAccessCode("");
-        setShowCurrentCode(false);
       } catch (submitError) {
         setError(
           submitError instanceof Error
@@ -247,6 +278,60 @@ export function SessionAdminCenter({
     } catch {
       setError("Unable to copy the shared access code.");
     }
+  }
+
+  async function onCopyJoinLink() {
+    if (!config.currentSharedAccessCode) {
+      return;
+    }
+
+    try {
+      const url = new URL("/", window.location.origin);
+      url.searchParams.set("code", config.currentSharedAccessCode);
+      await navigator.clipboard.writeText(url.toString());
+      setError(null);
+      setNotice("Join link copied.");
+    } catch {
+      setError("Unable to copy the join link.");
+    }
+  }
+
+  function onDownloadSampleCsv() {
+    const blob = new Blob([accessImportSampleCsv], { type: "text/csv;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "session-access-sample.csv";
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function onImportUsersCsv(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const csvContent = await file.text();
+        await submitJson(
+          `/api/admin/sessions/${config.session.id}/access/import`,
+          "POST",
+          { csvContent },
+          "Users imported into session access."
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to import session access users."
+        );
+      } finally {
+        if (accessCsvInputRef.current) {
+          accessCsvInputRef.current.value = "";
+        }
+      }
+    });
   }
 
   function onSaveSyndicates(event: FormEvent<HTMLFormElement>) {
@@ -426,12 +511,6 @@ export function SessionAdminCenter({
           >
             Open board
           </Link>
-          <Link
-            href={`/session/${config.session.id}?view=analysis`}
-            className="button button-ghost button--small"
-          >
-            Open analysis
-          </Link>
         </div>
       </header>
 
@@ -441,8 +520,9 @@ export function SessionAdminCenter({
       <nav className="admin-tabbar" aria-label="Session admin">
         {(
           [
-            ["access", "Access"],
             ["settings", "Settings"],
+            ["access", "Access"],
+            ["syndicates", "Syndicates"],
             ["data", "Data"],
             ["lifecycle", "Lifecycle"]
           ] as const
@@ -461,76 +541,64 @@ export function SessionAdminCenter({
       </nav>
 
       {activeTab === "access" ? (
-        <section className="surface-card admin-pane">
-          <div className="admin-pane__header">
-            <h2>Access</h2>
-            <div className="button-row">
-              <span className="status-pill">{selectedUserIds.length} selected</span>
-            </div>
-          </div>
-
-          <div className="admin-utility-block">
-            <p className="eyebrow">Shared access code</p>
-            {config.currentSharedAccessCode ? (
-              <div className="admin-utility-row">
-                <strong className="secret-shell__value">
-                  {showCurrentCode ? config.currentSharedAccessCode : "••••••••••"}
-                </strong>
+        <section className="admin-access-layout">
+          <article className="surface-card admin-pane admin-access-users">
+            <form onSubmit={onSaveAccess}>
+              <div className="admin-pane__header admin-pane__section-header">
+                <h2>Users</h2>
                 <div className="button-row">
-                  <button
-                    type="button"
-                    className="button button-secondary button--small"
-                    onClick={() => setShowCurrentCode((current) => !current)}
-                  >
-                    {showCurrentCode ? "Hide" : "Reveal"}
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-ghost button--small"
-                    onClick={() => void onCopyCurrentCode()}
-                  >
-                    Copy
+                  <span className="status-pill">{selectedUserIds.length} selected</span>
+                  <button type="submit" className="button button--small" disabled={isPending}>
+                    Save access
                   </button>
                 </div>
               </div>
-            ) : (
-              <p className="support-copy">Rotate once to store a revealable code.</p>
-            )}
-          </div>
-
-          <form onSubmit={onRotateCode} style={{ display: "contents" }}>
-            <label className="field-shell">
-              <span>New code</span>
-              <input
-                value={sharedAccessCode}
-                onChange={(event) => setSharedAccessCode(event.target.value)}
-                required
-              />
-            </label>
-            <div className="button-row">
-              <button type="submit" className="button button--small" disabled={isPending}>
-                Rotate code
-              </button>
-            </div>
-          </form>
-
-          <div className="admin-pane__section">
-            <form onSubmit={onSaveAccess}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <h3>Users</h3>
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save access
-                </button>
+              <div className="admin-pane__toolbar admin-access-toolbar">
+                <div className="admin-access-toolbar__filters">
+                  <input
+                    className="admin-filter-input"
+                    type="search"
+                    value={userSearch}
+                    onChange={(event) => setUserSearch(event.target.value)}
+                    placeholder="Name or email…"
+                  />
+                  <select
+                    className="admin-filter-select"
+                    value={userRoleFilter}
+                    onChange={(event) =>
+                      setUserRoleFilter(event.target.value as "all" | "admin" | "viewer")
+                    }
+                  >
+                    <option value="all">All roles</option>
+                    <option value="admin">Operators</option>
+                    <option value="viewer">Viewers</option>
+                  </select>
+                </div>
+                <div className="admin-access-toolbar__actions">
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    onClick={onDownloadSampleCsv}
+                  >
+                    Download sample CSV
+                  </button>
+                  <input
+                    ref={accessCsvInputRef}
+                    className="admin-access-file-input"
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => onImportUsersCsv(event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    disabled={isPending}
+                    onClick={() => accessCsvInputRef.current?.click()}
+                  >
+                    Import CSV
+                  </button>
+                </div>
               </div>
-              <label className="field-shell" style={{ maxWidth: "24rem" }}>
-                <span>Search users</span>
-                <input
-                  type="search"
-                  value={userSearch}
-                  onChange={(event) => setUserSearch(event.target.value)}
-                  placeholder="Name or email…"
-                />
-              </label>
               <div className="table-wrap">
                 <table className="admin-table admin-table--dense">
                   <thead>
@@ -580,11 +648,57 @@ export function SessionAdminCenter({
                 </table>
               </div>
             </form>
-          </div>
+          </article>
+
+          <aside className="surface-card admin-pane admin-access-rail">
+            <div className="admin-pane__header admin-pane__section-header">
+              <h2>Access</h2>
+            </div>
+            <div className="admin-utility-block">
+              <p className="eyebrow">Shared access code</p>
+              {config.currentSharedAccessCode ? (
+                <strong className="secret-shell__value">{config.currentSharedAccessCode}</strong>
+              ) : (
+                <p className="support-copy">Set a shared access code to generate a join link.</p>
+              )}
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button button-secondary button--small"
+                  disabled={!config.currentSharedAccessCode}
+                  onClick={() => void onCopyCurrentCode()}
+                >
+                  Copy code
+                </button>
+                <button
+                  type="button"
+                  className="button button-ghost button--small"
+                  disabled={!config.currentSharedAccessCode}
+                  onClick={() => void onCopyJoinLink()}
+                >
+                  Copy join link
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={onRotateCode} className="admin-access-rail__form">
+              <label className="field-shell">
+                <span>New code</span>
+                <input
+                  value={sharedAccessCode}
+                  onChange={(event) => setSharedAccessCode(event.target.value)}
+                  required
+                />
+              </label>
+              <button type="submit" className="button button--small" disabled={isPending}>
+                Rotate code
+              </button>
+            </form>
+          </aside>
         </section>
       ) : null}
 
-      {activeTab === "settings" ? (
+      {activeTab === "syndicates" ? (
         <section className="surface-card admin-pane">
           <form onSubmit={onSaveSyndicates}>
             <div className="admin-pane__header">
@@ -648,61 +762,75 @@ export function SessionAdminCenter({
               </table>
             </div>
           </form>
+        </section>
+      ) : null}
 
-          <div className="admin-pane__section">
-            <form onSubmit={onSavePayoutRules}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <h3>Payouts</h3>
-                <div className="button-row">
-                  <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
-                  <button type="submit" className="button button--small" disabled={isPending}>
-                    Save payouts
-                  </button>
-                </div>
+      {activeTab === "settings" ? (
+        <section className="surface-card admin-pane">
+          <div className="admin-pane__section-header">
+            <h2>Budget</h2>
+          </div>
+          <div className="compact-field-grid compact-field-grid--two">
+            <label className="field-shell">
+              <span>Projected pot</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={projectedPotInput}
+                onChange={(event) => {
+                  const nextValue = parseDollarInput(event.target.value);
+                  setProjectedPotInput(formatDollarInput(nextValue));
+                  setPayoutRules((current) => ({
+                    ...current,
+                    projectedPot: nextValue
+                  }));
+                }}
+                required
+              />
+            </label>
+            <label className="field-shell">
+              <span>Projected Mothership Budget</span>
+              <input value={formatCurrency(projectedMothershipBudget)} readOnly />
+            </label>
+          </div>
+
+          <form onSubmit={onSavePayoutRules}>
+            <div className="admin-pane__header admin-pane__section-header">
+              <h2>Payouts</h2>
+              <div className="button-row">
+                <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
+                <button type="submit" className="button button--small" disabled={isPending}>
+                  Save payouts
+                </button>
               </div>
-              <div className="compact-payout-grid">
-                {payoutStages.map((stage) => (
-                  <label key={stage} className="field-shell">
-                    <span>{titleCaseStage(stage)} %</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.1}
-                      value={payoutRules[stage]}
-                      onChange={(event) =>
-                        setPayoutRules((current) => ({
-                          ...current,
-                          [stage]: Number(event.target.value)
-                        }))
-                      }
-                      required
-                    />
-                  </label>
-                ))}
-                <label className="field-shell">
-                  <span>Projected pot</span>
+            </div>
+            <div className="compact-payout-grid session-payout-grid">
+              {payoutStages.map((stage) => (
+                <label key={stage} className="field-shell">
+                  <span>{titleCaseStage(stage)} %</span>
                   <input
                     type="number"
-                    min={1000}
-                    step={1000}
-                    value={payoutRules.projectedPot}
+                    min={0}
+                    step={0.1}
+                    value={payoutRules[stage]}
                     onChange={(event) =>
                       setPayoutRules((current) => ({
                         ...current,
-                        projectedPot: Number(event.target.value)
+                        [stage]: Number(event.target.value)
                       }))
                     }
                     required
                   />
                 </label>
-              </div>
-            </form>
-          </div>
+              ))}
+            </div>
+          </form>
 
           <div className="admin-pane__section">
             <form onSubmit={onSaveAnalysisSettings}>
               <div className="admin-pane__header admin-pane__section-header">
-                <h3>Analysis strategy</h3>
+                <h2>Analysis strategy</h2>
                 <button type="submit" className="button button--small" disabled={isPending}>
                   Save strategy
                 </button>

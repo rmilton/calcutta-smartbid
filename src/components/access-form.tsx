@@ -1,12 +1,21 @@
 "use client";
 
-import { FormEvent, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState, useTransition } from "react";
 
 export function AccessForm() {
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
-  const [sharedCode, setSharedCode] = useState("");
+  const [sharedCode, setSharedCode] = useState(searchParams.get("code")?.trim() ?? "");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prefilledCode = searchParams.get("code")?.trim() ?? "";
+    if (prefilledCode) {
+      setSharedCode(prefilledCode);
+    }
+  }, [searchParams]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

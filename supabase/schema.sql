@@ -13,6 +13,9 @@ create table if not exists public.auction_sessions (
 );
 
 alter table public.auction_sessions
+  add column if not exists shared_code_plaintext text;
+
+alter table public.auction_sessions
   add column if not exists shared_code_hash text;
 
 alter table public.auction_sessions
@@ -44,6 +47,10 @@ alter table public.auction_sessions
 
 create unique index if not exists auction_sessions_shared_code_lookup_idx
   on public.auction_sessions(shared_code_lookup);
+
+create unique index if not exists auction_sessions_shared_code_plaintext_idx
+  on public.auction_sessions(shared_code_plaintext)
+  where shared_code_plaintext is not null and shared_code_plaintext <> '';
 
 create table if not exists public.platform_users (
   id text primary key,

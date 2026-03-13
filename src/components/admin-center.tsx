@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { FormEvent, Fragment, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AdminCenterData, DataSource, PlatformUser, SyndicateCatalogEntry } from "@/lib/types";
@@ -773,8 +773,8 @@ export function AdminCenter({
                     </tr>
                   ) : null}
                   {filteredUsers.map((user) => (
-                    <>
-                      <tr key={user.id}>
+                    <Fragment key={user.id}>
+                      <tr>
                         <td>
                           <strong>{user.name}</strong>
                         </td>
@@ -897,7 +897,7 @@ export function AdminCenter({
                           </td>
                         </tr>
                       ) : null}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1007,8 +1007,8 @@ export function AdminCenter({
                     </tr>
                   ) : null}
                   {filteredSyndicates.map((entry) => (
-                    <>
-                      <tr key={entry.id}>
+                    <Fragment key={entry.id}>
+                      <tr>
                         <td>
                           <div className="syndicate-name">
                             <span className="chip-dot" style={{ backgroundColor: entry.color }} />
@@ -1121,7 +1121,7 @@ export function AdminCenter({
                           </td>
                         </tr>
                       ) : null}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1315,8 +1315,8 @@ export function AdminCenter({
                     <td>Always available</td>
                   </tr>
                   {filteredSources.map((source) => (
-                    <>
-                      <tr key={source.id}>
+                    <Fragment key={source.id}>
+                      <tr>
                         <td>
                           <strong>{source.name}</strong>
                         </td>
@@ -1499,7 +1499,7 @@ export function AdminCenter({
                           </td>
                         </tr>
                       ) : null}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
