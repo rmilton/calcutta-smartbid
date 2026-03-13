@@ -367,6 +367,49 @@ p {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
+.live-bid-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.live-bid-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-muted);
+  color: var(--muted-strong);
+  font: 600 0.95rem/1 var(--font-mono);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.live-bid-save--dirty {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  color: var(--accent);
+}
+
+.live-bid-save:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+.live-bid-save:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
 .marketing-hero {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;
@@ -516,17 +559,18 @@ p {
 
 .shortcut-legend {
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
   margin-bottom: 0.25rem;
 }
 
 .shortcut-legend__row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 kbd {
@@ -852,6 +896,18 @@ kbd {
 
 .mini-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analysis-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.analysis-search-row {
+  margin-bottom: 1rem;
+}
+
+.analysis-summary-row {
+  margin-bottom: 1rem;
 }
 
 .portfolio-card-grid {
@@ -1428,6 +1484,14 @@ kbd {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.compact-field-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.session-payout-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .admin-settings-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1522,15 +1586,34 @@ kbd {
   background: var(--bg-soft);
 }
 
+.admin-pane .field-shell {
+  gap: 0.35rem;
+  padding: 0.72rem 0.8rem;
+  border-radius: 14px;
+}
+
 .admin-form-section .field-shell input,
 .admin-form-section .field-shell select,
 .admin-form-section .field-shell textarea,
+.admin-pane .field-shell input,
+.admin-pane .field-shell select,
+.admin-pane .field-shell textarea,
 .admin-inline-editor .field-shell input,
 .admin-inline-editor .field-shell select,
 .admin-inline-editor .field-shell textarea {
   padding: 0.72rem 0.85rem;
   border-radius: 12px;
   background: var(--bg);
+}
+
+[data-theme="light"] .admin-pane .field-shell {
+  background: var(--panel-muted);
+}
+
+[data-theme="light"] .admin-pane .field-shell input,
+[data-theme="light"] .admin-pane .field-shell select,
+[data-theme="light"] .admin-pane .field-shell textarea {
+  background: var(--panel);
 }
 
 .admin-inline-flag select,

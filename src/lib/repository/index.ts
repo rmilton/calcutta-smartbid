@@ -10,7 +10,9 @@ import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings, getDefaultPayoutRules } from "@/lib/sample-data";
 import {
   createSharedCodeLookup,
+  encryptSharedCode,
   decryptSharedCode,
+  hashSharedCode,
   verifySharedCode
 } from "@/lib/session-security";
 import {
@@ -953,6 +955,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async authenticateMember(email: string, sharedCode: string) {
     const client = requireSupabaseClient();
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedCode = sharedCode.trim();
     const plaintextResult = await client
       .from("auction_sessions")
@@ -960,45 +963,57 @@ class SupabaseSessionRepository implements SessionRepository {
       .eq("shared_code_plaintext", normalizedCode)
       .maybeSingle();
 
-    throwOnSupabaseError(plaintextResult.error);
-
-    let sessionId = plaintextResult.data ? String(plaintextResult.data.id) : null;
-    if (!sessionId) {
-      const lookup = createSharedCodeLookup(sharedCode);
-      const legacyResult = await client
-        .from("auction_sessions")
-        .select("id, shared_code_hash")
-        .eq("shared_code_lookup", lookup)
-        .maybeSingle();
-
-      throwOnSupabaseError(legacyResult.error);
-
-      if (!legacyResult.data) {
-        throw new Error("Email or shared code is invalid.");
-      }
-
-      if (!verifySharedCode(sharedCode, String(legacyResult.data.shared_code_hash))) {
-        throw new Error("Email or shared code is invalid.");
-      }
-
-      sessionId = String(legacyResult.data.id);
+    if (plaintextResult.error && !isMissingSharedCodePlaintextColumnError(plaintextResult.error)) {
+      throwOnSupabaseError(plaintextResult.error);
     }
 
-    const session = await this.requireSession(sessionId);
-    const normalizedEmail = email.trim().toLowerCase();
-    const member =
-      session.accessMembers.find(
+    if (!plaintextResult.error && plaintextResult.data) {
+      const plaintextSession = await this.requireSession(String(plaintextResult.data.id));
+      const plaintextMember =
+        plaintextSession.accessMembers.find(
+          (candidate) =>
+            candidate.active && candidate.email.trim().toLowerCase() === normalizedEmail
+        ) ?? null;
+
+      if (plaintextMember) {
+        return {
+          sessionId: plaintextSession.id,
+          member: plaintextMember
+        };
+      }
+    }
+
+    const lookup = createSharedCodeLookup(sharedCode);
+    const legacyResult = await client
+      .from("auction_sessions")
+      .select("id, shared_code_hash")
+      .eq("shared_code_lookup", lookup)
+      .maybeSingle();
+
+    throwOnSupabaseError(legacyResult.error);
+
+    if (!legacyResult.data) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    if (!verifySharedCode(sharedCode, String(legacyResult.data.shared_code_hash))) {
+      throw new Error("Email or shared code is invalid.");
+    }
+
+    const legacySession = await this.requireSession(String(legacyResult.data.id));
+    const legacyMember =
+      legacySession.accessMembers.find(
         (candidate) =>
           candidate.active && candidate.email.trim().toLowerCase() === normalizedEmail
       ) ?? null;
 
-    if (!member) {
+    if (!legacyMember) {
       throw new Error("Email or shared code is invalid.");
     }
 
     return {
-      sessionId: session.id,
-      member
+      sessionId: legacySession.id,
+      member: legacyMember
     };
   }
 
@@ -1240,18 +1255,17 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     setStoredSharedAccessCode(session, sharedAccessCode);
     session.updatedAt = new Date().toISOString();
-    const client = requireSupabaseClient();
-    const result = await client
-      .from("auction_sessions")
-      .update({
+    await updateAuctionSessionRow(
+      requireSupabaseClient(),
+      {
         shared_code_plaintext: session.sharedAccessCodePlaintext,
         shared_code_hash: session.sharedAccessCodeHash,
         shared_code_lookup: session.sharedAccessCodeLookup,
         shared_code_ciphertext: session.sharedAccessCodeCiphertext,
         updated_at: session.updatedAt
-      })
-      .eq("id", sessionId);
-    throwOnSupabaseError(result.error);
+      },
+      sessionId
+    );
     return this.getSessionAdminConfig(sessionId);
   }
 
@@ -1577,8 +1591,7 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   private async persistSessionMeta(session: StoredAuctionSession) {
-    const client = requireSupabaseClient();
-    const result = await client.from("auction_sessions").upsert({
+    await upsertAuctionSessionRow(requireSupabaseClient(), {
       id: session.id,
       name: session.name,
       focus_syndicate_id: session.focusSyndicateId,
@@ -1602,7 +1615,6 @@ class SupabaseSessionRepository implements SessionRepository {
       created_at: session.createdAt,
       updated_at: session.updatedAt
     });
-    throwOnSupabaseError(result.error);
   }
 
   private async persistSessionMembers(session: StoredAuctionSession) {
@@ -1769,7 +1781,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     eventAccess: {
       sharedCodeConfigured: true
     },
-    sharedAccessCodePlaintext: parsed.sharedAccessCode.trim(),
+    sharedAccessCodePlaintext: "",
     sharedAccessCodeHash: "",
     sharedAccessCodeLookup: "",
     sharedAccessCodeCiphertext: "",
@@ -1792,6 +1804,8 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     purchases: [],
     simulationSnapshot: null
   });
+
+  setStoredSharedAccessCode(session, parsed.sharedAccessCode);
 
   recalculateSessionState(session, parsed.simulationIterations);
   return session;
@@ -2269,10 +2283,11 @@ function doesSharedCodeMatch(session: StoredAuctionSession, sharedCode: string) 
 }
 
 function setStoredSharedAccessCode(session: StoredAuctionSession, sharedAccessCode: string) {
-  session.sharedAccessCodePlaintext = sharedAccessCode.trim();
-  session.sharedAccessCodeHash = "";
-  session.sharedAccessCodeLookup = "";
-  session.sharedAccessCodeCiphertext = "";
+  const normalized = sharedAccessCode.trim();
+  session.sharedAccessCodePlaintext = normalized;
+  session.sharedAccessCodeHash = hashSharedCode(normalized);
+  session.sharedAccessCodeLookup = createSharedCodeLookup(normalized);
+  session.sharedAccessCodeCiphertext = encryptSharedCode(normalized);
 }
 
 function ensureUniqueCatalogSyndicateName(
@@ -2753,6 +2768,46 @@ async function replaceRows(
   }
 }
 
+async function upsertAuctionSessionRow(
+  client: ReturnType<typeof createServerSupabaseClient>,
+  payload: Record<string, unknown>
+) {
+  const result = await client.from("auction_sessions").upsert(payload);
+  if (result.error && isMissingSharedCodePlaintextColumnError(result.error)) {
+    const fallbackResult = await client
+      .from("auction_sessions")
+      .upsert(stripSharedCodePlaintext(payload));
+    throwOnSupabaseError(fallbackResult.error);
+    return;
+  }
+
+  throwOnSupabaseError(result.error);
+}
+
+async function updateAuctionSessionRow(
+  client: ReturnType<typeof createServerSupabaseClient>,
+  payload: Record<string, unknown>,
+  sessionId: string
+) {
+  const result = await client.from("auction_sessions").update(payload).eq("id", sessionId);
+  if (result.error && isMissingSharedCodePlaintextColumnError(result.error)) {
+    const fallbackResult = await client
+      .from("auction_sessions")
+      .update(stripSharedCodePlaintext(payload))
+      .eq("id", sessionId);
+    throwOnSupabaseError(fallbackResult.error);
+    return;
+  }
+
+  throwOnSupabaseError(result.error);
+}
+
+function stripSharedCodePlaintext(payload: Record<string, unknown>) {
+  const nextPayload = { ...payload };
+  delete nextPayload.shared_code_plaintext;
+  return nextPayload;
+}
+
 function throwOnSupabaseError(
   error: { message?: string; code?: string; details?: string | null } | null
 ) {
@@ -2782,6 +2837,24 @@ function isSharedCodeLookupConflict(error: {
     rawText.includes("auction_sessions_shared_code_plaintext_idx") ||
     (rawText.includes("shared_code_lookup") && rawText.includes("duplicate key value")) ||
     (rawText.includes("shared_code_plaintext") && rawText.includes("duplicate key value"))
+  );
+}
+
+function isMissingSharedCodePlaintextColumnError(error: {
+  message?: string;
+  code?: string;
+  details?: string | null;
+}) {
+  const rawText = [error.message, error.details, error.code]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    rawText.includes("shared_code_plaintext") &&
+    (rawText.includes("schema cache") ||
+      rawText.includes("column") ||
+      rawText.includes("does not exist"))
   );
 }
 

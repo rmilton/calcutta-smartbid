@@ -11,6 +11,11 @@ import { useRouter } from "next/navigation";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import {
+  formatBidInputText,
+  formatBidInputValue,
+  parseBidInputValue
+} from "@/lib/bid-input";
+import {
   AuctionDashboard,
   AuthenticatedMember,
   BidRecommendation,
@@ -77,8 +82,11 @@ export function DashboardShell({
     dashboard.session.liveState.nominatedTeamId ?? ""
   );
   const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
+  const [bidInputValue, setBidInputValue] = useState(
+    formatBidInputValue(dashboard.session.liveState.currentBid)
+  );
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
-  const [isLiveStateDirty, setIsLiveStateDirty] = useState(false);
+  const [isSavingLiveState, setIsSavingLiveState] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     rating: "",
     offense: "",
@@ -96,14 +104,28 @@ export function DashboardShell({
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
+  const pendingCommittedBidRef = useRef<number | null>(null);
+  const isLiveStateDirty =
+    bidInputValue.trim() === "" ? true : parseBidInputValue(bidInputValue) !== currentBid;
 
   useEffect(() => {
     if (isLiveStateDirty && !viewerMode) {
       return;
     }
 
+    const liveBid = dashboard.session.liveState.currentBid;
+    if (pendingCommittedBidRef.current !== null) {
+      if (liveBid !== pendingCommittedBidRef.current) {
+        setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
+        return;
+      }
+
+      pendingCommittedBidRef.current = null;
+    }
+
     setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
-    setCurrentBid(dashboard.session.liveState.currentBid);
+    setCurrentBid(liveBid);
+    setBidInputValue(formatBidInputValue(liveBid));
   }, [dashboard.session.liveState, isLiveStateDirty, viewerMode]);
 
   useEffect(() => {
@@ -284,30 +306,39 @@ export function DashboardShell({
   const saveLiveState = useCallback(async () => {
     setError(null);
     setNotice(null);
-    const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        nominatedTeamId: selectedTeamId || null,
-        currentBid
-      })
-    });
+    setIsSavingLiveState(true);
+    const nextBid = parseBidInputValue(bidInputValue);
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          nominatedTeamId: selectedTeamId || null,
+          currentBid: nextBid
+        })
+      });
 
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to update live state.");
-      return;
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to update live state.");
+        return;
+      }
+
+      pendingCommittedBidRef.current = nextBid;
+      setCurrentBid(nextBid);
+      setBidInputValue(formatBidInputValue(nextBid));
+      void broadcastRefresh("live-state");
+      startTransition(() => {
+        void refresh();
+      });
+    } catch {
+      setError("Unable to update live state.");
+    } finally {
+      setIsSavingLiveState(false);
     }
-
-    setNotice("Live board updated.");
-    setIsLiveStateDirty(false);
-    void broadcastRefresh("live-state");
-    startTransition(() => {
-      void refresh();
-    });
-  }, [broadcastRefresh, currentBid, refresh, selectedTeamId, sessionId]);
+  }, [bidInputValue, broadcastRefresh, refresh, selectedTeamId, sessionId]);
 
   const handleShortcut = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
@@ -322,6 +353,12 @@ export function DashboardShell({
         tagName === "TEXTAREA" ||
         tagName === "SELECT" ||
         target.isContentEditable);
+
+    if (event.key === "Escape" && isEditable) {
+      event.preventDefault();
+      target.blur();
+      return;
+    }
 
     if (event.key === "/" && !isEditable) {
       event.preventDefault();
@@ -394,7 +431,6 @@ export function DashboardShell({
     }
 
     setNotice("Purchase recorded.");
-    setIsLiveStateDirty(false);
     void broadcastRefresh("purchase");
     startTransition(() => {
       void refresh();
@@ -620,6 +656,7 @@ export function DashboardShell({
                           ? formatCurrency(recommendation.expectedGrossPayout)
                           : "--"
                       }
+                      tooltip="Average modeled payout for this team across the simulation before subtracting what you would pay for it."
                     />
                     <MetricCard
                       label="Expected net"
@@ -628,6 +665,7 @@ export function DashboardShell({
                           ? formatCurrency(recommendation.expectedNetValue)
                           : "--"
                       }
+                      tooltip="Expected gross minus the current bid and the model's overlap penalty for teams Mothership already owns."
                     />
                     <MetricCard
                       label="Sim confidence"
@@ -639,12 +677,14 @@ export function DashboardShell({
                           : "--"
                       }
                       longValue={Boolean(recommendation)}
+                      tooltip="The model's typical value range for this team. It is shown as expected payout plus or minus about one standard deviation."
                     />
                     <MetricCard
                       label="Opening bid"
                       value={
                         recommendation ? formatCurrency(recommendation.openingBid) : "--"
                       }
+                      tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
                     />
                     <MetricCard
                       label="Ownership penalty"
@@ -653,6 +693,7 @@ export function DashboardShell({
                           ? formatCurrency(recommendation.ownershipPenalty)
                           : "--"
                       }
+                      tooltip="How much value the model subtracts because this team overlaps with teams Mothership already owns."
                     />
                     <MetricCard
                       label="Value gap to max"
@@ -661,6 +702,7 @@ export function DashboardShell({
                           ? formatCurrency(recommendation.valueGap)
                           : "--"
                       }
+                      tooltip="The room left between the current bid and the model's adjusted max bid for this team. Negative means the bid is already above max."
                     />
                     <MetricCard
                       label="Portfolio concentration"
@@ -669,8 +711,13 @@ export function DashboardShell({
                           ? formatPercent(recommendation.concentrationScore)
                           : "--"
                       }
+                      tooltip="How concentrated Mothership already is. Higher concentration means the model gets more cautious about adding more exposure."
                     />
-                    <MetricCard label="Title odds" value={formatPercent(titleOdds)} />
+                    <MetricCard
+                      label="Title odds"
+                      value={formatPercent(titleOdds)}
+                      tooltip="The simulated chance this team wins the tournament."
+                    />
                   </div>
                 </article>
 
@@ -729,7 +776,6 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Live Controls</p>
-                      <h3>Keyboard-first board updates</h3>
                     </div>
                   </div>
                   <div className="shortcut-legend">
@@ -740,7 +786,7 @@ export function DashboardShell({
                   </div>
 
                   <div className="field-stack">
-                    <label className="field-shell">
+                    <label className="field-shell field-shell--accent">
                       <span>Active team</span>
                       <TeamCombobox
                         teams={dashboard.session.projections}
@@ -748,26 +794,57 @@ export function DashboardShell({
                         value={selectedTeamId}
                         inputRef={teamSelectRef}
                         onChange={(nextTeamId) => {
+                          const nextBid = 0;
                           setSelectedTeamId(nextTeamId);
-                          setCurrentBid(0);
+                          setCurrentBid(nextBid);
+                          setBidInputValue(formatBidInputValue(nextBid));
                           void saveActiveTeam(nextTeamId);
                         }}
                       />
                     </label>
 
-                    <label className="field-shell field-shell--accent">
+                    <label className="field-shell">
                       <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
-                      <input
-                        ref={bidInputRef}
-                        type="number"
-                        min={0}
-                        step={100}
-                        value={currentBid}
-                        onChange={(event) => {
-                          setIsLiveStateDirty(true);
-                          setCurrentBid(Number(event.target.value));
-                        }}
-                      />
+                      <div className="live-bid-field">
+                        <input
+                          ref={bidInputRef}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={bidInputValue}
+                          onChange={(event) =>
+                            setBidInputValue(formatBidInputText(event.target.value))
+                          }
+                          onFocus={(event) => event.target.select()}
+                          onClick={(event) => event.currentTarget.select()}
+                        />
+                        <button
+                          type="button"
+                          className={
+                            isLiveStateDirty
+                              ? "live-bid-save live-bid-save--dirty"
+                              : "live-bid-save"
+                          }
+                          aria-label={
+                            isSavingLiveState
+                              ? "Saving current bid"
+                              : isLiveStateDirty
+                                ? "Save current bid to board"
+                                : "Current bid is synced"
+                          }
+                          title={
+                            isSavingLiveState
+                              ? "Saving current bid"
+                              : isLiveStateDirty
+                                ? "Save current bid to board"
+                                : "Current bid is synced"
+                          }
+                          disabled={isSavingLiveState || !isLiveStateDirty}
+                          onClick={() => void saveLiveState()}
+                        >
+                          {isSavingLiveState ? "…" : isLiveStateDirty ? "↵" : "✓"}
+                        </button>
+                      </div>
                     </label>
 
                     <label className="field-shell">
@@ -787,12 +864,9 @@ export function DashboardShell({
                   </div>
 
                   <div className="button-row">
-                    <button type="button" className="button" onClick={() => void saveLiveState()}>
-                      Update live board
-                    </button>
                     <button
                       type="button"
-                      className="button"
+                      className="button button-accent"
                       disabled={currentBid <= 0 || !selectedTeamId}
                       onClick={() => void recordPurchase()}
                     >
@@ -878,7 +952,7 @@ export function DashboardShell({
                   </div>
                 </div>
 
-                <div className="form-grid">
+                <div className="form-grid analysis-search-row">
                   <label className="field-shell">
                     <span>Search</span>
                     <input
@@ -890,7 +964,7 @@ export function DashboardShell({
                   </label>
                 </div>
 
-                <div className="mini-grid">
+                <div className="mini-grid analysis-summary-grid analysis-summary-row">
                   <MetricCard
                     label="Investable cash"
                     value={formatCurrency(dashboard.analysis.investableCash)}
@@ -1548,11 +1622,13 @@ function ViewerSoldTeamRow({
 function MetricCard({
   label,
   value,
+  tooltip,
   compact = false,
   longValue = false
 }: {
   label: string;
   value: string;
+  tooltip?: string;
   compact?: boolean;
   longValue?: boolean;
 }) {
@@ -1564,7 +1640,15 @@ function MetricCard({
         longValue && "metric-card--long-value"
       )}
     >
-      <span>{label}</span>
+      <span className={tooltip ? "insight-label" : undefined}>
+        {label}
+        {tooltip ? (
+          <button type="button" className="tooltip-hint" aria-label={`${label} explanation`}>
+            ?
+            <span className="tooltip-content">{tooltip}</span>
+          </button>
+        ) : null}
+      </span>
       <strong>{value}</strong>
     </div>
   );

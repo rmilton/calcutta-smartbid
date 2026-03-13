@@ -12,18 +12,31 @@ import {
 } from "react";
 import { accessImportSampleCsv } from "@/lib/access-import";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
-import { titleCaseStage } from "@/lib/utils";
+import { formatCurrency, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const payoutStages: Array<
   keyof Pick<PayoutRules, "roundOf64" | "roundOf32" | "sweet16" | "elite8" | "finalFour" | "champion">
 > = ["roundOf64", "roundOf32", "sweet16", "elite8", "finalFour", "champion"];
 
-type SessionTab = "access" | "settings" | "data" | "lifecycle";
+type SessionTab = "settings" | "access" | "syndicates" | "data" | "lifecycle";
 
 interface SessionAdminCenterProps {
   initialConfig: SessionAdminConfig;
   mothershipSyndicateName: string;
+}
+
+function formatDollarInput(value: number) {
+  return formatCurrency(Math.max(0, value));
+}
+
+function parseDollarInput(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) {
+    return 0;
+  }
+
+  return Number(digits);
 }
 
 function formatDateTime(value: string) {
@@ -44,7 +57,7 @@ export function SessionAdminCenter({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SessionTab>("access");
+  const [activeTab, setActiveTab] = useState<SessionTab>("settings");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
   const [sharedAccessCode, setSharedAccessCode] = useState("");
@@ -67,6 +80,9 @@ export function SessionAdminCenter({
   );
   const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
+  const [projectedPotInput, setProjectedPotInput] = useState(
+    formatDollarInput(initialConfig.session.payoutRules.projectedPot)
+  );
   const [analysisSettings, setAnalysisSettings] = useState(
     initialConfig.session.analysisSettings
   );
@@ -108,6 +124,13 @@ export function SessionAdminCenter({
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
   );
+  const projectedMothershipBudget = useMemo(
+    () =>
+      selectedSyndicateIds.length > 0
+        ? Math.round(payoutRules.projectedPot / selectedSyndicateIds.length)
+        : 0,
+    [payoutRules.projectedPot, selectedSyndicateIds.length]
+  );
 
   useEffect(() => {
     setSelectedUserIds(
@@ -127,6 +150,7 @@ export function SessionAdminCenter({
     );
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
+    setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
     setAnalysisSettings(config.session.analysisSettings);
   }, [config]);
 
@@ -487,12 +511,6 @@ export function SessionAdminCenter({
           >
             Open board
           </Link>
-          <Link
-            href={`/session/${config.session.id}?view=analysis`}
-            className="button button-ghost button--small"
-          >
-            Open analysis
-          </Link>
         </div>
       </header>
 
@@ -502,8 +520,9 @@ export function SessionAdminCenter({
       <nav className="admin-tabbar" aria-label="Session admin">
         {(
           [
-            ["access", "Access"],
             ["settings", "Settings"],
+            ["access", "Access"],
+            ["syndicates", "Syndicates"],
             ["data", "Data"],
             ["lifecycle", "Lifecycle"]
           ] as const
@@ -679,7 +698,7 @@ export function SessionAdminCenter({
         </section>
       ) : null}
 
-      {activeTab === "settings" ? (
+      {activeTab === "syndicates" ? (
         <section className="surface-card admin-pane">
           <form onSubmit={onSaveSyndicates}>
             <div className="admin-pane__header">
@@ -743,61 +762,75 @@ export function SessionAdminCenter({
               </table>
             </div>
           </form>
+        </section>
+      ) : null}
 
-          <div className="admin-pane__section">
-            <form onSubmit={onSavePayoutRules}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <h3>Payouts</h3>
-                <div className="button-row">
-                  <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
-                  <button type="submit" className="button button--small" disabled={isPending}>
-                    Save payouts
-                  </button>
-                </div>
+      {activeTab === "settings" ? (
+        <section className="surface-card admin-pane">
+          <div className="admin-pane__section-header">
+            <h2>Budget</h2>
+          </div>
+          <div className="compact-field-grid compact-field-grid--two">
+            <label className="field-shell">
+              <span>Projected pot</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={projectedPotInput}
+                onChange={(event) => {
+                  const nextValue = parseDollarInput(event.target.value);
+                  setProjectedPotInput(formatDollarInput(nextValue));
+                  setPayoutRules((current) => ({
+                    ...current,
+                    projectedPot: nextValue
+                  }));
+                }}
+                required
+              />
+            </label>
+            <label className="field-shell">
+              <span>Projected Mothership Budget</span>
+              <input value={formatCurrency(projectedMothershipBudget)} readOnly />
+            </label>
+          </div>
+
+          <form onSubmit={onSavePayoutRules}>
+            <div className="admin-pane__header admin-pane__section-header">
+              <h2>Payouts</h2>
+              <div className="button-row">
+                <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
+                <button type="submit" className="button button--small" disabled={isPending}>
+                  Save payouts
+                </button>
               </div>
-              <div className="compact-payout-grid">
-                {payoutStages.map((stage) => (
-                  <label key={stage} className="field-shell">
-                    <span>{titleCaseStage(stage)} %</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.1}
-                      value={payoutRules[stage]}
-                      onChange={(event) =>
-                        setPayoutRules((current) => ({
-                          ...current,
-                          [stage]: Number(event.target.value)
-                        }))
-                      }
-                      required
-                    />
-                  </label>
-                ))}
-                <label className="field-shell">
-                  <span>Projected pot</span>
+            </div>
+            <div className="compact-payout-grid session-payout-grid">
+              {payoutStages.map((stage) => (
+                <label key={stage} className="field-shell">
+                  <span>{titleCaseStage(stage)} %</span>
                   <input
                     type="number"
-                    min={1000}
-                    step={1000}
-                    value={payoutRules.projectedPot}
+                    min={0}
+                    step={0.1}
+                    value={payoutRules[stage]}
                     onChange={(event) =>
                       setPayoutRules((current) => ({
                         ...current,
-                        projectedPot: Number(event.target.value)
+                        [stage]: Number(event.target.value)
                       }))
                     }
                     required
                   />
                 </label>
-              </div>
-            </form>
-          </div>
+              ))}
+            </div>
+          </form>
 
           <div className="admin-pane__section">
             <form onSubmit={onSaveAnalysisSettings}>
               <div className="admin-pane__header admin-pane__section-header">
-                <h3>Analysis strategy</h3>
+                <h2>Analysis strategy</h2>
                 <button type="submit" className="button button--small" disabled={isPending}>
                   Save strategy
                 </button>
