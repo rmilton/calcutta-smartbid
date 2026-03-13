@@ -34,6 +34,15 @@ function buildSession(): AuctionSession {
       targetTeamCount: 8,
       maxSingleTeamPct: 22
     },
+    mothershipFunding: {
+      targetSharePrice: 201,
+      allowHalfShares: true,
+      fullSharesSold: 200,
+      halfSharesSold: 20,
+      budgetLow: 45000,
+      budgetBase: 55000,
+      budgetStretch: 65000
+    },
     syndicates: [
       {
         id: "syn_focus",
@@ -41,6 +50,11 @@ function buildSession(): AuctionSession {
         color: "#ff6b57",
         spend: 12000,
         remainingBankroll: 43000,
+        estimatedBudget: 55000,
+        budgetConfidence: "high",
+        budgetNotes: "",
+        estimatedRemainingBudget: 43000,
+        estimateExceeded: false,
         ownedTeamIds: ["duke"],
         portfolioExpectedValue: 0
       },
@@ -50,6 +64,11 @@ function buildSession(): AuctionSession {
         color: "#1f6feb",
         spend: 9000,
         remainingBankroll: 46000,
+        estimatedBudget: 46000,
+        budgetConfidence: "medium",
+        budgetNotes: "",
+        estimatedRemainingBudget: 37000,
+        estimateExceeded: false,
         ownedTeamIds: [],
         portfolioExpectedValue: 0
       }
@@ -100,7 +119,7 @@ describe("recommendations", () => {
     expect(recommendation).not.toBeNull();
     expect(recommendation?.maxBid).toBeGreaterThan(0);
     expect(recommendation?.targetBid).toBeGreaterThan(0);
-    expect(recommendation?.drivers).toHaveLength(2);
+    expect(recommendation?.drivers).toHaveLength(3);
     expect(recommendation?.valueGap).toBeDefined();
   });
 
@@ -165,5 +184,23 @@ describe("recommendations", () => {
     expect(recommendation).not.toBeNull();
     expect(recommendation?.maxBid).toBeLessThan(recommendation?.targetBid ?? 0);
     expect(recommendation?.stoplight).not.toBe("buy");
+  });
+
+  it("marks recommendations as stretch when the live bid pushes past base funding", () => {
+    const session = {
+      ...buildSession(),
+      liveState: {
+        ...buildSession().liveState,
+        currentBid: 45000
+      }
+    };
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
+
+    expect(recommendation?.fundingStatus).toBe("stretch");
+    expect(recommendation?.baseBudgetHeadroom).toBeLessThan(0);
+    expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
   });
 });

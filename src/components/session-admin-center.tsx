@@ -11,7 +11,14 @@ import {
   useTransition
 } from "react";
 import { accessImportSampleCsv } from "@/lib/access-import";
-import { PayoutRules, SessionAdminConfig } from "@/lib/types";
+import { deriveMothershipFundingSnapshot } from "@/lib/funding";
+import {
+  BudgetConfidence,
+  MothershipFundingModel,
+  PayoutRules,
+  SessionAdminConfig,
+  Syndicate
+} from "@/lib/types";
 import { formatCurrency, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -26,6 +33,14 @@ interface SessionAdminCenterProps {
   mothershipSyndicateName: string;
 }
 
+interface SyndicateFundingDraft {
+  estimatedBudgetInput: string;
+  budgetConfidence: BudgetConfidence;
+  budgetNotes: string;
+}
+
+const confidenceOptions: BudgetConfidence[] = ["low", "medium", "high"];
+
 function formatDollarInput(value: number) {
   return formatCurrency(Math.max(0, value));
 }
@@ -39,6 +54,30 @@ function parseDollarInput(value: string) {
   return Number(digits);
 }
 
+function buildSyndicateFundingPayload(
+  selectedSyndicateIds: string[],
+  syndicateFundingDrafts: Record<string, SyndicateFundingDraft>
+) {
+  return selectedSyndicateIds.map((catalogEntryId) => {
+    const draft = syndicateFundingDrafts[catalogEntryId];
+
+    if (!draft) {
+      return {
+        catalogEntryId,
+        budgetConfidence: "medium" as const,
+        budgetNotes: ""
+      };
+    }
+
+    return {
+      catalogEntryId,
+      estimatedBudget: parseDollarInput(draft.estimatedBudgetInput),
+      budgetConfidence: draft.budgetConfidence,
+      budgetNotes: draft.budgetNotes
+    };
+  });
+}
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -46,6 +85,21 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function buildSyndicateFundingDrafts(syndicates: Syndicate[]) {
+  return Object.fromEntries(
+    syndicates
+      .filter((syndicate) => syndicate.catalogEntryId)
+      .map((syndicate) => [
+        syndicate.catalogEntryId as string,
+        {
+          estimatedBudgetInput: formatDollarInput(syndicate.estimatedBudget),
+          budgetConfidence: syndicate.budgetConfidence,
+          budgetNotes: syndicate.budgetNotes
+        } satisfies SyndicateFundingDraft
+      ])
+  );
 }
 
 export function SessionAdminCenter({
@@ -78,6 +132,12 @@ export function SessionAdminCenter({
       .filter((syndicate) => syndicate.catalogEntryId)
       .map((syndicate) => syndicate.catalogEntryId as string)
   );
+  const [mothershipFunding, setMothershipFunding] = useState<MothershipFundingModel>(
+    initialConfig.session.mothershipFunding
+  );
+  const [syndicateFundingDrafts, setSyndicateFundingDrafts] = useState<
+    Record<string, SyndicateFundingDraft>
+  >(buildSyndicateFundingDrafts(initialConfig.session.syndicates));
   const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
   const [projectedPotInput, setProjectedPotInput] = useState(
@@ -124,12 +184,20 @@ export function SessionAdminCenter({
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
   );
-  const projectedMothershipBudget = useMemo(
+  const mothershipSessionSyndicate = useMemo(
     () =>
-      selectedSyndicateIds.length > 0
-        ? Math.round(payoutRules.projectedPot / selectedSyndicateIds.length)
-        : 0,
-    [payoutRules.projectedPot, selectedSyndicateIds.length]
+      config.session.syndicates.find(
+        (syndicate) => syndicate.id === config.session.focusSyndicateId
+      ) ?? null,
+    [config.session.focusSyndicateId, config.session.syndicates]
+  );
+  const fundingPreview = useMemo(
+    () =>
+      deriveMothershipFundingSnapshot(
+        mothershipFunding,
+        mothershipSessionSyndicate?.spend ?? 0
+      ),
+    [mothershipFunding, mothershipSessionSyndicate?.spend]
   );
 
   useEffect(() => {
@@ -148,6 +216,8 @@ export function SessionAdminCenter({
         .filter((syndicate) => syndicate.catalogEntryId)
         .map((syndicate) => syndicate.catalogEntryId as string)
     );
+    setMothershipFunding(config.session.mothershipFunding);
+    setSyndicateFundingDrafts(buildSyndicateFundingDrafts(config.session.syndicates));
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
     setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
@@ -342,13 +412,35 @@ export function SessionAdminCenter({
           `/api/admin/sessions/${config.session.id}/syndicates`,
           "PUT",
           {
-            catalogSyndicateIds: selectedSyndicateIds
+            catalogSyndicateIds: selectedSyndicateIds,
+            syndicateFunding: buildSyndicateFundingPayload(
+              selectedSyndicateIds,
+              syndicateFundingDrafts
+            )
           },
           "Tracked syndicates updated."
         );
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "Unable to update syndicates."
+        );
+      }
+    });
+  }
+
+  function onSaveFunding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    startTransition(async () => {
+      try {
+        await submitJson(
+          `/api/admin/sessions/${config.session.id}/funding`,
+          "PUT",
+          { mothershipFunding },
+          "Funding plan updated."
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "Unable to update funding plan."
         );
       }
     });
@@ -425,6 +517,22 @@ export function SessionAdminCenter({
         setError(submitError instanceof Error ? submitError.message : "Unable to run import.");
       }
     });
+  }
+
+  function updateSyndicateFundingDraft(
+    catalogEntryId: string,
+    patch: Partial<SyndicateFundingDraft>
+  ) {
+    setSyndicateFundingDrafts((current) => ({
+      ...current,
+      [catalogEntryId]: {
+        estimatedBudgetInput:
+          current[catalogEntryId]?.estimatedBudgetInput ?? formatDollarInput(0),
+        budgetConfidence: current[catalogEntryId]?.budgetConfidence ?? "medium",
+        budgetNotes: current[catalogEntryId]?.budgetNotes ?? "",
+        ...patch
+      }
+    }));
   }
 
   function onArchiveSession() {
@@ -738,26 +846,111 @@ export function SessionAdminCenter({
                       />
                     </th>
                     <th>Name</th>
+                    <th>Estimated budget</th>
+                    <th>Confidence</th>
+                    <th>Notes</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeSyndicates.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedSyndicateIds.includes(entry.id)}
-                          onChange={() => toggleSyndicate(entry.id)}
-                        />
-                      </td>
-                      <td>
-                        <div className="syndicate-name">
-                          <span className="chip-dot" style={{ backgroundColor: entry.color }} />
-                          <strong>{entry.name}</strong>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {activeSyndicates.map((entry) => {
+                    const selected = selectedSyndicateIds.includes(entry.id);
+                    const sessionSyndicate =
+                      config.session.syndicates.find(
+                        (syndicate) => syndicate.catalogEntryId === entry.id
+                      ) ?? null;
+                    const isMothership =
+                      entry.name.trim().toLowerCase() ===
+                      mothershipSyndicateName.trim().toLowerCase();
+                    const draft = syndicateFundingDrafts[entry.id] ?? {
+                      estimatedBudgetInput: formatDollarInput(
+                        sessionSyndicate?.estimatedBudget ?? 0
+                      ),
+                      budgetConfidence: sessionSyndicate?.budgetConfidence ?? "medium",
+                      budgetNotes: sessionSyndicate?.budgetNotes ?? ""
+                    };
+
+                    return (
+                      <tr key={entry.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleSyndicate(entry.id)}
+                          />
+                        </td>
+                        <td>
+                          <div className="syndicate-name">
+                            <span className="chip-dot" style={{ backgroundColor: entry.color }} />
+                            <strong>{entry.name}</strong>
+                          </div>
+                        </td>
+                        <td>
+                          <input
+                            className="admin-filter-input"
+                            type="text"
+                            inputMode="numeric"
+                            value={
+                              isMothership
+                                ? formatDollarInput(mothershipFunding.budgetBase)
+                                : draft.estimatedBudgetInput
+                            }
+                            disabled={!selected || isMothership}
+                            onChange={(event) => {
+                              const nextValue = parseDollarInput(event.target.value);
+                              updateSyndicateFundingDraft(entry.id, {
+                                estimatedBudgetInput: formatDollarInput(nextValue)
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="inline-select"
+                            value={isMothership ? "high" : draft.budgetConfidence}
+                            disabled={!selected || isMothership}
+                            onChange={(event) =>
+                              updateSyndicateFundingDraft(entry.id, {
+                                budgetConfidence: event.target.value as BudgetConfidence
+                              })
+                            }
+                          >
+                            {confidenceOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            className="admin-filter-input"
+                            type="text"
+                            value={isMothership ? "Managed in Funding settings" : draft.budgetNotes}
+                            disabled={!selected || isMothership}
+                            onChange={(event) =>
+                              updateSyndicateFundingDraft(entry.id, {
+                                budgetNotes: event.target.value
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          {isMothership ? (
+                            <span className="status-pill">Base plan source</span>
+                          ) : sessionSyndicate?.estimateExceeded ? (
+                            <span className="status-pill">Estimate exceeded</span>
+                          ) : (
+                            <span className="status-pill">
+                              {sessionSyndicate
+                                ? formatCurrency(sessionSyndicate.estimatedRemainingBudget)
+                                : "Not tracked"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -767,32 +960,192 @@ export function SessionAdminCenter({
 
       {activeTab === "settings" ? (
         <section className="surface-card admin-pane">
-          <div className="admin-pane__section-header">
-            <h2>Budget</h2>
-          </div>
-          <div className="compact-field-grid compact-field-grid--two">
-            <label className="field-shell">
-              <span>Projected pot</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={projectedPotInput}
-                onChange={(event) => {
-                  const nextValue = parseDollarInput(event.target.value);
-                  setProjectedPotInput(formatDollarInput(nextValue));
-                  setPayoutRules((current) => ({
+          <form onSubmit={onSaveFunding}>
+            <div className="admin-pane__header admin-pane__section-header">
+              <h2>Funding</h2>
+              <button type="submit" className="button button--small" disabled={isPending}>
+                Save funding
+              </button>
+            </div>
+            <p className="support-copy">
+              Mothership funding is now managed separately from room-level projected pot.
+            </p>
+            <div className="compact-field-grid compact-field-grid--three">
+              <label className="field-shell">
+                <span>Target share price</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={mothershipFunding.targetSharePrice}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      targetSharePrice: Number(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Full shares sold</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={mothershipFunding.fullSharesSold}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      fullSharesSold: Number(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Half shares sold</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={mothershipFunding.halfSharesSold}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      halfSharesSold: Number(event.target.value)
+                    }))
+                  }
+                  disabled={!mothershipFunding.allowHalfShares}
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Budget low</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatDollarInput(mothershipFunding.budgetLow)}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      budgetLow: parseDollarInput(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Budget base</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatDollarInput(mothershipFunding.budgetBase)}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      budgetBase: parseDollarInput(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Budget stretch</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatDollarInput(mothershipFunding.budgetStretch)}
+                  onChange={(event) =>
+                    setMothershipFunding((current) => ({
+                      ...current,
+                      budgetStretch: parseDollarInput(event.target.value)
+                    }))
+                  }
+                  required
+                />
+              </label>
+            </div>
+            <label className="field-shell" style={{ maxWidth: "20rem", marginTop: "1rem" }}>
+              <span>Allow half shares</span>
+              <select
+                value={mothershipFunding.allowHalfShares ? "yes" : "no"}
+                onChange={(event) =>
+                  setMothershipFunding((current) => ({
                     ...current,
-                    projectedPot: nextValue
-                  }));
-                }}
-                required
+                    allowHalfShares: event.target.value === "yes",
+                    halfSharesSold: event.target.value === "yes" ? current.halfSharesSold : 0
+                  }))
+                }
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+
+            <div className="mini-grid" style={{ marginTop: "1rem" }}>
+              <MetricReadout
+                label="Equivalent shares sold"
+                value={fundingPreview.equivalentShares.toFixed(
+                  fundingPreview.equivalentShares % 1 === 0 ? 0 : 1
+                )}
+                tooltip="Full shares plus half shares converted into whole-share equivalents. This is the share count used for target cash and effective share price."
               />
-            </label>
-            <label className="field-shell">
-              <span>Projected Mothership Budget</span>
-              <input value={formatCurrency(projectedMothershipBudget)} readOnly />
-            </label>
+              <MetricReadout
+                label="Committed cash at target"
+                value={formatCurrency(fundingPreview.committedCash)}
+                tooltip="Equivalent shares sold multiplied by the target share price. It shows how much funding those sold shares would support at the planned price."
+              />
+              <MetricReadout
+                label="Effective share price"
+                value={
+                  fundingPreview.impliedSharePrice === null
+                    ? "--"
+                    : formatCurrency(fundingPreview.impliedSharePrice)
+                }
+                tooltip="Current Mothership spend divided by equivalent shares sold. It shows what each sold share is effectively carrying right now."
+              />
+              <MetricReadout
+                label="Base budget room"
+                value={formatCurrency(fundingPreview.baseBidRoom)}
+                tooltip="Base budget minus current Mothership spend. This is the room left before moving beyond the base funding plan."
+              />
+              <MetricReadout
+                label="Stretch budget room"
+                value={formatCurrency(fundingPreview.stretchBidRoom)}
+                tooltip="Stretch budget minus current Mothership spend. This is the extra room available if Mothership leans beyond the base plan."
+              />
+            </div>
+          </form>
+
+          <div className="admin-pane__section">
+            <div className="admin-pane__section-header">
+              <h2>Room planning</h2>
+            </div>
+            <div className="compact-field-grid compact-field-grid--two">
+              <label className="field-shell">
+                <span>Projected pot</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={projectedPotInput}
+                  onChange={(event) => {
+                    const nextValue = parseDollarInput(event.target.value);
+                    setProjectedPotInput(formatDollarInput(nextValue));
+                    setPayoutRules((current) => ({
+                      ...current,
+                      projectedPot: nextValue
+                    }));
+                  }}
+                  required
+                />
+              </label>
+              <label className="field-shell">
+                <span>Funding note</span>
+                <input value="Projected pot is room-level only" readOnly />
+              </label>
+            </div>
           </div>
 
           <form onSubmit={onSavePayoutRules}>
@@ -1058,6 +1411,31 @@ export function SessionAdminCenter({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function MetricReadout({
+  label,
+  value,
+  tooltip
+}: {
+  label: string;
+  value: string;
+  tooltip?: string;
+}) {
+  return (
+    <div className="metric-card metric-card--compact">
+      <span className={tooltip ? "insight-label" : undefined}>
+        {label}
+        {tooltip ? (
+          <button type="button" className="tooltip-hint" aria-label={`${label} explanation`}>
+            ?
+            <span className="tooltip-content">{tooltip}</span>
+          </button>
+        ) : null}
+      </span>
+      <strong>{value}</strong>
     </div>
   );
 }

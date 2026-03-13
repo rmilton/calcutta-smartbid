@@ -8,8 +8,10 @@ import {
   useState
 } from "react";
 import { useRouter } from "next/navigation";
+import { deriveFundingStatus, deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
+import { getBreakEvenStage } from "@/lib/payouts";
 import {
   formatBidInputText,
   formatBidInputValue,
@@ -22,6 +24,7 @@ import {
   MatchupConflict,
   ProjectionOverride,
   SoldTeamSummary,
+  Stage,
   Syndicate,
   TeamProjection
 } from "@/lib/types";
@@ -51,9 +54,15 @@ const viewLabels: Record<WorkspaceView, string> = {
 };
 
 const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
-  buy: "Buy window open",
+  buy: "Keep bidding",
   caution: "Stay disciplined",
   pass: "Pass"
+};
+
+const fundingStatusLabels: Record<BidRecommendation["fundingStatus"], string> = {
+  safe: "Within base budget",
+  stretch: "Requires stretch budget",
+  "above-plan": "Above current funding plan"
 };
 
 function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMember["scope"]) {
@@ -173,6 +182,18 @@ export function DashboardShell({
     () => new Map(dashboard.ledger.map((syndicate) => [syndicate.id, syndicate])),
     [dashboard.ledger]
   );
+  const portfolioSyndicateBoard = useMemo(() => {
+    const mothershipId = dashboard.focusSyndicate.id;
+    return [...dashboard.ledger].sort((left, right) => {
+      if (left.id === mothershipId) {
+        return -1;
+      }
+      if (right.id === mothershipId) {
+        return 1;
+      }
+      return 0;
+    });
+  }, [dashboard.focusSyndicate.id, dashboard.ledger]);
   const analysisDetailTeam =
     dashboard.session.projections.find((t) => t.id === analysisTeamId) ?? null;
   const analysisRow =
@@ -227,12 +248,25 @@ export function DashboardShell({
     (nominatedTeam &&
       snapshot?.teamResults[nominatedTeam.id]?.roundProbabilities.champion) ||
     0;
-  const potentialRemainingBankroll = Math.max(
-    0,
-    dashboard.focusSyndicate.remainingBankroll - currentBid
+  const focusFunding = useMemo(
+    () =>
+      deriveMothershipFundingSnapshot(
+        dashboard.session.mothershipFunding,
+        dashboard.focusSyndicate.spend
+      ),
+    [dashboard.focusSyndicate.spend, dashboard.session.mothershipFunding]
   );
+  const projectedFundingStatus = deriveFundingStatus(
+    dashboard.focusSyndicate.spend + currentBid,
+    dashboard.session.mothershipFunding
+  );
+  const projectedBaseRoom = focusFunding.baseBidRoom - currentBid;
+  const projectedStretchRoom = focusFunding.stretchBidRoom - currentBid;
   const selectedSimulation = analysisDetailTeam
     ? snapshot?.teamResults[analysisDetailTeam.id] ?? null
+    : null;
+  const breakEvenStage = selectedTeam
+    ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
 
   useEffect(() => {
@@ -586,12 +620,57 @@ export function DashboardShell({
                     </div>
 
                     <div className="decision-strip">
-                      <div className="decision-stat">
-                        <span>Current bid</span>
+                      <div className="decision-stat decision-stat--active">
+                        <span className="insight-label">
+                          Current bid
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Current bid explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              The live price currently on the board for this team. Break-even,
+                              funding status, and recommendation context all update against this
+                              number.
+                            </span>
+                          </button>
+                        </span>
                         <strong>{formatCurrency(currentBid)}</strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Target bid</span>
+                        <span className="insight-label">
+                          Break-even round
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Break-even round explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              The earliest round where cumulative estimated payout covers the
+                              current bid. It uses the room&apos;s projected pot and payout
+                              structure, so it is an estimate rather than realized profit.
+                            </span>
+                          </button>
+                        </span>
+                        <strong>{formatBreakEvenStage(breakEvenStage)}</strong>
+                      </div>
+                      <div className="decision-stat">
+                        <span className="insight-label">
+                          Target bid
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Target bid explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              The model&apos;s normal buy price for this team based on conviction and
+                              Mothership&apos;s remaining base-plan buying room.
+                            </span>
+                          </button>
+                        </span>
                         <strong>
                           {recommendation
                             ? formatCurrency(recommendation.targetBid)
@@ -599,17 +678,78 @@ export function DashboardShell({
                         </strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Max bid</span>
+                        <span className="insight-label">
+                          Max bid
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Max bid explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              The highest bid the model can justify after stretch funding room and
+                              portfolio overlap penalties are applied.
+                            </span>
+                          </button>
+                        </span>
                         <strong>
                           {recommendation ? formatCurrency(recommendation.maxBid) : "--"}
                         </strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Bankroll after buy (est.)</span>
-                        <strong>{formatCurrency(potentialRemainingBankroll)}</strong>
+                        <span className="insight-label">
+                          Base room after buy
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Base room after buy explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              How much room would remain inside Mothership&apos;s base funding plan
+                              after buying this team at the current bid.
+                            </span>
+                          </button>
+                        </span>
+                        <strong>{formatCurrency(projectedBaseRoom)}</strong>
                       </div>
                       <div className="decision-stat">
-                        <span>Simulated net</span>
+                        <span className="insight-label">
+                          Funding status
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Funding status explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              Shows whether buying at the current bid stays within Mothership&apos;s
+                              base plan, requires stretch funding, or moves above the current
+                              funding plan.
+                            </span>
+                          </button>
+                        </span>
+                        <strong>
+                          {recommendation
+                            ? fundingStatusLabels[recommendation.fundingStatus]
+                            : fundingStatusLabels[projectedFundingStatus]}
+                        </strong>
+                      </div>
+                      <div className="decision-stat">
+                        <span className="insight-label">
+                          Simulated net
+                          <button
+                            type="button"
+                            className="tooltip-hint"
+                            aria-label="Simulated net explanation"
+                          >
+                            ?
+                            <span className="tooltip-content">
+                              Expected gross payout minus the current bid and the ownership overlap
+                              penalty for teams Mothership already owns.
+                            </span>
+                          </button>
+                        </span>
                         <strong>
                           {recommendation
                             ? formatCurrency(recommendation.expectedNetValue)
@@ -632,11 +772,11 @@ export function DashboardShell({
                     </h3>
                     <p>
                       {recommendation
-                        ? recommendation.rationale[0] ?? ""
+                        ? fundingStatusLabels[recommendation.fundingStatus]
                         : "The auction surface stays focused on one decision strip at a time."}
                     </p>
-                    {recommendation?.rationale[3] ? (
-                      <p className="call-conflict">{recommendation.rationale[3]}</p>
+                    {recommendation?.rationale[2] ? (
+                      <p className="call-conflict">{recommendation.rationale[2]}</p>
                     ) : null}
                   </article>
                 </section>
@@ -687,6 +827,24 @@ export function DashboardShell({
                       tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
                     />
                     <MetricCard
+                      label="Base budget room"
+                      value={
+                        recommendation
+                          ? formatCurrency(recommendation.baseBudgetHeadroom)
+                          : formatCurrency(projectedBaseRoom)
+                      }
+                      tooltip="Room left inside Mothership's base funding plan after the current bid."
+                    />
+                    <MetricCard
+                      label="Stretch budget room"
+                      value={
+                        recommendation
+                          ? formatCurrency(recommendation.stretchBudgetHeadroom)
+                          : formatCurrency(projectedStretchRoom)
+                      }
+                      tooltip="Room left if Mothership moves beyond base and into its stretch funding plan."
+                    />
+                    <MetricCard
                       label="Ownership penalty"
                       value={
                         recommendation
@@ -712,6 +870,15 @@ export function DashboardShell({
                           : "--"
                       }
                       tooltip="How concentrated Mothership already is. Higher concentration means the model gets more cautious about adding more exposure."
+                    />
+                    <MetricCard
+                      label="Effective share price"
+                      value={
+                        focusFunding.impliedSharePrice === null
+                          ? "--"
+                          : formatCurrency(focusFunding.impliedSharePrice)
+                      }
+                      tooltip="What each equivalent Mothership share implies based on current spend."
                     />
                     <MetricCard
                       label="Title odds"
@@ -892,18 +1059,22 @@ export function DashboardShell({
                       compact
                     />
                     <MetricCard
-                      label="Remaining (est.)"
-                      value={formatCurrency(dashboard.focusSyndicate.remainingBankroll)}
+                      label="Base room"
+                      value={formatCurrency(focusFunding.baseBidRoom)}
                       compact
                     />
                     <MetricCard
-                      label="Portfolio EV"
-                      value={formatCurrency(dashboard.focusSyndicate.portfolioExpectedValue)}
+                      label="Stretch room"
+                      value={formatCurrency(focusFunding.stretchBidRoom)}
                       compact
                     />
                     <MetricCard
-                      label="Overrides"
-                      value={`${dashboard.projectionOverrideCount}`}
+                      label="Effective share price"
+                      value={
+                        focusFunding.impliedSharePrice === null
+                          ? "--"
+                          : formatCurrency(focusFunding.impliedSharePrice)
+                      }
                       compact
                     />
                   </div>
@@ -913,7 +1084,7 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Recent Sales</p>
-                      <h3>Latest room activity</h3>
+                      <h3>Latest auction activity</h3>
                     </div>
                   </div>
                   {recentSales.length ? (
@@ -966,7 +1137,7 @@ export function DashboardShell({
 
                 <div className="mini-grid analysis-summary-grid analysis-summary-row">
                   <MetricCard
-                    label="Investable cash"
+                    label="Base room"
                     value={formatCurrency(dashboard.analysis.investableCash)}
                     compact
                   />
@@ -976,8 +1147,17 @@ export function DashboardShell({
                     compact
                   />
                   <MetricCard
-                    label="Cash remaining"
-                    value={formatCurrency(dashboard.analysis.remainingBankroll)}
+                    label="Stretch room"
+                    value={formatCurrency(Math.max(0, dashboard.analysis.funding.stretchBidRoom))}
+                    compact
+                  />
+                  <MetricCard
+                    label="Effective share price"
+                    value={
+                      dashboard.analysis.funding.impliedSharePrice === null
+                        ? "--"
+                        : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
+                    }
                     compact
                   />
                 </div>
@@ -1174,12 +1354,16 @@ export function DashboardShell({
                     value={formatCurrency(dashboard.focusSyndicate.spend)}
                   />
                   <MetricCard
-                    label="Remaining (est.)"
-                    value={formatCurrency(dashboard.focusSyndicate.remainingBankroll)}
+                    label="Base room"
+                    value={formatCurrency(focusFunding.baseBidRoom)}
                   />
                   <MetricCard
-                    label="Portfolio EV"
-                    value={formatCurrency(dashboard.focusSyndicate.portfolioExpectedValue)}
+                    label="Effective share price"
+                    value={
+                      focusFunding.impliedSharePrice === null
+                        ? "--"
+                        : formatCurrency(focusFunding.impliedSharePrice)
+                    }
                   />
                 </div>
               </article>
@@ -1238,11 +1422,11 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Syndicate Board</p>
-                      <h3>Spend, remaining, and EV</h3>
+                      <h3>Spend, estimates, and EV</h3>
                     </div>
                   </div>
                   <div className="syndicate-board">
-                    {dashboard.ledger.map((syndicate) => (
+                    {portfolioSyndicateBoard.map((syndicate) => (
                       <div key={syndicate.id} className="syndicate-row">
                         <div className="syndicate-row__title">
                           <span
@@ -1259,13 +1443,39 @@ export function DashboardShell({
                           <strong>{formatCurrency(syndicate.spend)}</strong>
                         </div>
                         <div>
-                          <span>Remaining</span>
-                          <strong>{formatCurrency(syndicate.remainingBankroll)}</strong>
+                          <span>
+                            {syndicate.id === dashboard.focusSyndicate.id
+                              ? "Base room"
+                              : "Est. room"}
+                          </span>
+                          <strong>
+                            {formatCurrency(
+                              syndicate.id === dashboard.focusSyndicate.id
+                                ? focusFunding.baseBidRoom
+                                : syndicate.estimatedRemainingBudget
+                            )}
+                          </strong>
                         </div>
                         <div>
-                          <span>Portfolio EV</span>
-                          <strong>{formatCurrency(syndicate.portfolioExpectedValue)}</strong>
+                          <span>
+                            {syndicate.id === dashboard.focusSyndicate.id
+                              ? "Portfolio EV"
+                              : "Estimated budget"}
+                          </span>
+                          <strong>
+                            {formatCurrency(
+                              syndicate.id === dashboard.focusSyndicate.id
+                                ? syndicate.portfolioExpectedValue
+                                : syndicate.estimatedBudget
+                            )}
+                          </strong>
                         </div>
+                        {syndicate.id !== dashboard.focusSyndicate.id && syndicate.estimateExceeded ? (
+                          <div>
+                            <span>Room read</span>
+                            <strong>Estimate exceeded</strong>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -1511,12 +1721,30 @@ function ViewerBoard({
               value={recommendation ? stoplightLabels[recommendation.stoplight] : "Idle"}
             />
             <MetricCard
-              label="Mothership total spent"
-              value={formatCurrency(dashboard.focusSyndicate.spend)}
+              label="Funding status"
+              value={
+                recommendation
+                  ? fundingStatusLabels[recommendation.fundingStatus]
+                  : fundingStatusLabels[
+                      deriveFundingStatus(
+                        dashboard.focusSyndicate.spend,
+                        dashboard.session.mothershipFunding
+                      )
+                    ]
+              }
             />
             <MetricCard
-              label="Teams remaining"
-              value={`${dashboard.availableTeams.length}`}
+              label="Effective share price"
+              value={
+                dashboard.analysis.funding.impliedSharePrice === null
+                  ? "--"
+                  : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
+              }
+            />
+            <MetricCard label="Teams remaining" value={`${dashboard.availableTeams.length}`} />
+            <MetricCard
+              label="Mothership total spent"
+              value={formatCurrency(dashboard.focusSyndicate.spend)}
             />
           </div>
         </article>
@@ -1652,6 +1880,18 @@ function MetricCard({
       <strong>{value}</strong>
     </div>
   );
+}
+
+function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
+  if (stage === null) {
+    return "--";
+  }
+
+  if (stage === "negativeReturn") {
+    return "Negative return";
+  }
+
+  return titleCaseStage(stage);
 }
 
 function ConflictRow({

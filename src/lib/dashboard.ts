@@ -40,6 +40,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
     analysisSettings: session.analysisSettings,
+    mothershipFunding: session.mothershipFunding,
     syndicates: session.syndicates,
     baseProjections: session.baseProjections,
     projections: session.projections,

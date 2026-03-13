@@ -1,3 +1,4 @@
+import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { buildTeamIntelligence } from "@/lib/team-intelligence";
 import {
   AnalysisBudgetRow,
@@ -23,8 +24,11 @@ export function buildSessionAnalysisSnapshot(
     Math.min(targetTeamCount, Math.max(availableRows.length, 1)),
     Math.max(availableRows.length, 1)
   );
-  const investableCash = roundCurrency(Math.max(0, focusSyndicate.remainingBankroll));
+  const funding = deriveMothershipFundingSnapshot(session.mothershipFunding, focusSyndicate.spend);
+  const investableCash = roundCurrency(Math.max(0, funding.baseBidRoom));
+  const stretchCash = roundCurrency(Math.max(0, funding.stretchBidRoom));
   const hardTeamCap = roundCurrency(investableCash * (maxSingleTeamPct / 100));
+  const stretchTeamCap = roundCurrency(stretchCash * (maxSingleTeamPct / 100));
 
   const convictionRows = availableRows.slice(0, candidateCount).map((row) => ({
     row,
@@ -36,10 +40,15 @@ export function buildSessionAnalysisSnapshot(
   const budgetRows = convictionRows
     .map(({ row, conviction }) => {
       const share = convictionSum > 0 ? conviction / convictionSum : fallbackShare;
-      const rawBid = investableCash * share;
-      const targetBid = roundCurrency(Math.min(rawBid, hardTeamCap));
-      const maxBid = roundCurrency(Math.min(targetBid * 1.18, hardTeamCap));
-      const openingBid = roundCurrency(Math.max(targetBid * 0.62, 1));
+      const rawBaseBid = investableCash * share;
+      const rawStretchBid = stretchCash * share;
+      const targetBid = roundCurrency(Math.min(rawBaseBid, hardTeamCap));
+      const maxBid = roundCurrency(
+        Math.max(targetBid, Math.min(rawStretchBid, stretchTeamCap))
+      );
+      const openingBid = roundCurrency(
+        Math.max((targetBid > 0 ? targetBid : maxBid) * 0.62, 1)
+      );
 
       return {
         teamId: row.teamId,
@@ -68,6 +77,7 @@ export function buildSessionAnalysisSnapshot(
     ranking,
     fieldAverages: { ...intelligence.fieldAverages },
     budgetRows,
+    funding,
     ownedTeams: ownedPurchases.map((purchase) => ({
       teamId: purchase.teamId,
       paidPrice: purchase.price,
@@ -76,7 +86,7 @@ export function buildSessionAnalysisSnapshot(
     })),
     investableCash,
     actualPaidSpend,
-    remainingBankroll: roundCurrency(Math.max(0, focusSyndicate.remainingBankroll)),
+    remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom)),
     targetTeamCount,
     maxSingleTeamPct
   };

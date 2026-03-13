@@ -2,6 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildDefaultMothershipFunding,
+  deriveLegacyBudgetSeed,
+  deriveSyndicateEstimateState,
+  normalizeMothershipFunding,
+  normalizeSyndicateEstimate
+} from "@/lib/funding";
+import {
   getConfiguredMothershipSyndicateName,
   getConfiguredStorageBackend
 } from "@/lib/config";
@@ -34,12 +41,14 @@ import {
   CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
+  MothershipFundingModel,
   PlatformUser,
   ProjectionOverride,
   PayoutRules,
   SessionAdminConfig,
   SessionDataSourceRef,
   SessionRole,
+  SessionSyndicateFundingInput,
   StoredAuctionSession,
   StorageBackend,
   Syndicate,
@@ -151,6 +160,10 @@ export interface SessionRepository {
     sessionId: string,
     payoutRules: PayoutRules
   ): Promise<SessionAdminConfig>;
+  updateSessionFunding(
+    sessionId: string,
+    mothershipFunding: MothershipFundingModel
+  ): Promise<SessionAdminConfig>;
   updateSessionAnalysisSettings(
     sessionId: string,
     analysisSettings: AnalysisSettings
@@ -168,6 +181,7 @@ export interface SessionRepository {
     sessionId: string,
     input: {
       catalogSyndicateIds: string[];
+      syndicateFunding: SessionSyndicateFundingInput[];
     }
   ): Promise<SessionAdminConfig>;
   setSessionDataSource(sessionId: string, sourceKey: string): Promise<SessionAdminConfig>;
@@ -476,6 +490,14 @@ class LocalSessionRepository implements SessionRepository {
     return buildSessionAdminConfig(session, store);
   }
 
+  async updateSessionFunding(sessionId: string, mothershipFunding: MothershipFundingModel) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    applyMothershipFundingMutation(session, mothershipFunding);
+    await this.writeStore(store);
+    return buildSessionAdminConfig(session, store);
+  }
+
   async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -529,6 +551,7 @@ class LocalSessionRepository implements SessionRepository {
     sessionId: string,
     input: {
       catalogSyndicateIds: string[];
+      syndicateFunding: SessionSyndicateFundingInput[];
     }
   ) {
     const store = await this.readStore();
@@ -538,6 +561,7 @@ class LocalSessionRepository implements SessionRepository {
       store.syndicateCatalog,
       input.catalogSyndicateIds
     );
+    session.syndicates = applySyndicateFundingUpdates(session, session.syndicates, input.syndicateFunding);
     session.focusSyndicateId = requireSessionFocusSyndicate(session).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
@@ -914,6 +938,8 @@ class SupabaseSessionRepository implements SessionRepository {
       payoutRules: sessionResult.data.payout_rules as PayoutRules,
       analysisSettings:
         (sessionResult.data.analysis_settings as AnalysisSettings | null) ?? defaultAnalysisSettings(),
+      mothershipFunding:
+        (sessionResult.data.mothership_funding as MothershipFundingModel | null) ?? undefined,
       syndicates: mapSessionSyndicates(syndicatesResult.data),
       baseProjections,
       projections: applyProjectionOverrides(baseProjections, overrides),
@@ -1276,6 +1302,13 @@ class SupabaseSessionRepository implements SessionRepository {
     return this.getSessionAdminConfig(sessionId);
   }
 
+  async updateSessionFunding(sessionId: string, mothershipFunding: MothershipFundingModel) {
+    const session = await this.requireSession(sessionId);
+    applyMothershipFundingMutation(session, mothershipFunding);
+    await this.persistDerivedState(session);
+    return this.getSessionAdminConfig(sessionId);
+  }
+
   async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
     const session = await this.requireSession(sessionId);
     session.analysisSettings = normalizeAnalysisSettings(analysisSettings);
@@ -1323,6 +1356,7 @@ class SupabaseSessionRepository implements SessionRepository {
     sessionId: string,
     input: {
       catalogSyndicateIds: string[];
+      syndicateFunding: SessionSyndicateFundingInput[];
     }
   ) {
     const refs = await this.readReferenceData();
@@ -1332,6 +1366,7 @@ class SupabaseSessionRepository implements SessionRepository {
       refs.syndicateCatalog,
       input.catalogSyndicateIds
     );
+    session.syndicates = applySyndicateFundingUpdates(session, session.syndicates, input.syndicateFunding);
     session.focusSyndicateId = requireSessionFocusSyndicate(session).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
@@ -1606,6 +1641,7 @@ class SupabaseSessionRepository implements SessionRepository {
       archived_by_email: session.archivedByEmail,
       payout_rules: session.payoutRules,
       analysis_settings: session.analysisSettings,
+      mothership_funding: session.mothershipFunding,
       projection_provider: session.projectionProvider,
       active_data_source_key: session.activeDataSource.key,
       active_data_source_name: session.activeDataSource.name,
@@ -1652,6 +1688,9 @@ class SupabaseSessionRepository implements SessionRepository {
         color: syndicate.color,
         spend: syndicate.spend,
         remaining_bankroll: syndicate.remainingBankroll,
+        estimated_budget: syndicate.estimatedBudget,
+        budget_confidence: syndicate.budgetConfidence,
+        budget_notes: syndicate.budgetNotes,
         owned_team_ids: syndicate.ownedTeamIds,
         portfolio_expected_value: syndicate.portfolioExpectedValue
       }))
@@ -1762,6 +1801,10 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
   const projectionFeed = await loadProjectionsFromSource(dataSource, refs.dataSources);
   const timestamp = new Date().toISOString();
   const sessionId = createId("session");
+  const legacyBudgetSeed = deriveLegacyBudgetSeed(
+    parsed.payoutRules.projectedPot,
+    parsed.catalogSyndicateIds.length
+  );
   const syndicates = buildInitialSessionSyndicates(
     refs.syndicateCatalog,
     parsed.catalogSyndicateIds,
@@ -1788,6 +1831,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     accessMembers,
     payoutRules: parsed.payoutRules,
     analysisSettings: normalizeAnalysisSettings(parsed.analysisSettings),
+    mothershipFunding: buildDefaultMothershipFunding(legacyBudgetSeed),
     syndicates,
     baseProjections: projectionFeed.teams,
     projections: projectionFeed.teams,
@@ -1951,10 +1995,6 @@ function applyPurchaseMutation(
     throw new Error("Unknown buyer syndicate.");
   }
 
-  if (input.price > syndicate.remainingBankroll) {
-    throw new Error("Purchase exceeds the syndicate's remaining bankroll.");
-  }
-
   const createdAt = new Date().toISOString();
   const purchase = {
     id: createId("purchase"),
@@ -1979,22 +2019,19 @@ function applyPurchaseMutation(
 }
 
 function applyPayoutRulesMutation(session: StoredAuctionSession, payoutRules: PayoutRules) {
-  const normalized = normalizePayoutRules(payoutRules);
-  const syndicateBudget = deriveSyndicateBudget(
-    normalized.projectedPot,
+  session.payoutRules = normalizePayoutRules(payoutRules);
+  recalculateSessionState(session, session.simulationSnapshot?.iterations);
+}
+
+function applyMothershipFundingMutation(
+  session: StoredAuctionSession,
+  mothershipFunding: MothershipFundingModel
+) {
+  const legacyBudgetSeed = deriveLegacyBudgetSeed(
+    session.payoutRules.projectedPot,
     session.syndicates.length
   );
-  const overspentSyndicate = session.syndicates.find(
-    (syndicate) => syndicate.spend > syndicateBudget
-  );
-
-  if (overspentSyndicate) {
-    throw new Error(
-      `Projected pot cannot imply a per-syndicate budget lower than ${overspentSyndicate.name}'s existing spend.`
-    );
-  }
-
-  session.payoutRules = normalized;
+  session.mothershipFunding = normalizeMothershipFunding(mothershipFunding, legacyBudgetSeed);
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -2034,10 +2071,7 @@ function clearProjectionOverrideMutation(session: StoredAuctionSession, teamId: 
 }
 
 function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] {
-  const syndicateBudget = deriveSyndicateBudget(
-    session.payoutRules.projectedPot,
-    session.syndicates.length
-  );
+  const mothership = requireSessionFocusSyndicate(session);
   return session.syndicates.map((syndicate) => {
     const ownedPurchases = session.purchases.filter(
       (purchase) => purchase.buyerSyndicateId === syndicate.id
@@ -2049,11 +2083,25 @@ function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] 
         total + (session.simulationSnapshot?.teamResults[teamId]?.expectedGrossPayout ?? 0),
       0
     );
+    const isMothership = syndicate.id === mothership.id;
+    const normalizedEstimate = normalizeSyndicateEstimate(
+      syndicate,
+      deriveLegacyBudgetSeed(session.payoutRules.projectedPot, session.syndicates.length)
+    );
+    const estimatedBudget = isMothership
+      ? roundCurrency(session.mothershipFunding.budgetBase)
+      : normalizedEstimate.estimatedBudget;
+    const estimateState = deriveSyndicateEstimateState(estimatedBudget, spend);
 
     return {
       ...syndicate,
       spend: roundCurrency(spend),
-      remainingBankroll: roundCurrency(syndicateBudget - spend),
+      remainingBankroll: estimateState.estimatedRemainingBudget,
+      estimatedBudget,
+      budgetConfidence: isMothership ? "high" : normalizedEstimate.budgetConfidence,
+      budgetNotes: normalizedEstimate.budgetNotes,
+      estimatedRemainingBudget: estimateState.estimatedRemainingBudget,
+      estimateExceeded: isMothership ? false : estimateState.estimateExceeded,
       ownedTeamIds,
       portfolioExpectedValue: roundCurrency(portfolioExpectedValue)
     };
@@ -2068,7 +2116,7 @@ function buildInitialSessionSyndicates(
   const selectedCatalogEntries = catalog
     .filter((entry) => catalogIds.includes(entry.id))
     .sort(sortByName);
-  const syndicateBudget = deriveSyndicateBudget(projectedPot, selectedCatalogEntries.length);
+  const syndicateBudget = deriveLegacyBudgetSeed(projectedPot, selectedCatalogEntries.length);
 
   const syndicates = selectedCatalogEntries.map((entry) => ({
       id: createId("syn"),
@@ -2076,6 +2124,11 @@ function buildInitialSessionSyndicates(
       color: entry.color,
       spend: 0,
       remainingBankroll: syndicateBudget,
+      estimatedBudget: syndicateBudget,
+      budgetConfidence: "medium" as const,
+      budgetNotes: "",
+      estimatedRemainingBudget: syndicateBudget,
+      estimateExceeded: false,
       ownedTeamIds: [],
       portfolioExpectedValue: 0,
       catalogEntryId: entry.id,
@@ -2116,7 +2169,16 @@ function rebuildSessionSyndicates(
       spend: existing?.spend ?? 0,
       remainingBankroll:
         existing?.remainingBankroll ??
-        deriveSyndicateBudget(session.payoutRules.projectedPot, nextEntries.length),
+        deriveLegacyBudgetSeed(session.payoutRules.projectedPot, nextEntries.length),
+      estimatedBudget:
+        existing?.estimatedBudget ??
+        deriveLegacyBudgetSeed(session.payoutRules.projectedPot, nextEntries.length),
+      budgetConfidence: existing?.budgetConfidence ?? "medium",
+      budgetNotes: existing?.budgetNotes ?? "",
+      estimatedRemainingBudget:
+        existing?.estimatedRemainingBudget ??
+        deriveLegacyBudgetSeed(session.payoutRules.projectedPot, nextEntries.length),
+      estimateExceeded: existing?.estimateExceeded ?? false,
       ownedTeamIds: existing?.ownedTeamIds ?? [],
       portfolioExpectedValue: existing?.portfolioExpectedValue ?? 0,
       catalogEntryId: entry.catalogEntryId,
@@ -2441,7 +2503,21 @@ function normalizeStoreShape(store: SessionStore) {
   };
 }
 
-function normalizeSessionShape(session: StoredAuctionSession) {
+function normalizeSessionShape(
+  session: Omit<StoredAuctionSession, "mothershipFunding"> & {
+    mothershipFunding?: Partial<MothershipFundingModel>;
+  }
+): StoredAuctionSession {
+  const seedBudget = deriveLegacyBudgetSeed(
+    typeof session.payoutRules?.projectedPot === "number"
+      ? session.payoutRules.projectedPot
+      : typeof (session.payoutRules as { startingBankroll?: number } | undefined)?.startingBankroll ===
+            "number"
+        ? ((session.payoutRules as { startingBankroll?: number }).startingBankroll ?? 0) *
+          Math.max(1, session.syndicates?.length ?? 0)
+        : getDefaultPayoutRules().projectedPot,
+    session.syndicates?.length ?? 0
+  );
   const payoutRules = normalizePayoutRules(
     (session.payoutRules ?? {}) as Partial<PayoutRules> & {
       titleGame?: number;
@@ -2449,12 +2525,64 @@ function normalizeSessionShape(session: StoredAuctionSession) {
     },
     session.syndicates?.length ?? 0
   );
+  const mothershipFunding = normalizeMothershipFunding(session.mothershipFunding, seedBudget);
   const projectionOverrides = session.projectionOverrides ?? {};
   const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
   const projections =
     session.projections && session.baseProjections
       ? sortProjections(session.projections)
       : applyProjectionOverrides(baseProjections, projectionOverrides);
+  const normalizedSyndicates: Syndicate[] = (session.syndicates ?? []).map((syndicate) => {
+    const estimate = normalizeSyndicateEstimate(syndicate, seedBudget);
+    const estimateState = deriveSyndicateEstimateState(estimate.estimatedBudget, syndicate.spend ?? 0);
+    return {
+      ...syndicate,
+      spend: roundCurrency(syndicate.spend ?? 0),
+      remainingBankroll:
+        typeof syndicate.remainingBankroll === "number"
+          ? roundCurrency(syndicate.remainingBankroll)
+          : estimateState.estimatedRemainingBudget,
+      estimatedBudget: estimate.estimatedBudget,
+      budgetConfidence: estimate.budgetConfidence,
+      budgetNotes: estimate.budgetNotes,
+      estimatedRemainingBudget:
+        typeof syndicate.estimatedRemainingBudget === "number"
+          ? roundCurrency(syndicate.estimatedRemainingBudget)
+          : estimateState.estimatedRemainingBudget,
+      estimateExceeded:
+        typeof syndicate.estimateExceeded === "boolean"
+          ? syndicate.estimateExceeded
+          : estimateState.estimateExceeded,
+      ownedTeamIds: syndicate.ownedTeamIds ?? [],
+      portfolioExpectedValue: roundCurrency(syndicate.portfolioExpectedValue ?? 0)
+    } satisfies Syndicate;
+  });
+  const mothershipId =
+    normalizedSyndicates.find((syndicate) => syndicate.id === session.focusSyndicateId)?.id ??
+    normalizedSyndicates.find(
+      (syndicate) =>
+        syndicate.name.trim().toLowerCase() ===
+        getConfiguredMothershipSyndicateName().trim().toLowerCase()
+    )?.id;
+  const syndicates: Syndicate[] = normalizedSyndicates.map((syndicate) => {
+    if (syndicate.id !== mothershipId) {
+      return syndicate;
+    }
+
+    const estimateState = deriveSyndicateEstimateState(
+      mothershipFunding.budgetBase,
+      syndicate.spend
+    );
+
+    return {
+      ...syndicate,
+      remainingBankroll: estimateState.estimatedRemainingBudget,
+      estimatedBudget: mothershipFunding.budgetBase,
+      budgetConfidence: "high",
+      estimatedRemainingBudget: estimateState.estimatedRemainingBudget,
+      estimateExceeded: false
+    };
+  });
 
   return {
     ...session,
@@ -2471,6 +2599,8 @@ function normalizeSessionShape(session: StoredAuctionSession) {
     accessMembers: session.accessMembers ?? [],
     payoutRules,
     analysisSettings: normalizeAnalysisSettings(session.analysisSettings),
+    mothershipFunding,
+    syndicates,
     baseProjections,
     projections,
     projectionOverrides,
@@ -2542,8 +2672,37 @@ function normalizeAnalysisSettings(
   };
 }
 
-function deriveSyndicateBudget(projectedPot: number, syndicateCount: number) {
-  return roundCurrency(projectedPot / Math.max(1, syndicateCount));
+function applySyndicateFundingUpdates(
+  session: StoredAuctionSession,
+  syndicates: Syndicate[],
+  updates: SessionSyndicateFundingInput[]
+) {
+  const updateLookup = new Map(updates.map((update) => [update.catalogEntryId, update]));
+  const mothershipName = getConfiguredMothershipSyndicateName().trim().toLowerCase();
+  const seedBudget = deriveLegacyBudgetSeed(session.payoutRules.projectedPot, syndicates.length);
+
+  return syndicates.map((syndicate) => {
+    if (
+      syndicate.name.trim().toLowerCase() === mothershipName ||
+      !syndicate.catalogEntryId
+    ) {
+      return syndicate;
+    }
+
+    const update = updateLookup.get(syndicate.catalogEntryId);
+    const normalized = normalizeSyndicateEstimate(update ?? syndicate, seedBudget);
+    const estimateState = deriveSyndicateEstimateState(normalized.estimatedBudget, syndicate.spend);
+
+    return {
+      ...syndicate,
+      estimatedBudget: normalized.estimatedBudget,
+      budgetConfidence: normalized.budgetConfidence,
+      budgetNotes: normalized.budgetNotes,
+      remainingBankroll: estimateState.estimatedRemainingBudget,
+      estimatedRemainingBudget: estimateState.estimatedRemainingBudget,
+      estimateExceeded: estimateState.estimateExceeded
+    };
+  });
 }
 
 function filterOverridesForProjectionSet(
@@ -2718,6 +2877,14 @@ function mapSessionSyndicates(rows: Array<Record<string, unknown>> | null | unde
     color: getSyndicateBrandColor(String(row.name)),
     spend: Number(row.spend),
     remainingBankroll: Number(row.remaining_bankroll),
+    estimatedBudget:
+      row.estimated_budget === null || row.estimated_budget === undefined
+        ? undefined
+        : Number(row.estimated_budget),
+    budgetConfidence: String(row.budget_confidence ?? "medium") as Syndicate["budgetConfidence"],
+    budgetNotes: String(row.budget_notes ?? ""),
+    estimatedRemainingBudget: Number(row.remaining_bankroll ?? 0),
+    estimateExceeded: false,
     ownedTeamIds: ((row.owned_team_ids as string[]) ?? []).map(String),
     portfolioExpectedValue: Number(row.portfolio_expected_value),
     catalogEntryId: row.catalog_entry_id ? String(row.catalog_entry_id) : null,
