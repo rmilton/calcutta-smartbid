@@ -17,7 +17,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Calcutta SmartBid",
+  title: "mothership smartbid™",
   description: "Real-time bidding support for NCAA March Madness Calcutta auctions."
 };
 

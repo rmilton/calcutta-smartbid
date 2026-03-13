@@ -38,7 +38,7 @@ export function AccessForm() {
   return (
     <form className="minimal-auth-card" onSubmit={onSubmit}>
       <div className="minimal-auth-card__header">
-        <p className="minimal-auth-card__brand">Mothership</p>
+        <p className="minimal-auth-card__brand">mothership smartbid™</p>
         <h1 className="minimal-auth-card__title">Enter room</h1>
       </div>
 

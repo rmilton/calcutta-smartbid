@@ -141,7 +141,7 @@ export function SetupForm({
     <form id="new-session-form" className="admin-form-layout" onSubmit={onSubmit}>
       <header className="surface-card admin-form-header">
         <div className="admin-form-header__copy">
-          <p className="eyebrow">Session</p>
+          <p className="eyebrow">mothership smartbid™</p>
           <h1>New session</h1>
         </div>
         <div className="admin-form-header__actions">
