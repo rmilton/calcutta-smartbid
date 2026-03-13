@@ -1420,6 +1420,10 @@ function ViewerBoard({
                 ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
                 : "The next active team will take over this board as soon as the operator makes a nomination."}
             </p>
+            <div className="viewer-bid-hero__bid">
+              <span>Current bid</span>
+              <strong>{formatCurrency(dashboard.session.liveState.currentBid)}</strong>
+            </div>
           </div>
 
           <div className="metric-grid viewer-board__metrics">
