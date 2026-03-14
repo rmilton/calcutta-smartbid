@@ -76,6 +76,7 @@ function buildSession(): AuctionSession {
     baseProjections: projections,
     projectionOverrides: {},
     teamClassifications: {},
+    teamNotes: {},
     projections,
     projectionProvider: "mock",
     activeDataSource: {

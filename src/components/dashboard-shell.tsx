@@ -101,12 +101,14 @@ export function DashboardShell({
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [isSavingLiveState, setIsSavingLiveState] = useState(false);
   const [isSavingClassification, setIsSavingClassification] = useState(false);
+  const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     rating: "",
     offense: "",
     defense: "",
     tempo: ""
   });
+  const [teamNoteInput, setTeamNoteInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
@@ -206,6 +208,9 @@ export function DashboardShell({
   const analysisBudgetRow =
     dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisTeamClassification = analysisRow?.classification ?? null;
+  const analysisTeamNote = analysisRow?.note ?? null;
+  const trimmedTeamNoteInput = teamNoteInput.trim();
+  const teamNoteIsDirty = trimmedTeamNoteInput !== (analysisTeamNote ?? "");
   const focusOwnedTeams = useMemo(
     () =>
       dashboard.soldTeams.filter(
@@ -257,6 +262,8 @@ export function DashboardShell({
   const nominatedTeamClassification =
     (nominatedTeam && dashboard.session.teamClassifications[nominatedTeam.id]?.classification) ||
     null;
+  const nominatedTeamNote =
+    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
   const focusFunding = useMemo(
     () =>
       deriveMothershipFundingSnapshot(
@@ -296,6 +303,10 @@ export function DashboardShell({
       tempo: selectedOverride?.tempo?.toString() ?? selectedTeam.tempo.toString()
     });
   }, [selectedOverride, selectedTeam]);
+
+  useEffect(() => {
+    setTeamNoteInput(analysisTeamNote ?? "");
+  }, [analysisTeamId, analysisTeamNote]);
 
   const saveActiveTeam = useCallback(async (nextTeamId: string) => {
     pendingActiveTeamIdRef.current = nextTeamId;
@@ -615,6 +626,81 @@ export function DashboardShell({
     }
   }
 
+  async function saveTeamNote() {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before saving a note.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingTeamNote(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ note: teamNoteInput })
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to save team note.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setNotice("Team note saved.");
+      void broadcastRefresh("team-note");
+    } catch {
+      setError("Unable to save team note.");
+    } finally {
+      setIsSavingTeamNote(false);
+    }
+  }
+
+  async function clearTeamNote() {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before clearing a note.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingTeamNote(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to clear team note.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setTeamNoteInput("");
+      setNotice("Team note cleared.");
+      void broadcastRefresh("team-note");
+    } catch {
+      setError("Unable to clear team note.");
+    } finally {
+      setIsSavingTeamNote(false);
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", {
       method: "POST"
@@ -687,9 +773,18 @@ export function DashboardShell({
                             ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
                             : "Set an active team to unlock bid guidance."}
                         </p>
-                        {nominatedTeamClassification ? (
-                          <div className="decision-panel__classification">
-                            <TeamClassificationBadge classification={nominatedTeamClassification} />
+                        {nominatedTeamClassification || nominatedTeamNote ? (
+                          <div className="decision-panel__annotation">
+                            {nominatedTeamClassification ? (
+                              <div className="decision-panel__classification">
+                                <TeamClassificationBadge
+                                  classification={nominatedTeamClassification}
+                                />
+                              </div>
+                            ) : null}
+                            {nominatedTeamNote ? (
+                              <span className="decision-panel__note">{nominatedTeamNote}</span>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1362,7 +1457,7 @@ export function DashboardShell({
                           );
                         })}
                       </div>
-                      <div className="button-row">
+                      <div className="button-row analysis-annotation-actions">
                         <button
                           type="button"
                           className="button button-ghost button--small"
@@ -1370,6 +1465,51 @@ export function DashboardShell({
                           disabled={!analysisTeamClassification || isSavingClassification}
                         >
                           Clear classification
+                        </button>
+                      </div>
+                    </article>
+
+                    <article className="surface-card">
+                      <div className="section-headline">
+                        <div>
+                          <p className="eyebrow">Team Note</p>
+                        </div>
+                        {teamNoteInput.length > 0 ? (
+                          <span className="status-pill status-pill--muted">
+                            {teamNoteInput.length}/80
+                          </span>
+                        ) : null}
+                      </div>
+                      <label className="field-shell">
+                        <span>Short note</span>
+                        <input
+                          type="text"
+                          value={teamNoteInput}
+                          onChange={(event) => setTeamNoteInput(event.target.value)}
+                          maxLength={80}
+                          placeholder="Quick thought on this team"
+                        />
+                      </label>
+                      <div className="button-row analysis-annotation-actions">
+                        <button
+                          type="button"
+                          className="button button-primary button--small"
+                          onClick={() => void saveTeamNote()}
+                          disabled={
+                            isSavingTeamNote ||
+                            trimmedTeamNoteInput.length === 0 ||
+                            !teamNoteIsDirty
+                          }
+                        >
+                          Save note
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamNote()}
+                          disabled={!analysisTeamNote || isSavingTeamNote}
+                        >
+                          Clear note
                         </button>
                       </div>
                     </article>
@@ -1817,6 +1957,8 @@ function ViewerBoard({
   recommendation: BidRecommendation | null;
 }) {
   const nominatedTeam = dashboard.nominatedTeam;
+  const nominatedTeamNote =
+    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
   const [ownershipSearch, setOwnershipSearch] = useState("");
   const soldFeed = useMemo(() => [...dashboard.soldTeams].reverse(), [dashboard.soldTeams]);
   const ownershipGroups = useMemo(() => {
@@ -1878,6 +2020,7 @@ function ViewerBoard({
                 />
               </div>
             ) : null}
+            {nominatedTeamNote ? <p className="viewer-note">{nominatedTeamNote}</p> : null}
           </div>
 
           <div className="metric-grid viewer-board__metrics">

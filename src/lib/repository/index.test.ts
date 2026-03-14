@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, vi } from "vitest";
 import { getDefaultPayoutRules } from "@/lib/sample-data";
-import { saveTeamClassificationSchema } from "@/lib/types";
+import { saveTeamClassificationSchema, saveTeamNoteSchema } from "@/lib/types";
 
 let storeFile = "";
 
@@ -280,5 +280,98 @@ describe("repository team classifications", () => {
 
     expect(importedSession?.teamClassifications.alabama?.classification).toBe("must-have");
     expect(importedSession?.teamClassifications.ghost).toBeUndefined();
+  });
+});
+
+describe("repository team notes", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-team-notes-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("saves, overwrites, clears, and persists team notes", async () => {
+    const { repository, session } = await createBaselineSession();
+
+    await repository.saveTeamNote(session.id, "alabama", {
+      note: "Disciplined late-game team"
+    });
+    await repository.saveTeamNote(session.id, "alabama", {
+      note: "Elite guard play"
+    });
+
+    let reloadedRepository = await loadRepository();
+    let reloadedSession = await reloadedRepository.getSession(session.id);
+
+    expect(reloadedSession?.teamNotes.alabama?.note).toBe("Elite guard play");
+
+    await reloadedRepository.clearTeamNote(session.id, "alabama");
+
+    reloadedRepository = await loadRepository();
+    reloadedSession = await reloadedRepository.getSession(session.id);
+
+    expect(reloadedSession?.teamNotes.alabama).toBeUndefined();
+  });
+
+  it("rejects invalid notes and unknown teams", async () => {
+    expect(saveTeamNoteSchema.safeParse({ note: "" }).success).toBe(false);
+    expect(saveTeamNoteSchema.safeParse({ note: "x".repeat(81) }).success).toBe(false);
+
+    const { repository, session } = await createBaselineSession();
+
+    await expect(
+      repository.saveTeamNote(session.id, "ghost-team", {
+        note: "Fast-paced value"
+      })
+    ).rejects.toThrow("Team note team not found.");
+  });
+
+  it("preserves matching notes on import and drops orphaned ones", async () => {
+    const { repository, session } = await createBaselineSession();
+    await repository.saveTeamNote(session.id, "alabama", {
+      note: "Strong inside-out balance"
+    });
+
+    const rawStore = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      sessions: Array<{
+        id: string;
+        teamNotes?: Record<string, { teamId: string; note: string; updatedAt: string }>;
+      }>;
+    };
+    const targetSession = rawStore.sessions.find((candidate) => candidate.id === session.id);
+    expect(targetSession).toBeDefined();
+
+    if (targetSession) {
+      targetSession.teamNotes = {
+        ...(targetSession.teamNotes ?? {}),
+        ghost: {
+          teamId: "ghost",
+          note: "Should disappear",
+          updatedAt: new Date().toISOString()
+        }
+      };
+    }
+
+    await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
+
+    const reloadedRepository = await loadRepository();
+    await reloadedRepository.runSessionImport(session.id);
+    const importedSession = await reloadedRepository.getSession(session.id);
+
+    expect(importedSession?.teamNotes.alabama?.note).toBe("Strong inside-out balance");
+    expect(importedSession?.teamNotes.ghost).toBeUndefined();
   });
 });

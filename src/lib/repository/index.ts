@@ -55,10 +55,12 @@ import {
   SyndicateCatalogEntry,
   TeamClassificationTag,
   TeamClassificationValue,
+  TeamNoteTag,
   TeamProjection,
   createDataSourceSchema,
   createPlatformUserSchema,
   createSessionSchema,
+  saveTeamNoteSchema,
   createSyndicateCatalogSchema,
   updateDataSourceSchema,
   updatePlatformUserSchema,
@@ -95,6 +97,10 @@ interface ProjectionOverrideInput {
 
 interface TeamClassificationInput {
   classification: TeamClassificationValue;
+}
+
+interface TeamNoteInput {
+  note: string;
 }
 
 const storeFile =
@@ -214,6 +220,8 @@ export interface SessionRepository {
     input: TeamClassificationInput
   ): Promise<AuctionDashboard>;
   clearTeamClassification(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput): Promise<AuctionDashboard>;
+  clearTeamNote(sessionId: string, teamId: string): Promise<AuctionDashboard>;
   getCsvAnalysisPortfolio(sessionId: string, memberId: string): Promise<CsvAnalysisPortfolio>;
   saveCsvAnalysisPortfolio(
     sessionId: string,
@@ -683,6 +691,22 @@ class LocalSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    applyTeamNoteMutation(session, teamId, input);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamNote(sessionId: string, teamId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    clearTeamNoteMutation(session, teamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
     const store = await this.readStore();
     findSession(store.sessions, sessionId);
@@ -889,6 +913,7 @@ class SupabaseSessionRepository implements SessionRepository {
       snapshotResult,
       overridesResult,
       classificationsResult,
+      notesResult,
       membersResult,
       usersResult
     ] = await Promise.all([
@@ -909,6 +934,7 @@ class SupabaseSessionRepository implements SessionRepository {
         .maybeSingle(),
       client.from("projection_overrides").select("*").eq("session_id", sessionId),
       client.from("team_classifications").select("*").eq("session_id", sessionId),
+      client.from("team_notes").select("*").eq("session_id", sessionId),
       client.from("session_members").select("*").eq("session_id", sessionId),
       client.from("platform_users").select("*")
     ]);
@@ -920,6 +946,7 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(snapshotResult.error);
     throwOnSupabaseError(overridesResult.error);
     throwOnSupabaseError(classificationsResult.error);
+    throwOnSupabaseError(notesResult.error);
     throwOnSupabaseError(membersResult.error);
     throwOnSupabaseError(usersResult.error);
 
@@ -957,6 +984,16 @@ class SupabaseSessionRepository implements SessionRepository {
         } satisfies TeamClassificationTag
       ])
     );
+    const teamNotes = Object.fromEntries(
+      ((notesResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => [
+        String(row.team_id),
+        {
+          teamId: String(row.team_id),
+          note: String(row.note),
+          updatedAt: String(row.updated_at)
+        } satisfies TeamNoteTag
+      ])
+    );
 
     return normalizeSessionShape({
       id: String(sessionResult.data.id),
@@ -990,6 +1027,7 @@ class SupabaseSessionRepository implements SessionRepository {
       projections: applyProjectionOverrides(baseProjections, overrides),
       projectionOverrides: overrides,
       teamClassifications,
+      teamNotes,
       projectionProvider: String(sessionResult.data.projection_provider),
       activeDataSource: {
         key: String(sessionResult.data.active_data_source_key ?? builtinMockSource.key),
@@ -1552,6 +1590,20 @@ class SupabaseSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
+    const session = await this.requireSession(sessionId);
+    applyTeamNoteMutation(session, teamId, input);
+    await this.persistTeamNoteState(session, teamId);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamNote(sessionId: string, teamId: string) {
+    const session = await this.requireSession(sessionId);
+    clearTeamNoteMutation(session, teamId);
+    await this.persistTeamNoteState(session, teamId, true);
+    return buildDashboard(session, this.backend);
+  }
+
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
     await this.requireSession(sessionId);
     const client = requireSupabaseClient();
@@ -1799,6 +1851,18 @@ class SupabaseSessionRepository implements SessionRepository {
         updated_at: classification.updatedAt
       }))
     );
+    await replaceRows(
+      client,
+      "team_notes",
+      "session_id",
+      session.id,
+      Object.values(session.teamNotes).map((note) => ({
+        session_id: session.id,
+        team_id: note.teamId,
+        note: note.note,
+        updated_at: note.updatedAt
+      }))
+    );
     await client.from("simulation_snapshots").delete().eq("session_id", session.id);
     if (session.simulationSnapshot) {
       const snapshotResult = await client.from("simulation_snapshots").insert({
@@ -1902,6 +1966,40 @@ class SupabaseSessionRepository implements SessionRepository {
     });
     throwOnSupabaseError(classificationResult.error);
   }
+
+  private async persistTeamNoteState(
+    session: StoredAuctionSession,
+    teamId: string,
+    cleared = false
+  ) {
+    const client = requireSupabaseClient();
+    await updateAuctionSessionRow(
+      client,
+      {
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+
+    if (cleared) {
+      const deleteNote = await client
+        .from("team_notes")
+        .delete()
+        .eq("session_id", session.id)
+        .eq("team_id", teamId);
+      throwOnSupabaseError(deleteNote.error);
+      return;
+    }
+
+    const note = session.teamNotes[teamId];
+    const noteResult = await client.from("team_notes").upsert({
+      session_id: session.id,
+      team_id: note.teamId,
+      note: note.note,
+      updated_at: note.updatedAt
+    });
+    throwOnSupabaseError(noteResult.error);
+  }
 }
 
 async function createSessionModel(input: CreateSessionInput, refs: ReferenceData) {
@@ -1947,6 +2045,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     projections: projectionFeed.teams,
     projectionOverrides: {},
     teamClassifications: {},
+    teamNotes: {},
     projectionProvider: projectionFeed.provider,
     activeDataSource: dataSource,
     finalFourPairings: getDefaultFinalFourPairings(),
@@ -1987,6 +2086,7 @@ async function applyProjectionImport(
     session.teamClassifications,
     session.baseProjections
   );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
   session.projections = applyProjectionOverrides(
     session.baseProjections,
     session.projectionOverrides
@@ -2018,6 +2118,7 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
     session.teamClassifications,
     session.baseProjections
   );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
   session.projections = applyProjectionOverrides(
     session.baseProjections,
     session.projectionOverrides
@@ -2213,6 +2314,34 @@ function clearTeamClassificationMutation(session: StoredAuctionSession, teamId: 
   }
 
   delete session.teamClassifications[teamId];
+  session.updatedAt = new Date().toISOString();
+}
+
+function applyTeamNoteMutation(
+  session: StoredAuctionSession,
+  teamId: string,
+  input: TeamNoteInput
+) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team note team not found.");
+  }
+
+  const parsed = saveTeamNoteSchema.parse(input);
+  const updatedAt = new Date().toISOString();
+  session.teamNotes[teamId] = {
+    teamId,
+    note: parsed.note,
+    updatedAt
+  };
+  session.updatedAt = updatedAt;
+}
+
+function clearTeamNoteMutation(session: StoredAuctionSession, teamId: string) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team note team not found.");
+  }
+
+  delete session.teamNotes[teamId];
   session.updatedAt = new Date().toISOString();
 }
 
@@ -2677,6 +2806,10 @@ function normalizeSessionShape(
     session.teamClassifications ?? {},
     session.baseProjections ?? session.projections ?? []
   );
+  const teamNotes = filterTeamNotesForProjectionSet(
+    session.teamNotes ?? {},
+    session.baseProjections ?? session.projections ?? []
+  );
   const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
   const projections =
     session.projections && session.baseProjections
@@ -2755,6 +2888,7 @@ function normalizeSessionShape(
     projections,
     projectionOverrides,
     teamClassifications,
+    teamNotes,
     activeDataSource: session.activeDataSource ?? builtinMockSource
   };
 }
@@ -2874,6 +3008,14 @@ function filterTeamClassificationsForProjectionSet(
   return Object.fromEntries(
     Object.entries(classifications).filter(([teamId]) => validIds.has(teamId))
   );
+}
+
+function filterTeamNotesForProjectionSet(
+  notes: Record<string, TeamNoteTag>,
+  baseProjections: TeamProjection[]
+) {
+  const validIds = new Set(baseProjections.map((projection) => projection.id));
+  return Object.fromEntries(Object.entries(notes).filter(([teamId]) => validIds.has(teamId)));
 }
 
 function findSession(sessions: StoredAuctionSession[], sessionId: string) {

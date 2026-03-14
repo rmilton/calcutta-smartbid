@@ -141,6 +141,12 @@ export interface TeamClassificationTag {
   updatedAt: string;
 }
 
+export interface TeamNoteTag {
+  teamId: string;
+  note: string;
+  updatedAt: string;
+}
+
 export type TeamRoundProbabilities = Record<Stage, number>;
 
 export interface MatchupConflict {
@@ -156,6 +162,7 @@ export interface AnalysisRankingRow {
   seed: number;
   region: string;
   classification: TeamClassificationValue | null;
+  note: string | null;
   compositeScore: number;
   percentile: number;
   scoutingCoverage: number;
@@ -361,6 +368,7 @@ export interface AuctionSession {
   projections: TeamProjection[];
   projectionOverrides: Record<string, ProjectionOverride>;
   teamClassifications: Record<string, TeamClassificationTag>;
+  teamNotes: Record<string, TeamNoteTag>;
   projectionProvider: string;
   activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
@@ -642,6 +650,14 @@ export const teamClassificationValueSchema = z.enum([
 
 export const saveTeamClassificationSchema = z.object({
   classification: teamClassificationValueSchema
+});
+
+export const saveTeamNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, "Team note is required.")
+    .max(80, "Team note must be 80 characters or fewer.")
 });
 
 export const teamQuadWinsSchema = z.object({
