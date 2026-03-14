@@ -45,6 +45,29 @@ async function createBaselineSession() {
   return { repository, session };
 }
 
+function buildFullFieldCsv() {
+  const regions = ["South", "West", "East", "Midwest"];
+  return [
+    ["id", "name", "shortName", "region", "seed", "rating", "offense", "defense", "tempo"].join(","),
+    ...regions.flatMap((region) =>
+      Array.from({ length: 16 }, (_, index) => {
+        const seed = index + 1;
+        return [
+          `${region.toLowerCase()}-${seed}`,
+          `${region} Team ${seed}`,
+          `${region.slice(0, 2).toUpperCase()}${seed}`,
+          region,
+          String(seed),
+          String(100 - seed * 0.5),
+          String(120 - seed * 0.25),
+          String(92 + seed * 0.2),
+          String(67 + (seed % 4))
+        ].join(",");
+      })
+    )
+  ].join("\n");
+}
+
 describe("repository funding model", () => {
   beforeEach(async () => {
     storeFile = path.join(
@@ -373,5 +396,85 @@ describe("repository team notes", () => {
 
     expect(importedSession?.teamNotes.alabama?.note).toBe("Strong inside-out balance");
     expect(importedSession?.teamNotes.ghost).toBeUndefined();
+  });
+});
+
+describe("repository bracket state", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-bracket-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("defaults missing bracket state and persists winner updates for a full field session", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+    const source = await repository.createDataSource({
+      name: "Full Field",
+      kind: "csv",
+      csvContent: buildFullFieldCsv(),
+      fileName: "full-field.csv"
+    });
+
+    const session = await repository.createSession({
+      name: "Bracket Test",
+      sharedAccessCode: "bracket123",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {
+        targetTeamCount: 8,
+        maxSingleTeamPct: 22
+      },
+      dataSourceKey: `data-source:${source.id}`,
+      simulationIterations: 1000
+    });
+
+    expect(session.bracketState.winnersByGameId).toEqual({});
+
+    const rawStore = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      sessions: Array<{ id: string; bracketState?: { winnersByGameId?: Record<string, string | null> } }>;
+    };
+    const rawSession = rawStore.sessions.find((candidate) => candidate.id === session.id);
+    expect(rawSession).toBeDefined();
+    if (rawSession) {
+      delete rawSession.bracketState;
+    }
+    await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
+
+    let reloadedRepository = await loadRepository();
+    let reloadedSession = await reloadedRepository.getSession(session.id);
+    expect(reloadedSession?.bracketState.winnersByGameId).toEqual({});
+
+    await reloadedRepository.updateBracketGame(session.id, "south-round-of-64-1", "south-1");
+
+    reloadedRepository = await loadRepository();
+    reloadedSession = await reloadedRepository.getSession(session.id);
+    expect(reloadedSession?.bracketState.winnersByGameId["south-round-of-64-1"]).toBe("south-1");
   });
 });

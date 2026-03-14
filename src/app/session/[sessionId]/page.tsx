@@ -17,11 +17,18 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
 
   try {
     const dashboard = await repository.getDashboard(sessionId);
+    const initialView =
+      view === "analysis" ||
+      view === "portfolio" ||
+      view === "bracket" ||
+      view === "overrides"
+        ? view
+        : "auction";
     return (
       <DashboardShell
         sessionId={sessionId}
         initialDashboard={dashboard}
-        initialView={view === "analysis" ? "analysis" : "auction"}
+        initialView={initialView}
         viewerMode={currentMember.role === "viewer"}
         currentMember={currentMember}
       />

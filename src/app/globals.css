@@ -1202,6 +1202,172 @@ kbd {
   margin-top: 1rem;
 }
 
+.bracket-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.bracket-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.bracket-hero__copy {
+  max-width: 44rem;
+  color: var(--muted);
+}
+
+.bracket-legend {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.bracket-empty-state {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.4rem;
+}
+
+.bracket-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.82fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.bracket-layout__regions,
+.bracket-layout__finals {
+  display: grid;
+  gap: 1rem;
+}
+
+.bracket-region-card,
+.bracket-finals-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.bracket-region-card__rounds {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.bracket-round-column,
+.bracket-finals-card__games {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bracket-round-column__header {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.bracket-game-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel) 88%, transparent),
+    var(--panel-muted)
+  );
+  padding: 0.45rem;
+}
+
+.bracket-game-card__matchup {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.bracket-entrant {
+  --bracket-owner-accent: transparent;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.75rem 0.8rem;
+  border-radius: calc(var(--radius-md) - 0.1rem);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border-left: 0.35rem solid var(--bracket-owner-accent);
+  text-align: left;
+}
+
+.bracket-entrant--button {
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.bracket-entrant--button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--panel) 92%, var(--accent) 8%);
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.bracket-entrant--button:disabled {
+  cursor: wait;
+}
+
+.bracket-entrant--winner {
+  border-color: color-mix(in srgb, var(--success) 32%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 24%, transparent);
+}
+
+.bracket-entrant--owned {
+  background: color-mix(in srgb, var(--panel) 82%, var(--accent) 8%);
+}
+
+.bracket-entrant--empty {
+  justify-content: center;
+  color: var(--muted);
+  font-style: italic;
+  border-style: dashed;
+}
+
+.bracket-entrant__identity,
+.bracket-entrant__meta {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.bracket-entrant__identity strong {
+  font-size: 0.92rem;
+}
+
+.bracket-entrant__identity span,
+.bracket-owner-pill {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.bracket-owner-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.7rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--bracket-owner-accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--bracket-owner-accent) 14%, var(--panel));
+  color: var(--muted-strong);
+}
+
+.bracket-owner-pill--muted {
+  border-color: var(--line);
+  background: var(--panel-muted);
+  color: var(--muted);
+}
+
 .viewer-board {
   display: grid;
   gap: 1rem;
@@ -1998,6 +2164,7 @@ kbd {
   .marketing-hero,
   .auction-layout,
   .viewer-layout,
+  .bracket-layout,
   .decision-grid,
   .detail-grid,
   .admin-summary-grid,
@@ -2032,6 +2199,7 @@ kbd {
   .form-grid--three,
   .decision-strip,
   .metric-grid,
+  .bracket-region-card__rounds,
   .portfolio-card__metrics,
   .syndicate-row,
   .mini-grid,

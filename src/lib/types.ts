@@ -19,6 +19,13 @@ export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
+export type BracketRoundKey =
+  | "roundOf64"
+  | "roundOf32"
+  | "sweet16"
+  | "elite8"
+  | "finalFour"
+  | "championship";
 export type TeamClassificationValue =
   | "must-have"
   | "love-at-right-price"
@@ -257,6 +264,51 @@ export interface TeamMarketState {
   lastUpdatedAt: string;
 }
 
+export interface BracketState {
+  winnersByGameId: Record<string, string | null>;
+}
+
+export interface BracketGameTeam {
+  teamId: string;
+  name: string;
+  shortName: string;
+  seed: number;
+  region: string;
+  buyerSyndicateId: string | null;
+  buyerSyndicateName: string | null;
+  buyerColor: string | null;
+}
+
+export interface BracketGame {
+  id: string;
+  round: BracketRoundKey;
+  label: string;
+  region: string | null;
+  slot: number;
+  sourceGameIds: [string | null, string | null];
+  entrants: [BracketGameTeam | null, BracketGameTeam | null];
+  winnerTeamId: string | null;
+}
+
+export interface BracketRound {
+  key: BracketRoundKey;
+  label: string;
+  region: string | null;
+  games: BracketGame[];
+}
+
+export interface BracketRegion {
+  name: string;
+  rounds: BracketRound[];
+}
+
+export interface BracketViewModel {
+  isSupported: boolean;
+  unsupportedReason: string | null;
+  regions: BracketRegion[];
+  finals: BracketRound[];
+}
+
 export interface PurchaseRecord {
   id: string;
   sessionId: string;
@@ -373,6 +425,7 @@ export interface AuctionSession {
   activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
   liveState: TeamMarketState;
+  bracketState: BracketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
 }
@@ -426,6 +479,7 @@ export interface AuctionDashboard {
   soldTeams: SoldTeamSummary[];
   ledger: Syndicate[];
   analysis: SessionAnalysisSnapshot;
+  bracket: BracketViewModel;
   recommendation: BidRecommendation | null;
   lastPurchase: PurchaseRecord | null;
   projectionOverrideCount: number;
@@ -626,6 +680,10 @@ export const rebuildSimulationSchema = z.object({
 export const updateLiveStateSchema = z.object({
   nominatedTeamId: z.string().nullable().optional(),
   currentBid: z.number().nonnegative().optional()
+});
+
+export const updateBracketGameSchema = z.object({
+  winnerTeamId: z.string().nullable()
 });
 
 export const createPurchaseSchema = z.object({

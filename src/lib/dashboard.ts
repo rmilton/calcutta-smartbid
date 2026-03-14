@@ -1,3 +1,4 @@
+import { buildBracketView } from "@/lib/bracket";
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
@@ -51,6 +52,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     activeDataSource: session.activeDataSource,
     finalFourPairings: session.finalFourPairings,
     liveState: session.liveState,
+    bracketState: session.bracketState,
     purchases: session.purchases,
     simulationSnapshot: session.simulationSnapshot
   };
@@ -86,6 +88,7 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     soldTeams,
     ledger: publicSession.syndicates,
     analysis,
+    bracket: buildBracketView(publicSession),
     recommendation: buildBidRecommendation(publicSession, nominatedTeam, focusSyndicate, analysis),
     lastPurchase: publicSession.purchases[publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(publicSession.projectionOverrides).length,
