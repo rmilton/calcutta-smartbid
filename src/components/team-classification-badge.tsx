@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import { getTeamClassificationMeta } from "@/lib/team-classifications";
 import { TeamClassificationValue } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -29,7 +31,21 @@ export function TeamClassificationBadge({
       title={meta.label}
     >
       <span className="team-classification-badge__icon" aria-hidden="true">
-        {meta.iconLabel}
+        <Image
+          className="team-classification-badge__icon-image"
+          src={meta.iconSrc}
+          alt=""
+          width={16}
+          height={16}
+          unoptimized
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+            event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+          }}
+        />
+        <span className="team-classification-badge__icon-fallback" hidden>
+          {meta.iconLabel}
+        </span>
       </span>
       <span className="team-classification-badge__label">
         {compact ? meta.shortLabel : meta.label}

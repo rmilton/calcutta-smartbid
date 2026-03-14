@@ -5,6 +5,7 @@ export interface TeamClassificationMeta {
   label: string;
   shortLabel: string;
   iconLabel: string;
+  iconSrc: string;
   tone: "positive" | "accent" | "warn" | "danger";
 }
 
@@ -24,6 +25,7 @@ export const TEAM_CLASSIFICATION_META: Record<
     label: "Must-have",
     shortLabel: "Must-have",
     iconLabel: "MH",
+    iconSrc: "/images/team-classifications/must-have.svg",
     tone: "positive"
   },
   "love-at-right-price": {
@@ -31,6 +33,7 @@ export const TEAM_CLASSIFICATION_META: Record<
     label: "Love at right price",
     shortLabel: "Right price",
     iconLabel: "RP",
+    iconSrc: "/images/team-classifications/love-at-right-price.svg",
     tone: "accent"
   },
   caution: {
@@ -38,6 +41,7 @@ export const TEAM_CLASSIFICATION_META: Record<
     label: "Caution",
     shortLabel: "Caution",
     iconLabel: "CA",
+    iconSrc: "/images/team-classifications/caution.svg",
     tone: "warn"
   },
   "nuclear-disaster": {
@@ -45,6 +49,7 @@ export const TEAM_CLASSIFICATION_META: Record<
     label: "Nuclear disaster",
     shortLabel: "Disaster",
     iconLabel: "ND",
+    iconSrc: "/images/team-classifications/nuclear-disaster.svg",
     tone: "danger"
   }
 };

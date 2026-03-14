@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import {
   useCallback,
   startTransition,
@@ -1310,7 +1311,6 @@ export function DashboardShell({
                       <div className="section-headline">
                         <div>
                           <p className="eyebrow">Classification</p>
-                          <h3>Room signal for this team</h3>
                         </div>
                         {analysisTeamClassification ? (
                           <TeamClassificationBadge classification={analysisTeamClassification} />
@@ -1329,6 +1329,7 @@ export function DashboardShell({
                               type="button"
                               className={cn(
                                 "classification-option",
+                                meta && `classification-option--${meta.tone}`,
                                 isSelected && "classification-option--selected"
                               )}
                               onClick={() => void saveTeamClassification(classification)}
@@ -1336,7 +1337,25 @@ export function DashboardShell({
                               aria-pressed={isSelected}
                             >
                               <span className="classification-option__icon" aria-hidden="true">
-                                {meta?.iconLabel}
+                                {meta ? (
+                                  <>
+                                    <Image
+                                      className="classification-option__icon-image"
+                                      src={meta.iconSrc}
+                                      alt=""
+                                      width={20}
+                                      height={20}
+                                      unoptimized
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                        event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                                      }}
+                                    />
+                                    <span className="classification-option__icon-fallback" hidden>
+                                      {meta.iconLabel}
+                                    </span>
+                                  </>
+                                ) : null}
                               </span>
                               <span>{meta?.label ?? classification}</span>
                             </button>
