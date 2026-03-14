@@ -313,6 +313,65 @@ p {
   color: var(--danger);
 }
 
+.team-classification-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font: 600 0.75rem/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.team-classification-badge--compact {
+  min-height: 1.8rem;
+  padding: 0.28rem 0.5rem;
+}
+
+.team-classification-badge__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  min-height: 1.6rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.team-classification-badge--compact .team-classification-badge__label {
+  display: none;
+}
+
+.team-classification-badge--positive {
+  background: color-mix(in srgb, var(--success) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.team-classification-badge--accent {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent);
+}
+
+.team-classification-badge--warn {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+
+.team-classification-badge--danger {
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -761,6 +820,10 @@ kbd {
   align-items: flex-start;
 }
 
+.decision-panel__classification {
+  margin-top: 0.85rem;
+}
+
 .decision-panel h2,
 .callout-panel h3 {
   font-size: 2rem;
@@ -913,6 +976,66 @@ kbd {
 
 .analysis-summary-row {
   margin-bottom: 1rem;
+}
+
+.classification-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.classification-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-muted);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.classification-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.classification-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.classification-option--selected {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.classification-option__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--muted-strong);
+  font: 600 0.72rem/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.team-classification-empty {
+  color: var(--muted);
+  font: 600 0.78rem/1.2 var(--font-mono);
+  letter-spacing: 0.06em;
 }
 
 .portfolio-card-grid {
@@ -1080,6 +1203,11 @@ kbd {
   margin-top: 0.85rem;
   color: var(--muted-strong);
   line-height: 1.55;
+}
+
+.viewer-bid-hero__classification {
+  position: relative;
+  z-index: 1;
 }
 
 .viewer-bid-hero--team p {
@@ -1787,7 +1915,8 @@ kbd {
   .metric-grid,
   .portfolio-card__metrics,
   .syndicate-row,
-  .mini-grid {
+  .mini-grid,
+  .classification-picker {
     grid-template-columns: 1fr;
   }
 
