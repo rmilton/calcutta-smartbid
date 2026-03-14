@@ -1974,7 +1974,7 @@ export function DashboardShell({
   }
 
   return (
-    <main className="dashboard-page">
+    <main className={cn("dashboard-page", activeView === "bracket" && "dashboard-page--bracket")}>
       <SessionHeader
         sessionName={dashboard.session.name}
         currentMember={currentMember}

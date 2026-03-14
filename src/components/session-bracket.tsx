@@ -1,7 +1,13 @@
 "use client";
 
 import { CSSProperties } from "react";
-import { BracketGame, BracketGameTeam, BracketRound, BracketViewModel } from "@/lib/types";
+import {
+  BracketGame,
+  BracketGameTeam,
+  BracketRegion,
+  BracketRound,
+  BracketViewModel
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface SessionBracketProps {
@@ -48,90 +54,152 @@ export function SessionBracket({
           <p>{bracket.unsupportedReason ?? "This session does not have a bracket-ready field yet."}</p>
         </article>
       ) : (
-        <div className="bracket-layout">
-          <div className="bracket-layout__regions">
-            {bracket.regions.slice(0, 2).map((region) => (
-              <BracketRegionCard
-                key={region.name}
-                regionName={region.name}
-                rounds={region.rounds}
-                canEdit={canEdit}
-                isSaving={isSaving}
-                onSelectWinner={onSelectWinner}
-              />
-            ))}
-          </div>
-
-          <div className="bracket-layout__finals">
-            {bracket.finals.map((round) => (
-              <article key={round.key} className="surface-card bracket-finals-card">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">{round.key === "finalFour" ? "Semifinals" : "Final"}</p>
-                    <h3>{round.label}</h3>
-                  </div>
-                </div>
-                <div className="bracket-finals-card__games">
-                  {round.games.map((game) => (
-                    <BracketGameCard
-                      key={game.id}
-                      game={game}
-                      canEdit={canEdit}
-                      isSaving={isSaving}
-                      onSelectWinner={onSelectWinner}
-                    />
-                  ))}
-                </div>
-              </article>
-            ))}
-            {notice ? <p className="notice-text">{notice}</p> : null}
-            {error ? <p className="error-text">{error}</p> : null}
-          </div>
-
-          <div className="bracket-layout__regions">
-            {bracket.regions.slice(2).map((region) => (
-              <BracketRegionCard
-                key={region.name}
-                regionName={region.name}
-                rounds={region.rounds}
-                canEdit={canEdit}
-                isSaving={isSaving}
-                onSelectWinner={onSelectWinner}
-              />
-            ))}
-          </div>
+        <div className="bracket-board-scroll">
+          <BracketBoard
+            bracket={bracket}
+            canEdit={canEdit}
+            isSaving={isSaving}
+            notice={notice}
+            error={error}
+            onSelectWinner={onSelectWinner}
+          />
         </div>
       )}
     </section>
   );
 }
 
-interface BracketRegionCardProps {
-  regionName: string;
-  rounds: BracketRound[];
+interface BracketBoardProps {
+  bracket: BracketViewModel;
   canEdit: boolean;
   isSaving: boolean;
+  notice: string | null;
+  error: string | null;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
 }
 
-function BracketRegionCard({
-  regionName,
-  rounds,
+function BracketBoard({
+  bracket,
   canEdit,
   isSaving,
+  notice,
+  error,
   onSelectWinner
-}: BracketRegionCardProps) {
+}: BracketBoardProps) {
+  const regions = organizeBoardRegions(bracket.regions);
+  const semifinals = organizeSemifinals(bracket.finals);
+  const championshipRound = bracket.finals.find((round) => round.key === "championship") ?? null;
+  const championshipGame = championshipRound?.games[0] ?? null;
+  const champion =
+    championshipGame?.entrants.find((entrant) => entrant?.teamId === championshipGame.winnerTeamId) ??
+    null;
+
   return (
-    <article className="surface-card bracket-region-card">
-      <div className="section-headline">
-        <div>
-          <p className="eyebrow">Region</p>
-          <h3>{regionName}</h3>
+    <article className="surface-card bracket-board">
+      <div className="bracket-board__half bracket-board__half--top">
+        <BracketBoardRegion
+          region={regions.south}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          onSelectWinner={onSelectWinner}
+        />
+        <BracketBoardRegion
+          region={regions.east}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          onSelectWinner={onSelectWinner}
+          mirror
+        />
+      </div>
+
+      <div className="bracket-board__championship-band">
+        <div className="bracket-board__band-grid">
+          <BracketBoardSemifinal
+            title="South / East"
+            game={semifinals.top}
+            canEdit={canEdit}
+            isSaving={isSaving}
+            onSelectWinner={onSelectWinner}
+          />
+          <div className="bracket-board__championship-core">
+            <span className="bracket-board__band-label">Final weekend</span>
+            <span className="eyebrow">Championship</span>
+            {championshipGame ? (
+              <BracketGameCard
+                game={championshipGame}
+                canEdit={canEdit}
+                isSaving={isSaving}
+                onSelectWinner={onSelectWinner}
+                className="bracket-game-card--championship"
+              />
+            ) : null}
+            <div className="bracket-board__champion-summary">
+              <span className="eyebrow">Champion</span>
+              <strong>{champion ? `${champion.seed}. ${champion.shortName}` : "TBD"}</strong>
+            </div>
+          </div>
+          <BracketBoardSemifinal
+            title="West / Midwest"
+            game={semifinals.bottom}
+            canEdit={canEdit}
+            isSaving={isSaving}
+            onSelectWinner={onSelectWinner}
+          />
         </div>
       </div>
-      <div className="bracket-region-card__rounds">
-        {rounds.map((round) => (
-          <section key={`${regionName}-${round.key}`} className="bracket-round-column">
+
+      <div className="bracket-board__half bracket-board__half--bottom">
+        <BracketBoardRegion
+          region={regions.west}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          onSelectWinner={onSelectWinner}
+        />
+        <BracketBoardRegion
+          region={regions.midwest}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          onSelectWinner={onSelectWinner}
+          mirror
+        />
+      </div>
+
+      {notice ? <p className="notice-text">{notice}</p> : null}
+      {error ? <p className="error-text">{error}</p> : null}
+    </article>
+  );
+}
+
+interface BracketBoardRegionProps {
+  region: BracketRegion | null;
+  canEdit: boolean;
+  isSaving: boolean;
+  onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
+  mirror?: boolean;
+}
+
+function BracketBoardRegion({
+  region,
+  canEdit,
+  isSaving,
+  onSelectWinner,
+  mirror = false
+}: BracketBoardRegionProps) {
+  if (!region) {
+    return null;
+  }
+
+  const displayRounds = region.rounds;
+
+  return (
+    <section className={cn("bracket-board__region", mirror && "bracket-board__region--mirrored")}>
+      <header className="bracket-board__region-header">
+        <p className="eyebrow">Region</p>
+        <h3>{region.name}</h3>
+      </header>
+      <div className="bracket-board__rounds">
+        {displayRounds.map((round) => (
+          <section key={`${region.name}-${round.key}`} className="bracket-round-column">
             <header className="bracket-round-column__header">
               <strong>{round.label}</strong>
             </header>
@@ -149,8 +217,89 @@ function BracketRegionCard({
           </section>
         ))}
       </div>
-    </article>
+    </section>
   );
+}
+
+interface BracketBoardSemifinalProps {
+  title: string;
+  game: BracketGame | null;
+  canEdit: boolean;
+  isSaving: boolean;
+  onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
+}
+
+function BracketBoardSemifinal({
+  title,
+  game,
+  canEdit,
+  isSaving,
+  onSelectWinner
+}: BracketBoardSemifinalProps) {
+  return (
+    <section className="bracket-board__semifinal bracket-board__band-side">
+      <header className="bracket-board__semifinal-header">
+        <p className="eyebrow">{title}</p>
+      </header>
+      {game ? (
+        <BracketGameCard
+          game={game}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          onSelectWinner={onSelectWinner}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function organizeBoardRegions(regions: BracketRegion[]) {
+  const regionLookup = new Map(regions.map((region) => [normalizeRegionName(region.name), region]));
+
+  return {
+    south: regionLookup.get("south") ?? null,
+    east: regionLookup.get("east") ?? null,
+    west: regionLookup.get("west") ?? null,
+    midwest: regionLookup.get("midwest") ?? null
+  };
+}
+
+function organizeSemifinals(rounds: BracketRound[]) {
+  const semifinalRound = rounds.find((round) => round.key === "finalFour") ?? null;
+  const semifinalGames = semifinalRound?.games ?? [];
+
+  return {
+    top:
+      semifinalGames.find((game) => gameFeedsRegions(game, ["south", "east"])) ??
+      semifinalGames[0] ??
+      null,
+    bottom:
+      semifinalGames.find((game) => gameFeedsRegions(game, ["west", "midwest"])) ??
+      semifinalGames[1] ??
+      null
+  };
+}
+
+function gameFeedsRegions(game: BracketGame, expectedRegions: string[]) {
+  const regions = game.sourceGameIds
+    .map((sourceGameId) => extractRegionFromSourceGameId(sourceGameId))
+    .filter((region): region is string => Boolean(region))
+    .sort();
+
+  return regions.join("|") === [...expectedRegions].sort().join("|");
+}
+
+function extractRegionFromSourceGameId(sourceGameId: string | null) {
+  if (!sourceGameId) {
+    return null;
+  }
+
+  const match = sourceGameId.match(/^(.*)-elite-8-\d+$/u);
+  return match ? match[1] : null;
+}
+
+function normalizeRegionName(regionName: string) {
+  return regionName.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "-");
 }
 
 interface BracketGameCardProps {
@@ -158,16 +307,18 @@ interface BracketGameCardProps {
   canEdit: boolean;
   isSaving: boolean;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
+  className?: string;
 }
 
 function BracketGameCard({
   game,
   canEdit,
   isSaving,
-  onSelectWinner
+  onSelectWinner,
+  className
 }: BracketGameCardProps) {
   return (
-    <article className="bracket-game-card">
+    <article className={cn("bracket-game-card", className)}>
       <div className="bracket-game-card__matchup">
         {game.entrants.map((entrant, index) => (
           <BracketEntrantRow
