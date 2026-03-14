@@ -46,6 +46,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     projections: session.projections,
     projectionOverrides: session.projectionOverrides,
     teamClassifications: session.teamClassifications,
+    teamNotes: session.teamNotes,
     projectionProvider: session.projectionProvider,
     activeDataSource: session.activeDataSource,
     finalFourPairings: session.finalFourPairings,

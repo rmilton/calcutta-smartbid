@@ -191,6 +191,14 @@ create table if not exists public.team_classifications (
   primary key (session_id, team_id)
 );
 
+create table if not exists public.team_notes (
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  team_id text not null,
+  note text not null check (char_length(note) <= 80),
+  updated_at timestamptz not null default now(),
+  primary key (session_id, team_id)
+);
+
 create table if not exists public.simulation_snapshots (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,

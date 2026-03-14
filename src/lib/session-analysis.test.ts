@@ -87,6 +87,13 @@ function buildSession(): AuctionSession {
         updatedAt: new Date().toISOString()
       }
     },
+    teamNotes: {
+      alabama: {
+        teamId: "alabama",
+        note: "Strong guard play",
+        updatedAt: new Date().toISOString()
+      }
+    },
     projectionProvider: "mock",
     activeDataSource: {
       key: "builtin:mock",
@@ -115,20 +122,27 @@ describe("session analysis classifications", () => {
     const dashboard = buildDashboard(session, "local");
 
     expect(rankingRow?.classification).toBe("must-have");
+    expect(rankingRow?.note).toBe("Strong guard play");
     expect(budgetRow?.classification).toBe("must-have");
     expect(dashboard.session.teamClassifications.alabama?.classification).toBe("must-have");
+    expect(dashboard.session.teamNotes.alabama?.note).toBe("Strong guard play");
     expect(
       dashboard.analysis.ranking.find((row) => row.teamId === "alabama")?.classification
     ).toBe("must-have");
+    expect(dashboard.analysis.ranking.find((row) => row.teamId === "alabama")?.note).toBe(
+      "Strong guard play"
+    );
   });
 
   it("keeps unclassified teams null in analysis output", () => {
     const session = buildSession();
     const focus = session.syndicates[0];
     delete session.teamClassifications.alabama;
+    delete session.teamNotes.alabama;
     const analysis = buildSessionAnalysisSnapshot(session, focus);
 
     expect(analysis.ranking.find((row) => row.teamId === "alabama")?.classification).toBeNull();
+    expect(analysis.ranking.find((row) => row.teamId === "alabama")?.note).toBeNull();
     expect(analysis.budgetRows.find((row) => row.teamId === "alabama")?.classification).toBeNull();
   });
 });

@@ -16,11 +16,13 @@ export function buildSessionAnalysisSnapshot(
   const intelligence = buildTeamIntelligence(session.projections, session.liveState.nominatedTeamId);
   const soldTeamIds = new Set(session.purchases.map((purchase) => purchase.teamId));
   const classificationLookup = session.teamClassifications;
+  const noteLookup = session.teamNotes;
   const ranking = intelligence.ranking.map(
     (row) =>
       ({
         ...row,
-        classification: classificationLookup[row.teamId]?.classification ?? null
+        classification: classificationLookup[row.teamId]?.classification ?? null,
+        note: noteLookup[row.teamId]?.note ?? null
       }) satisfies AnalysisRankingRow
   );
   const availableRows = ranking.filter((row) => !soldTeamIds.has(row.teamId));
