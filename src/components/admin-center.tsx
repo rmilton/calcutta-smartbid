@@ -11,7 +11,6 @@ type StatusFilter = "all" | "active" | "inactive";
 
 interface AdminCenterProps {
   initialData: AdminCenterData;
-  storageBackend: string;
   platformAdminEmail: string;
 }
 
@@ -123,7 +122,6 @@ function sourceToDraft(source: DataSource): SourceDraft {
 
 export function AdminCenter({
   initialData,
-  storageBackend,
   platformAdminEmail
 }: AdminCenterProps) {
   const [data, setData] = useState(initialData);
@@ -502,10 +500,6 @@ export function AdminCenter({
           </div>
           <div className="admin-topbar__meta">
             <span className="status-pill">{platformAdminEmail}</span>
-            <span className="status-pill">Backend {storageBackend}</span>
-            <span className="status-pill">
-              {data.sessions.length} session{data.sessions.length === 1 ? "" : "s"}
-            </span>
             <Link href="/admin/sessions/new" className="button button--small">
               New session
             </Link>
