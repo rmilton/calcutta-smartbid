@@ -25,3 +25,19 @@ export async function POST(request: Request, { params }: RouteProps) {
     return jsonError(error instanceof Error ? error.message : "Unable to record purchase.");
   }
 }
+
+export async function DELETE(request: Request, { params }: RouteProps) {
+  try {
+    const { sessionId } = await params;
+    const authError = await buildAuthErrorResponse(sessionId, "admin");
+    if (authError) {
+      return authError;
+    }
+
+    const purchaseId = new URL(request.url).searchParams.get("purchaseId") ?? undefined;
+    const dashboard = await getSessionRepository().undoPurchase(sessionId, purchaseId);
+    return jsonOk(dashboard);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Unable to undo purchase.");
+  }
+}

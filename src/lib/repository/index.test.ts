@@ -416,6 +416,93 @@ describe("repository funding model", () => {
   });
 });
 
+describe("repository purchases", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-purchases-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("undoes the most recent purchase and restores that team to the live board", async () => {
+    const { repository, session } = await createBaselineSession();
+    const [team] = session.projections;
+    const buyer = session.syndicates.find((candidate) => candidate.name === "Riverboat");
+
+    expect(team).toBeDefined();
+    expect(buyer).toBeDefined();
+
+    if (!team || !buyer) {
+      throw new Error("Expected baseline session data.");
+    }
+
+    const purchasedDashboard = await repository.recordPurchase(session.id, {
+      teamId: team.id,
+      buyerSyndicateId: buyer.id,
+      price: 4200
+    });
+
+    expect(purchasedDashboard.lastPurchase?.teamId).toBe(team.id);
+    expect(purchasedDashboard.session.liveState.nominatedTeamId).toBeNull();
+    expect(purchasedDashboard.session.liveState.soldTeamIds).toContain(team.id);
+
+    const undoneDashboard = await repository.undoPurchase(
+      session.id,
+      purchasedDashboard.lastPurchase?.id
+    );
+
+    expect(undoneDashboard.lastPurchase).toBeNull();
+    expect(undoneDashboard.session.purchases).toHaveLength(0);
+    expect(undoneDashboard.session.liveState.nominatedTeamId).toBe(team.id);
+    expect(undoneDashboard.session.liveState.currentBid).toBe(4200);
+    expect(undoneDashboard.session.liveState.soldTeamIds).not.toContain(team.id);
+    expect(
+      undoneDashboard.ledger.find((candidate) => candidate.id === buyer.id)?.ownedTeamIds
+    ).toEqual([]);
+  });
+
+  it("rejects undoing an older purchase once a newer one exists", async () => {
+    const { repository, session } = await createBaselineSession();
+    const [firstTeam, secondTeam] = session.projections;
+    const buyer = session.syndicates.find((candidate) => candidate.name === "Riverboat");
+
+    expect(firstTeam).toBeDefined();
+    expect(secondTeam).toBeDefined();
+    expect(buyer).toBeDefined();
+
+    if (!firstTeam || !secondTeam || !buyer) {
+      throw new Error("Expected baseline session data.");
+    }
+
+    const firstDashboard = await repository.recordPurchase(session.id, {
+      teamId: firstTeam.id,
+      buyerSyndicateId: buyer.id,
+      price: 4100
+    });
+    await repository.recordPurchase(session.id, {
+      teamId: secondTeam.id,
+      buyerSyndicateId: buyer.id,
+      price: 4300
+    });
+
+    await expect(repository.undoPurchase(session.id, firstDashboard.lastPurchase?.id)).rejects.toThrow(
+      "Only the most recent purchase can be undone."
+    );
+  });
+});
+
 describe("repository team classifications", () => {
   beforeEach(async () => {
     storeFile = path.join(

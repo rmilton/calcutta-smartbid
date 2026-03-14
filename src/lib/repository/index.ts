@@ -232,6 +232,7 @@ export interface SessionRepository {
     sessionId: string,
     input: { teamId?: string; buyerSyndicateId: string; price: number }
   ): Promise<AuctionDashboard>;
+  undoPurchase(sessionId: string, purchaseId?: string): Promise<AuctionDashboard>;
   saveProjectionOverride(
     sessionId: string,
     teamId: string,
@@ -758,6 +759,14 @@ class LocalSessionRepository implements SessionRepository {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     applyPurchaseMutation(session, input);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    undoPurchaseMutation(session, purchaseId);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
   }
@@ -1765,6 +1774,29 @@ class SupabaseSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const session = await this.requireSession(sessionId);
+    const purchase = undoPurchaseMutation(session, purchaseId);
+    const client = requireSupabaseClient();
+
+    const result = await client.rpc("undo_purchase_transaction", {
+      p_session_id: sessionId,
+      p_purchase_id: purchase.id,
+      p_live_state: session.liveState,
+      p_updated_at: session.updatedAt,
+      p_syndicates: session.syndicates.map((syndicate) => ({
+        id: syndicate.id,
+        spend: syndicate.spend,
+        remaining_bankroll: syndicate.remainingBankroll,
+        owned_team_ids: syndicate.ownedTeamIds,
+        portfolio_expected_value: syndicate.portfolioExpectedValue
+      }))
+    });
+
+    throwOnSupabaseError(result.error);
+    return buildDashboard(session, this.backend);
+  }
+
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
     const session = await this.requireSession(sessionId);
     applyProjectionOverrideMutation(session, teamId, input);
@@ -2564,6 +2596,30 @@ function applyPurchaseMutation(
   };
   session.syndicates = recalculateSyndicateValues(session);
   session.updatedAt = createdAt;
+  return purchase;
+}
+
+function undoPurchaseMutation(session: StoredAuctionSession, purchaseId?: string) {
+  const purchase = session.purchases[session.purchases.length - 1];
+  if (!purchase) {
+    throw new Error("No purchase is available to undo.");
+  }
+
+  if (purchaseId && purchase.id !== purchaseId) {
+    throw new Error("Only the most recent purchase can be undone.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  session.purchases = session.purchases.filter((candidate) => candidate.id !== purchase.id);
+  session.liveState = {
+    ...session.liveState,
+    nominatedTeamId: purchase.teamId,
+    currentBid: purchase.price,
+    soldTeamIds: session.liveState.soldTeamIds.filter((teamId) => teamId !== purchase.teamId),
+    lastUpdatedAt: updatedAt
+  };
+  session.syndicates = recalculateSyndicateValues(session);
+  session.updatedAt = updatedAt;
   return purchase;
 }
 
@@ -3688,6 +3744,12 @@ function throwOnSupabaseError(
       );
     }
 
+    if (isMissingUndoPurchaseFunctionError(error)) {
+      throw new Error(
+        "Undo purchase requires the latest Supabase schema update. Apply the SQL changes in supabase/schema.sql, then try again."
+      );
+    }
+
     throw new Error(error.message ?? "Supabase request failed.");
   }
 }
@@ -3724,6 +3786,24 @@ function isMissingSharedCodePlaintextColumnError(error: {
     rawText.includes("shared_code_plaintext") &&
     (rawText.includes("schema cache") ||
       rawText.includes("column") ||
+      rawText.includes("does not exist"))
+  );
+}
+
+function isMissingUndoPurchaseFunctionError(error: {
+  message?: string;
+  code?: string;
+  details?: string | null;
+}) {
+  const rawText = [error.message, error.details, error.code]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    rawText.includes("undo_purchase_transaction") &&
+    (rawText.includes("schema cache") ||
+      rawText.includes("function") ||
       rawText.includes("does not exist"))
   );
 }
