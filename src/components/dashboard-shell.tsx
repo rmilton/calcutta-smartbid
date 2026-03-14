@@ -114,6 +114,7 @@ export function DashboardShell({
   );
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [isSavingLiveState, setIsSavingLiveState] = useState(false);
+  const [isUndoingPurchase, setIsUndoingPurchase] = useState(false);
   const [isSavingClassification, setIsSavingClassification] = useState(false);
   const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
   const [isSavingBracket, setIsSavingBracket] = useState(false);
@@ -132,12 +133,13 @@ export function DashboardShell({
   );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
-  const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const winnerButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
   const pendingCommittedBidRef = useRef<number | null>(null);
+  const parsedBidInputValue = parseBidInputValue(bidInputValue);
   const isLiveStateDirty =
-    bidInputValue.trim() === "" ? true : parseBidInputValue(bidInputValue) !== currentBid;
+    bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
 
   useEffect(() => {
     if (!availableViews.includes(activeView)) {
@@ -243,6 +245,12 @@ export function DashboardShell({
     () => [...dashboard.soldTeams].slice(-4).reverse(),
     [dashboard.soldTeams]
   );
+  const lastPurchaseTeam = dashboard.lastPurchase
+    ? teamLookup.get(dashboard.lastPurchase.teamId) ?? null
+    : null;
+  const lastPurchaseBuyer = dashboard.lastPurchase
+    ? syndicateLookup.get(dashboard.lastPurchase.buyerSyndicateId) ?? null
+    : null;
   const ownedTeamLookup = useMemo(
     () => new Map(dashboard.analysis.ownedTeams.map((team) => [team.teamId, team])),
     [dashboard.analysis.ownedTeams]
@@ -382,7 +390,7 @@ export function DashboardShell({
     setError(null);
     setNotice(null);
     setIsSavingLiveState(true);
-    const nextBid = parseBidInputValue(bidInputValue);
+    const nextBid = parsedBidInputValue;
     try {
       const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
         method: "PATCH",
@@ -413,7 +421,38 @@ export function DashboardShell({
     } finally {
       setIsSavingLiveState(false);
     }
-  }, [bidInputValue, broadcastRefresh, refresh, selectedTeamId, sessionId]);
+  }, [broadcastRefresh, parsedBidInputValue, refresh, selectedTeamId, sessionId]);
+
+  const handleBidBlur = useCallback(
+    (event: React.FocusEvent<HTMLInputElement>) => {
+      const nextFocusTarget = event.relatedTarget as HTMLElement | null;
+
+      if (
+        nextFocusTarget?.dataset.liveBidBlurIgnore === "true" ||
+        isSavingLiveState ||
+        !isLiveStateDirty
+      ) {
+        return;
+      }
+
+      void saveLiveState();
+    },
+    [isLiveStateDirty, isSavingLiveState, saveLiveState]
+  );
+
+  const handleBidKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+
+      event.preventDefault();
+      const delta = event.key === "ArrowUp" ? 100 : -100;
+      const nextBid = Math.max(0, parsedBidInputValue + delta);
+      setBidInputValue(formatBidInputValue(nextBid));
+    },
+    [parsedBidInputValue]
+  );
 
   const handleShortcut = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
@@ -450,7 +489,9 @@ export function DashboardShell({
 
     if (event.key.toLowerCase() === "w" && !isEditable) {
       event.preventDefault();
-      winnerSelectRef.current?.focus();
+      const focusTarget =
+        winnerButtonRefs.current[buyerId] ?? winnerButtonRefs.current[dashboard.ledger[0]?.id ?? ""];
+      focusTarget?.focus();
       return;
     }
 
@@ -462,7 +503,7 @@ export function DashboardShell({
       event.preventDefault();
       void saveLiveState();
     }
-  }, [activeView, saveLiveState]);
+  }, [activeView, buyerId, dashboard.ledger, saveLiveState]);
 
   useEffect(() => {
     if (viewerMode) {
@@ -476,8 +517,9 @@ export function DashboardShell({
   const recordPurchase = useCallback(async () => {
     setError(null);
     setNotice(null);
+    const nextBid = parsedBidInputValue;
 
-    if (currentBid <= 0) {
+    if (nextBid <= 0) {
       setError("Enter a bid greater than $0 before recording a purchase.");
       return;
     }
@@ -495,7 +537,7 @@ export function DashboardShell({
       body: JSON.stringify({
         teamId: selectedTeamId || undefined,
         buyerSyndicateId: buyerId,
-        price: currentBid
+        price: nextBid
       })
     });
 
@@ -505,12 +547,56 @@ export function DashboardShell({
       return;
     }
 
+    const nextDashboard = (await response.json()) as AuctionDashboard;
+    replaceDashboard(nextDashboard);
     setNotice("Purchase recorded.");
     void broadcastRefresh("purchase");
-    startTransition(() => {
-      void refresh();
-    });
-  }, [broadcastRefresh, buyerId, currentBid, refresh, selectedTeamId, sessionId]);
+  }, [broadcastRefresh, buyerId, parsedBidInputValue, replaceDashboard, selectedTeamId, sessionId]);
+
+  const undoPurchase = useCallback(async () => {
+    if (!dashboard.lastPurchase) {
+      setError("No purchase is available to undo.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsUndoingPurchase(true);
+
+    const purchaseToUndo = dashboard.lastPurchase;
+    const undoneTeamName = lastPurchaseTeam?.name ?? purchaseToUndo.teamId;
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/purchases?purchaseId=${encodeURIComponent(purchaseToUndo.id)}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to undo purchase.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setBuyerId(purchaseToUndo.buyerSyndicateId);
+      setNotice(`Undid purchase for ${undoneTeamName}.`);
+      void broadcastRefresh("purchase-undo");
+    } catch {
+      setError("Unable to undo purchase.");
+    } finally {
+      setIsUndoingPurchase(false);
+    }
+  }, [
+    broadcastRefresh,
+    dashboard.lastPurchase,
+    lastPurchaseTeam?.name,
+    replaceDashboard,
+    sessionId
+  ]);
 
   async function saveProjectionOverride() {
     if (!selectedTeamId) {
@@ -792,6 +878,121 @@ export function DashboardShell({
       case "auction":
         workspaceContent = (
           <section className="auction-layout">
+            <article className="surface-card control-panel auction-controls">
+              <div className="section-headline auction-controls__headline">
+                <div>
+                  <p className="eyebrow">Live Controls</p>
+                </div>
+                <div className="shortcut-legend">
+                  <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
+                  <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
+                  <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
+                  <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
+                </div>
+              </div>
+
+              <div className="auction-controls__bar">
+                <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
+                  <span>Active team</span>
+                  <TeamCombobox
+                    teams={dashboard.session.projections}
+                    soldLookup={soldLookup}
+                    value={selectedTeamId}
+                    inputRef={teamSelectRef}
+                    onChange={(nextTeamId) => {
+                      const nextBid = 0;
+                      setSelectedTeamId(nextTeamId);
+                      setCurrentBid(nextBid);
+                      setBidInputValue(formatBidInputValue(nextBid));
+                      void saveActiveTeam(nextTeamId);
+                    }}
+                  />
+                </label>
+
+                <label className="field-shell auction-controls__field auction-controls__field--bid">
+                  <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
+                  <div className="live-bid-field">
+                    <input
+                      ref={bidInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={bidInputValue}
+                      onChange={(event) =>
+                        setBidInputValue(formatBidInputText(event.target.value))
+                      }
+                      onBlur={handleBidBlur}
+                      onKeyDown={handleBidKeyDown}
+                      onFocus={(event) => event.target.select()}
+                      onClick={(event) => event.currentTarget.select()}
+                    />
+                  </div>
+                </label>
+
+                <div className="auction-controls__field auction-controls__field--winner">
+                  <span className="auction-controls__label">Winner</span>
+                  <div className="auction-controls__winner-list" role="group" aria-label="Winner">
+                    {dashboard.ledger.map((syndicate) => {
+                      const isSelected = buyerId === syndicate.id;
+                      return (
+                        <button
+                          key={syndicate.id}
+                          ref={(node) => {
+                            winnerButtonRefs.current[syndicate.id] = node;
+                          }}
+                          type="button"
+                          className={cn(
+                            "button button-secondary auction-controls__winner-button",
+                            isSelected && "auction-controls__winner-button--selected"
+                          )}
+                          aria-pressed={isSelected}
+                          onClick={() => setBuyerId(syndicate.id)}
+                        >
+                          {syndicate.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="auction-controls__footer">
+                <div className="auction-controls__history">
+                  {dashboard.lastPurchase ? (
+                    <p>
+                      Last sale: <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong>{" "}
+                      to <strong>{lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}</strong>{" "}
+                      for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
+                    </p>
+                  ) : (
+                    <p>No purchases recorded yet.</p>
+                  )}
+                <button
+                  type="button"
+                  className="button button-secondary button--small auction-controls__undo"
+                  data-live-bid-blur-ignore="true"
+                  disabled={!dashboard.lastPurchase || isUndoingPurchase}
+                  onClick={() => void undoPurchase()}
+                >
+                    {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="button button-accent auction-controls__purchase"
+                  data-live-bid-blur-ignore="true"
+                  disabled={parsedBidInputValue <= 0 || !selectedTeamId}
+                  onClick={() => void recordPurchase()}
+                >
+                  Record purchase
+                </button>
+              </div>
+
+              {notice ? <p className="notice-text">{notice}</p> : null}
+              {error ? <p className="error-text">{error}</p> : null}
+            </article>
+
             <div className="auction-layout__main">
               <section className="decision-grid">
                 <article className="surface-card decision-panel">
@@ -1135,112 +1336,6 @@ export function DashboardShell({
             </div>
 
             <aside className="auction-layout__side">
-              <article className="surface-card control-panel">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Live Controls</p>
-                  </div>
-                </div>
-                <div className="shortcut-legend">
-                  <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
-                  <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
-                  <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
-                  <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
-                </div>
-
-                <div className="field-stack">
-                  <label className="field-shell field-shell--accent">
-                    <span>Active team</span>
-                    <TeamCombobox
-                      teams={dashboard.session.projections}
-                      soldLookup={soldLookup}
-                      value={selectedTeamId}
-                      inputRef={teamSelectRef}
-                      onChange={(nextTeamId) => {
-                        const nextBid = 0;
-                        setSelectedTeamId(nextTeamId);
-                        setCurrentBid(nextBid);
-                        setBidInputValue(formatBidInputValue(nextBid));
-                        void saveActiveTeam(nextTeamId);
-                      }}
-                    />
-                  </label>
-
-                  <label className="field-shell">
-                    <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
-                    <div className="live-bid-field">
-                      <input
-                        ref={bidInputRef}
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="off"
-                        value={bidInputValue}
-                        onChange={(event) =>
-                          setBidInputValue(formatBidInputText(event.target.value))
-                        }
-                        onFocus={(event) => event.target.select()}
-                        onClick={(event) => event.currentTarget.select()}
-                      />
-                      <button
-                        type="button"
-                        className={
-                          isLiveStateDirty
-                            ? "live-bid-save live-bid-save--dirty"
-                            : "live-bid-save"
-                        }
-                        aria-label={
-                          isSavingLiveState
-                            ? "Saving current bid"
-                            : isLiveStateDirty
-                              ? "Save current bid to board"
-                              : "Current bid is synced"
-                        }
-                        title={
-                          isSavingLiveState
-                            ? "Saving current bid"
-                            : isLiveStateDirty
-                              ? "Save current bid to board"
-                              : "Current bid is synced"
-                        }
-                        disabled={isSavingLiveState || !isLiveStateDirty}
-                        onClick={() => void saveLiveState()}
-                      >
-                        {isSavingLiveState ? "…" : isLiveStateDirty ? "↵" : "✓"}
-                      </button>
-                    </div>
-                  </label>
-
-                  <label className="field-shell">
-                    <span>Winner</span>
-                    <select
-                      ref={winnerSelectRef}
-                      value={buyerId}
-                      onChange={(event) => setBuyerId(event.target.value)}
-                    >
-                      {dashboard.ledger.map((syndicate) => (
-                        <option key={syndicate.id} value={syndicate.id}>
-                          {syndicate.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="button button-accent"
-                    disabled={currentBid <= 0 || !selectedTeamId}
-                    onClick={() => void recordPurchase()}
-                  >
-                    Record purchase
-                  </button>
-                </div>
-
-                {notice ? <p className="notice-text">{notice}</p> : null}
-                {error ? <p className="error-text">{error}</p> : null}
-              </article>
-
               <article className="surface-card">
                 <div className="section-headline">
                   <div>
