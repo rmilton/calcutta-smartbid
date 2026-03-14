@@ -28,6 +28,12 @@ import {
   loadProjectionsFromSource,
   testDataSourceConnection
 } from "@/lib/providers/projections";
+import {
+  buildSessionImportReadiness,
+  mergeBracketAndAnalysisImports,
+  parseSessionAnalysisImport,
+  parseSessionBracketImport
+} from "@/lib/session-imports";
 import { getSyndicateBrandColor } from "@/lib/syndicate-colors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
@@ -45,9 +51,12 @@ import {
   PlatformUser,
   ProjectionOverride,
   PayoutRules,
+  SessionAnalysisImport,
   SessionAdminConfig,
   SessionDataSourceRef,
+  SessionImportReadiness,
   SessionRole,
+  SessionBracketImport,
   SessionSyndicateFundingInput,
   StoredAuctionSession,
   StorageBackend,
@@ -183,6 +192,14 @@ export interface SessionRepository {
       catalogSyndicateIds: string[];
       syndicateFunding: SessionSyndicateFundingInput[];
     }
+  ): Promise<SessionAdminConfig>;
+  importSessionBracket(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
+  ): Promise<SessionAdminConfig>;
+  importSessionAnalysis(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
   ): Promise<SessionAdminConfig>;
   setSessionDataSource(sessionId: string, sourceKey: string): Promise<SessionAdminConfig>;
   runSessionImport(sessionId: string, sourceKey?: string): Promise<SessionAdminConfig>;
@@ -569,6 +586,82 @@ class LocalSessionRepository implements SessionRepository {
     return buildSessionAdminConfig(session, store);
   }
 
+  async importSessionBracket(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    session.bracketImport = parseSessionBracketImport(
+      input.csvContent,
+      input.sourceName,
+      input.fileName
+    );
+
+    try {
+      applySessionManagedImports(session);
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          "success",
+          "Bracket import completed."
+        )
+      );
+      await this.writeStore(store);
+      return buildSessionAdminConfig(session, store);
+    } catch (error) {
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import bracket."
+        )
+      );
+      await this.writeStore(store);
+      throw error;
+    }
+  }
+
+  async importSessionAnalysis(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    session.analysisImport = parseSessionAnalysisImport(
+      input.csvContent,
+      input.sourceName,
+      input.fileName
+    );
+
+    try {
+      applySessionManagedImports(session);
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          "success",
+          "Analysis import completed."
+        )
+      );
+      await this.writeStore(store);
+      return buildSessionAdminConfig(session, store);
+    } catch (error) {
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import analysis."
+        )
+      );
+      await this.writeStore(store);
+      throw error;
+    }
+  }
+
   async setSessionDataSource(sessionId: string, sourceKey: string) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -953,6 +1046,16 @@ class SupabaseSessionRepository implements SessionRepository {
         ) as SessionDataSourceRef["kind"]
       },
       finalFourPairings: sessionResult.data.final_four_pairings as [string, string][],
+      bracketImport:
+        (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null,
+      analysisImport:
+        (sessionResult.data.analysis_import as SessionAnalysisImport | null) ?? null,
+      importReadiness: buildSessionImportReadiness({
+        bracketImport: (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null,
+        analysisImport: (sessionResult.data.analysis_import as SessionAnalysisImport | null) ?? null,
+        baseProjections,
+        simulationSnapshot: (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
+      }),
       liveState: sessionResult.data.live_state as AuctionSession["liveState"],
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
         (row) => ({
@@ -1375,6 +1478,80 @@ class SupabaseSessionRepository implements SessionRepository {
     return this.getSessionAdminConfig(sessionId);
   }
 
+  async importSessionBracket(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
+  ) {
+    const session = await this.requireSession(sessionId);
+    session.bracketImport = parseSessionBracketImport(
+      input.csvContent,
+      input.sourceName,
+      input.fileName
+    );
+
+    try {
+      applySessionManagedImports(session);
+      await this.persistProjectionImport(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          "success",
+          "Bracket import completed."
+        )
+      );
+      return this.getSessionAdminConfig(sessionId);
+    } catch (error) {
+      await this.persistSessionMeta(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import bracket."
+        )
+      );
+      throw error;
+    }
+  }
+
+  async importSessionAnalysis(
+    sessionId: string,
+    input: { csvContent: string; sourceName: string; fileName?: string | null }
+  ) {
+    const session = await this.requireSession(sessionId);
+    session.analysisImport = parseSessionAnalysisImport(
+      input.csvContent,
+      input.sourceName,
+      input.fileName
+    );
+
+    try {
+      applySessionManagedImports(session);
+      await this.persistProjectionImport(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          "success",
+          "Analysis import completed."
+        )
+      );
+      return this.getSessionAdminConfig(sessionId);
+    } catch (error) {
+      await this.persistSessionMeta(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import analysis."
+        )
+      );
+      throw error;
+    }
+  }
+
   async setSessionDataSource(sessionId: string, sourceKey: string) {
     const refs = await this.readReferenceData();
     const session = await this.requireSession(sessionId);
@@ -1647,6 +1824,8 @@ class SupabaseSessionRepository implements SessionRepository {
       active_data_source_name: session.activeDataSource.name,
       active_data_source_kind: session.activeDataSource.kind,
       final_four_pairings: session.finalFourPairings,
+      bracket_import: session.bracketImport,
+      analysis_import: session.analysisImport,
       live_state: session.liveState,
       created_at: session.createdAt,
       updated_at: session.updatedAt
@@ -1839,6 +2018,14 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     projectionProvider: projectionFeed.provider,
     activeDataSource: dataSource,
     finalFourPairings: getDefaultFinalFourPairings(),
+    bracketImport: null,
+    analysisImport: null,
+    importReadiness: buildSessionImportReadiness({
+      bracketImport: null,
+      analysisImport: null,
+      baseProjections: projectionFeed.teams,
+      simulationSnapshot: null
+    }),
     liveState: {
       nominatedTeamId: projectionFeed.teams[0]?.id ?? null,
       currentBid: 0,
@@ -1886,6 +2073,63 @@ async function applyProjectionImport(
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
+function applySessionManagedImports(session: StoredAuctionSession) {
+  if (session.purchases.length > 0) {
+    throw new Error("Cannot replace projections after purchases have been recorded.");
+  }
+
+  session.updatedAt = new Date().toISOString();
+
+  if (!session.bracketImport || !session.analysisImport) {
+    session.importReadiness = buildSessionImportReadiness({
+      bracketImport: session.bracketImport,
+      analysisImport: session.analysisImport,
+      baseProjections: session.baseProjections,
+      simulationSnapshot: session.simulationSnapshot
+    });
+    return;
+  }
+
+  const merge = mergeBracketAndAnalysisImports(session.bracketImport, session.analysisImport);
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: merge.projections,
+    simulationSnapshot: session.simulationSnapshot
+  });
+
+  if (merge.issues.length > 0) {
+    return;
+  }
+
+  session.baseProjections = sortProjections(merge.projections);
+  session.projectionProvider = `${session.bracketImport.sourceName} + ${session.analysisImport.sourceName}`;
+  session.activeDataSource = {
+    key: "session:managed-imports",
+    name: "Session-managed imports",
+    kind: "csv"
+  };
+  session.projectionOverrides = filterOverridesForProjectionSet(
+    session.projectionOverrides,
+    session.baseProjections
+  );
+  session.projections = applyProjectionOverrides(session.baseProjections, session.projectionOverrides);
+  session.liveState = {
+    ...session.liveState,
+    nominatedTeamId: session.projections[0]?.id ?? null,
+    currentBid: 0,
+    soldTeamIds: [],
+    lastUpdatedAt: session.updatedAt
+  };
+  recalculateSessionState(session, session.simulationSnapshot?.iterations);
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: session.baseProjections,
+    simulationSnapshot: session.simulationSnapshot
+  });
+}
+
 async function applyProjectionImportLegacy(session: StoredAuctionSession, provider: "mock" | "remote") {
   if (session.purchases.length > 0) {
     throw new Error("Cannot replace projections after purchases have been recorded.");
@@ -1928,6 +2172,12 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
   });
   session.syndicates = recalculateSyndicateValues(session);
   session.updatedAt = new Date().toISOString();
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: session.baseProjections,
+    simulationSnapshot: session.simulationSnapshot
+  });
 }
 
 function applyLiveStatePatch(
@@ -2503,9 +2753,68 @@ function normalizeStoreShape(store: SessionStore) {
   };
 }
 
+function normalizeBracketImport(
+  input: SessionBracketImport | null | undefined
+): SessionBracketImport | null {
+  if (!input) {
+    return null;
+  }
+
+  return {
+    sourceName: String(input.sourceName),
+    fileName: input.fileName ? String(input.fileName) : null,
+    importedAt: String(input.importedAt),
+    teamCount: Number(input.teamCount ?? input.teams.length),
+    teams: (input.teams ?? []).map((team) => ({
+      id: String(team.id),
+      name: String(team.name),
+      shortName: String(team.shortName),
+      region: String(team.region),
+      seed: Number(team.seed),
+      regionSlot: String(team.regionSlot ?? `${team.region}-${team.seed}`),
+      site: team.site ? String(team.site) : null,
+      subregion: team.subregion ? String(team.subregion) : null,
+      isPlayIn: Boolean(team.isPlayIn),
+      playInGroup: team.playInGroup ? String(team.playInGroup) : null,
+      playInSeed: typeof team.playInSeed === "number" ? Number(team.playInSeed) : null
+    }))
+  };
+}
+
+function normalizeAnalysisImport(
+  input: SessionAnalysisImport | null | undefined
+): SessionAnalysisImport | null {
+  if (!input) {
+    return null;
+  }
+
+  return {
+    sourceName: String(input.sourceName),
+    fileName: input.fileName ? String(input.fileName) : null,
+    importedAt: String(input.importedAt),
+    teamCount: Number(input.teamCount ?? input.teams.length),
+    teams: (input.teams ?? []).map((team) => ({
+      teamId: team.teamId ? String(team.teamId) : null,
+      name: String(team.name),
+      shortName: String(team.shortName),
+      rating: Number(team.rating),
+      offense: Number(team.offense),
+      defense: Number(team.defense),
+      tempo: Number(team.tempo),
+      scouting: team.scouting
+    }))
+  };
+}
+
 function normalizeSessionShape(
-  session: Omit<StoredAuctionSession, "mothershipFunding"> & {
+  session: Omit<
+    StoredAuctionSession,
+    "mothershipFunding" | "bracketImport" | "analysisImport" | "importReadiness"
+  > & {
     mothershipFunding?: Partial<MothershipFundingModel>;
+    bracketImport?: SessionBracketImport | null;
+    analysisImport?: SessionAnalysisImport | null;
+    importReadiness?: SessionImportReadiness;
   }
 ): StoredAuctionSession {
   const seedBudget = deriveLegacyBudgetSeed(
@@ -2532,6 +2841,8 @@ function normalizeSessionShape(
     session.projections && session.baseProjections
       ? sortProjections(session.projections)
       : applyProjectionOverrides(baseProjections, projectionOverrides);
+  const bracketImport = normalizeBracketImport(session.bracketImport);
+  const analysisImport = normalizeAnalysisImport(session.analysisImport);
   const normalizedSyndicates: Syndicate[] = (session.syndicates ?? []).map((syndicate) => {
     const estimate = normalizeSyndicateEstimate(syndicate, seedBudget);
     const estimateState = deriveSyndicateEstimateState(estimate.estimatedBudget, syndicate.spend ?? 0);
@@ -2604,7 +2915,15 @@ function normalizeSessionShape(
     baseProjections,
     projections,
     projectionOverrides,
-    activeDataSource: session.activeDataSource ?? builtinMockSource
+    activeDataSource: session.activeDataSource ?? builtinMockSource,
+    bracketImport,
+    analysisImport,
+    importReadiness: buildSessionImportReadiness({
+      bracketImport,
+      analysisImport,
+      baseProjections,
+      simulationSnapshot: session.simulationSnapshot ?? null
+    })
   };
 }
 

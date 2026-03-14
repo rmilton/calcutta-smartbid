@@ -19,6 +19,8 @@ export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
+export type SessionImportMode = "legacy" | "session-imports";
+export type SessionImportStatus = "ready" | "attention";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -83,6 +85,60 @@ export interface TeamProjection {
   tempo: number;
   source: string;
   scouting?: TeamScoutingProfile;
+}
+
+export interface BracketImportTeam {
+  id: string;
+  name: string;
+  shortName: string;
+  region: string;
+  seed: number;
+  regionSlot: string;
+  site: string | null;
+  subregion: string | null;
+  isPlayIn: boolean;
+  playInGroup: string | null;
+  playInSeed: number | null;
+}
+
+export interface SessionBracketImport {
+  sourceName: string;
+  fileName: string | null;
+  importedAt: string;
+  teamCount: number;
+  teams: BracketImportTeam[];
+}
+
+export interface AnalysisImportTeam {
+  teamId: string | null;
+  name: string;
+  shortName: string;
+  rating: number;
+  offense: number;
+  defense: number;
+  tempo: number;
+  scouting?: TeamScoutingProfile;
+}
+
+export interface SessionAnalysisImport {
+  sourceName: string;
+  fileName: string | null;
+  importedAt: string;
+  teamCount: number;
+  teams: AnalysisImportTeam[];
+}
+
+export interface SessionImportReadiness {
+  mode: SessionImportMode;
+  status: SessionImportStatus;
+  summary: string;
+  issues: string[];
+  warnings: string[];
+  hasBracket: boolean;
+  hasAnalysis: boolean;
+  mergedProjectionCount: number;
+  lastBracketImportAt: string | null;
+  lastAnalysisImportAt: string | null;
 }
 
 export interface TeamQuadWins {
@@ -350,6 +406,9 @@ export interface AuctionSession {
   projectionProvider: string;
   activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
+  bracketImport: SessionBracketImport | null;
+  analysisImport: SessionAnalysisImport | null;
+  importReadiness: SessionImportReadiness;
   liveState: TeamMarketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
@@ -408,6 +467,11 @@ export interface AuctionDashboard {
   lastPurchase: PurchaseRecord | null;
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
+}
+
+export interface SessionImportResult {
+  config: SessionAdminConfig;
+  readiness: SessionImportReadiness;
 }
 
 export interface AdminSessionSummary {
@@ -694,6 +758,18 @@ export const updateSessionSyndicatesSchema = z.object({
 
 export const updateSessionDataSourceSchema = z.object({
   sourceKey: z.string()
+});
+
+export const importSessionBracketSchema = z.object({
+  csvContent: z.string().min(1),
+  sourceName: z.string().min(2).max(120).default("Bracket CSV"),
+  fileName: z.string().nullable().optional()
+});
+
+export const importSessionAnalysisSchema = z.object({
+  csvContent: z.string().min(1),
+  sourceName: z.string().min(2).max(120).default("Analysis CSV"),
+  fileName: z.string().nullable().optional()
 });
 
 export const updateSessionPayoutRulesSchema = z.object({

@@ -53,6 +53,28 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
       );
     }
 
+    if (
+      error instanceof Error &&
+      error.message.includes("Session-managed imports still need attention before the room is ready")
+    ) {
+      return (
+        <main className="dashboard-page">
+          <section className="surface-card session-hero">
+            <div className="session-hero__copy">
+              <p className="eyebrow">Live room</p>
+              <h1>Imports still in progress</h1>
+              <p>{error.message}</p>
+            </div>
+            <div className="session-hero__meta">
+              <Link href="/" className="button button-secondary">
+                Back to login
+              </Link>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
     throw error;
   }
 }

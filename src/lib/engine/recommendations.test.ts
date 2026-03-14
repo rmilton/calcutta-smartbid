@@ -83,6 +83,20 @@ function buildSession(): AuctionSession {
       kind: "builtin"
     },
     finalFourPairings: getDefaultFinalFourPairings(),
+    bracketImport: null,
+    analysisImport: null,
+    importReadiness: {
+      mode: "legacy",
+      status: "ready",
+      summary: "Legacy projection source is loaded and simulations are ready.",
+      issues: [],
+      warnings: [],
+      hasBracket: false,
+      hasAnalysis: false,
+      mergedProjectionCount: projections.length,
+      lastBracketImportAt: null,
+      lastAnalysisImportAt: null
+    },
     liveState: {
       nominatedTeamId: "alabama",
       currentBid: 6200,

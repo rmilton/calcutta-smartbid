@@ -1,0 +1,662 @@
+import {
+  AnalysisImportTeam,
+  BracketImportTeam,
+  SessionAnalysisImport,
+  SessionBracketImport,
+  SessionImportReadiness,
+  SessionImportStatus,
+  SimulationSnapshot,
+  TeamProjection,
+  TeamScoutingProfile
+} from "@/lib/types";
+
+interface MergeBracketAnalysisResult {
+  projections: TeamProjection[];
+  issues: string[];
+  warnings: string[];
+}
+
+const teamNameAliases: Record<string, string[]> = {
+  "michigan st": ["michigan state"],
+  "michigan state": ["michigan st"],
+  "alabama st": ["alabama state"],
+  "alabama state": ["alabama st"],
+  "mississippi st": ["mississippi state"],
+  "mississippi state": ["mississippi st"],
+  "iowa st": ["iowa state"],
+  "iowa state": ["iowa st"],
+  "utah st": ["utah state"],
+  "utah state": ["utah st"],
+  "san diego st": ["san diego state"],
+  "san diego state": ["san diego st"],
+  "colorado st": ["colorado state"],
+  "colorado state": ["colorado st"],
+  "norfolk st": ["norfolk state"],
+  "norfolk state": ["norfolk st"],
+  "mcneese": ["mcneese st"],
+  "mcneese st": ["mcneese"],
+  "ole miss": ["mississippi"],
+  mississippi: ["ole miss"],
+  uconn: ["connecticut"],
+  connecticut: ["uconn"],
+  omaha: ["nebraska omaha"],
+  "nebraska omaha": ["omaha"]
+};
+
+const bracketHeaderAliases = {
+  id: ["id", "team id", "teamid"],
+  name: ["name", "team", "team name", "school"],
+  shortName: ["shortname", "short name", "abbr", "abbreviation"],
+  region: ["region"],
+  seed: ["seed"],
+  regionSlot: ["regionslot", "region slot", "slot", "bracket slot", "position", "location on bracket"],
+  site: ["site", "location", "host site"],
+  subregion: ["subregion", "sub-region", "pod"],
+  isPlayIn: ["isplayin", "is play in", "play in", "first four", "play-in"],
+  playInGroup: ["playingroup", "play in group", "first four group", "play-in group"],
+  playInSeed: ["playinseed", "play in seed", "play-in seed"]
+} as const;
+
+const analysisHeaderAliases = {
+  teamId: ["teamid", "team id", "id"],
+  name: ["name", "team", "team name", "school"],
+  shortName: ["shortname", "short name", "abbr", "abbreviation"],
+  rating: [
+    "rating",
+    "power rating",
+    "power rating chance of beating average d1 team",
+    "power rating - chance of beating average d1 team"
+  ],
+  offense: ["offense", "adjusted offense efficiency", "adjust offense efficiency"],
+  defense: ["defense", "adjusted defense efficiency", "adjust defense efficiency"],
+  tempo: ["tempo", "adjusted tempo"],
+  netRank: ["net rank", "netrank"],
+  kenpomRank: ["kenpom rank", "kenpomrank", "kenpom"],
+  rankedWins: ["ranked wins", "rankedwins"],
+  threePointPct: [
+    "offensive three point percentage",
+    "offensive 3 point percentage",
+    "offensive 3pt percentage",
+    "three point percentage",
+    "3pt percentage",
+    "3pt%",
+    "3 point percentage"
+  ],
+  q1Wins: ["quadrant 1 wins", "quad 1 wins", "q1 wins"],
+  q2Wins: ["quadrant 2 wins", "quad 2 wins", "q2 wins"],
+  q3Wins: ["quadrant 3 wins", "quad 3 wins", "q3 wins"],
+  q4Wins: ["quadrant 4 wins", "quad 4 wins", "q4 wins"]
+} as const;
+
+export function parseSessionBracketImport(
+  csvContent: string,
+  sourceName: string,
+  fileName?: string | null
+): SessionBracketImport {
+  const rows = parseCsvRows(csvContent);
+  if (rows.length < 2) {
+    throw new Error("Bracket CSV must include a header row and at least one team.");
+  }
+
+  const headerLookup = buildHeaderLookup(rows[0]);
+  const nameIndex = getRequiredIndex(headerLookup, bracketHeaderAliases.name, "name");
+  const regionIndex = getRequiredIndex(headerLookup, bracketHeaderAliases.region, "region");
+  const seedIndex = getRequiredIndex(headerLookup, bracketHeaderAliases.seed, "seed");
+  const idIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.id);
+  const shortNameIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.shortName);
+  const regionSlotIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.regionSlot);
+  const siteIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.site);
+  const subregionIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.subregion);
+  const isPlayInIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.isPlayIn);
+  const playInGroupIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.playInGroup);
+  const playInSeedIndex = getOptionalIndex(headerLookup, bracketHeaderAliases.playInSeed);
+
+  const usedIds = new Set<string>();
+  const teams = rows
+    .slice(1)
+    .filter((row) => row.some((value) => value.trim() !== ""))
+    .map((row) => {
+      const name = String(row[nameIndex] ?? "").trim();
+      const region = String(row[regionIndex] ?? "").trim();
+      const seed = Number(String(row[seedIndex] ?? "").trim());
+      if (!name) {
+        throw new Error("Bracket CSV contains a row without a team name.");
+      }
+      if (!region) {
+        throw new Error(`Bracket CSV is missing a region for ${name}.`);
+      }
+      if (!Number.isInteger(seed) || seed <= 0) {
+        throw new Error(`Bracket CSV has an invalid seed for ${name}.`);
+      }
+
+      const explicitId = stringOrNull(row[idIndex]);
+      const id = toUniqueId(explicitId || name, usedIds);
+      usedIds.add(id);
+      const shortName = stringOrNull(row[shortNameIndex]) ?? buildShortName(name);
+      const playInGroup = stringOrNull(row[playInGroupIndex]);
+      const playInSeed = numberOrNull(row[playInSeedIndex], true);
+      const isPlayIn = parseBooleanLike(row[isPlayInIndex]) || playInGroup !== null;
+
+      return {
+        id,
+        name,
+        shortName,
+        region,
+        seed,
+        regionSlot: stringOrNull(row[regionSlotIndex]) ?? `${region}-${seed}`,
+        site: stringOrNull(row[siteIndex]),
+        subregion: stringOrNull(row[subregionIndex]),
+        isPlayIn,
+        playInGroup,
+        playInSeed
+      } satisfies BracketImportTeam;
+    });
+
+  if (teams.length === 0) {
+    throw new Error("Bracket CSV did not contain any team rows.");
+  }
+
+  return {
+    sourceName,
+    fileName: fileName ?? null,
+    importedAt: new Date().toISOString(),
+    teamCount: teams.length,
+    teams
+  };
+}
+
+export function parseSessionAnalysisImport(
+  csvContent: string,
+  sourceName: string,
+  fileName?: string | null
+): SessionAnalysisImport {
+  const rows = parseCsvRows(csvContent);
+  if (rows.length < 2) {
+    throw new Error("Analysis CSV must include a header row and at least one team.");
+  }
+
+  const headerLookup = buildHeaderLookup(rows[0]);
+  const nameIndex = getRequiredIndex(headerLookup, analysisHeaderAliases.name, "name");
+  const ratingIndex = getRequiredIndex(headerLookup, analysisHeaderAliases.rating, "rating");
+  const offenseIndex = getRequiredIndex(headerLookup, analysisHeaderAliases.offense, "offense");
+  const defenseIndex = getRequiredIndex(headerLookup, analysisHeaderAliases.defense, "defense");
+  const tempoIndex = getRequiredIndex(headerLookup, analysisHeaderAliases.tempo, "tempo");
+  const teamIdIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.teamId);
+  const shortNameIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.shortName);
+  const netRankIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.netRank);
+  const kenpomRankIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.kenpomRank);
+  const rankedWinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.rankedWins);
+  const threePointPctIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.threePointPct);
+  const q1WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q1Wins);
+  const q2WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q2Wins);
+  const q3WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q3Wins);
+  const q4WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q4Wins);
+
+  const teams = rows
+    .slice(1)
+    .filter((row) => row.some((value) => value.trim() !== ""))
+    .map((row) => {
+      const name = String(row[nameIndex] ?? "").trim();
+      if (!name) {
+        throw new Error("Analysis CSV contains a row without a team name.");
+      }
+
+      const rating = requireNumber(row[ratingIndex], `rating for ${name}`);
+      const offense = requireNumber(row[offenseIndex], `offense for ${name}`);
+      const defense = requireNumber(row[defenseIndex], `defense for ${name}`);
+      const tempo = requireNumber(row[tempoIndex], `tempo for ${name}`);
+      const quadWins = buildQuadWins(
+        numberOrNull(row[q1WinsIndex], true),
+        numberOrNull(row[q2WinsIndex], true),
+        numberOrNull(row[q3WinsIndex], true),
+        numberOrNull(row[q4WinsIndex], true)
+      );
+      const scouting = buildScoutingProfile({
+        netRank: numberOrNull(row[netRankIndex], true),
+        kenpomRank: numberOrNull(row[kenpomRankIndex], true),
+        rankedWins: numberOrNull(row[rankedWinsIndex], true),
+        threePointPct: numberOrNull(row[threePointPctIndex], false),
+        quadWins
+      });
+
+      return {
+        teamId: stringOrNull(row[teamIdIndex]),
+        name,
+        shortName: stringOrNull(row[shortNameIndex]) ?? buildShortName(name),
+        rating,
+        offense,
+        defense,
+        tempo,
+        scouting
+      } satisfies AnalysisImportTeam;
+    });
+
+  if (teams.length === 0) {
+    throw new Error("Analysis CSV did not contain any team rows.");
+  }
+
+  return {
+    sourceName,
+    fileName: fileName ?? null,
+    importedAt: new Date().toISOString(),
+    teamCount: teams.length,
+    teams
+  };
+}
+
+export function mergeBracketAndAnalysisImports(
+  bracketImport: SessionBracketImport,
+  analysisImport: SessionAnalysisImport
+): MergeBracketAnalysisResult {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  const bracketTeams = bracketImport.teams;
+  const analysisTeams = analysisImport.teams;
+
+  const playInCount = bracketTeams.filter((team) => team.isPlayIn).length;
+  if (playInCount > 0) {
+    issues.push(
+      `${playInCount} play-in teams were imported. The live room still needs a resolved 64-team field before simulations can run.`
+    );
+  }
+
+  if (bracketTeams.length !== 64) {
+    issues.push(
+      `Bracket import contains ${bracketTeams.length} teams. The live room currently requires a resolved 64-team field.`
+    );
+  }
+
+  const structureIssues = validateBracketStructure(bracketTeams);
+  issues.push(...structureIssues);
+
+  const analysisById = buildAnalysisLookup(analysisTeams, (team) => (team.teamId ? [team.teamId] : []));
+  const analysisByName = buildAnalysisLookup(analysisTeams, (team) =>
+    buildTeamNameKeys(team.name, team.shortName)
+  );
+  const analysisByShortName = buildAnalysisLookup(analysisTeams, (team) =>
+    team.shortName ? [normalizeKey(team.shortName)] : []
+  );
+  const matchedAnalysis = new Set<number>();
+
+  const projections: Array<TeamProjection | null> = bracketTeams.map((team) => {
+    const match =
+      findFirstUniqueMatch([team.id], analysisById) ??
+      findFirstUniqueMatch(buildTeamNameKeys(team.name, team.shortName), analysisByName) ??
+      findFirstUniqueMatch(team.shortName ? [normalizeKey(team.shortName)] : [], analysisByShortName);
+
+    if (!match) {
+      if (!team.isPlayIn && !team.name.includes("/")) {
+        issues.push(`Analysis import is missing metrics for ${team.name}.`);
+      }
+      return null;
+    }
+
+    matchedAnalysis.add(match.index);
+    return {
+      id: team.id,
+      name: team.name,
+      shortName: team.shortName,
+      region: team.region,
+      seed: team.seed,
+      rating: match.team.rating,
+      offense: match.team.offense,
+      defense: match.team.defense,
+      tempo: match.team.tempo,
+      source: `${bracketImport.sourceName} + ${analysisImport.sourceName}`,
+      scouting: match.team.scouting
+    } satisfies TeamProjection;
+  });
+
+  const unmatchedAnalysisRows = analysisTeams.filter((_, index) => !matchedAnalysis.has(index));
+  if (unmatchedAnalysisRows.length > 0) {
+    warnings.push(
+      `${unmatchedAnalysisRows.length} analysis row${unmatchedAnalysisRows.length === 1 ? "" : "s"} did not match a bracket team.`
+    );
+  }
+
+  return {
+    projections: projections.filter((team): team is TeamProjection => team !== null),
+    issues: uniqueMessages(issues),
+    warnings: uniqueMessages(warnings)
+  };
+}
+
+export function buildSessionImportReadiness(args: {
+  bracketImport: SessionBracketImport | null;
+  analysisImport: SessionAnalysisImport | null;
+  baseProjections: TeamProjection[];
+  simulationSnapshot: SimulationSnapshot | null;
+}): SessionImportReadiness {
+  const { bracketImport, analysisImport, baseProjections, simulationSnapshot } = args;
+
+  if (!bracketImport && !analysisImport) {
+    const issues =
+      baseProjections.length === 0 ? ["No projections have been imported into this session yet."] : [];
+    const status: SessionImportStatus =
+      issues.length === 0 && simulationSnapshot ? "ready" : "attention";
+
+    return {
+      mode: "legacy",
+      status,
+      summary:
+        status === "ready"
+          ? "Legacy projection source is loaded and simulations are ready."
+          : "Legacy projection flow still needs a completed import and simulation snapshot.",
+      issues,
+      warnings: [],
+      hasBracket: false,
+      hasAnalysis: false,
+      mergedProjectionCount: baseProjections.length,
+      lastBracketImportAt: null,
+      lastAnalysisImportAt: null
+    };
+  }
+
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  let mergedProjectionCount = 0;
+
+  if (!bracketImport) {
+    issues.push("Bracket import is still missing.");
+  }
+  if (!analysisImport) {
+    issues.push("Analysis import is still missing.");
+  }
+
+  if (bracketImport && analysisImport) {
+    const merge = mergeBracketAndAnalysisImports(bracketImport, analysisImport);
+    mergedProjectionCount = merge.projections.length;
+    issues.push(...merge.issues);
+    warnings.push(...merge.warnings);
+    if (!simulationSnapshot && merge.issues.length === 0) {
+      issues.push("Simulations have not been rebuilt for the merged bracket and analysis field yet.");
+    }
+  }
+
+  const status: SessionImportStatus = issues.length === 0 ? "ready" : "attention";
+
+  return {
+    mode: "session-imports",
+    status,
+    summary:
+      status === "ready"
+        ? "Bracket and analysis imports are aligned and ready for the live room."
+        : "Session-managed imports still need attention before the room is ready.",
+    issues: uniqueMessages(issues),
+    warnings: uniqueMessages(warnings),
+    hasBracket: Boolean(bracketImport),
+    hasAnalysis: Boolean(analysisImport),
+    mergedProjectionCount,
+    lastBracketImportAt: bracketImport?.importedAt ?? null,
+    lastAnalysisImportAt: analysisImport?.importedAt ?? null
+  };
+}
+
+function validateBracketStructure(teams: BracketImportTeam[]) {
+  const issues: string[] = [];
+  const byRegion = new Map<string, BracketImportTeam[]>();
+
+  teams.forEach((team) => {
+    const group = byRegion.get(team.region) ?? [];
+    group.push(team);
+    byRegion.set(team.region, group);
+  });
+
+  if (byRegion.size !== 4) {
+    issues.push(`Bracket import contains ${byRegion.size} regions. Exactly four regions are required.`);
+  }
+
+  const regionSizes = new Set([...byRegion.values()].map((group) => group.length));
+  if (regionSizes.size > 1) {
+    issues.push("Each bracket region must contain the same number of teams.");
+  }
+
+  for (const [region, group] of byRegion.entries()) {
+    const seenSeeds = new Set<number>();
+    for (const team of group) {
+      if (seenSeeds.has(team.seed)) {
+        issues.push(`Bracket import contains duplicate ${team.seed}-seeds in ${region}.`);
+      }
+      seenSeeds.add(team.seed);
+    }
+  }
+
+  return issues;
+}
+
+function buildAnalysisLookup(
+  teams: AnalysisImportTeam[],
+  getKeys: (team: AnalysisImportTeam) => string[]
+) {
+  const lookup = new Map<string, Array<{ team: AnalysisImportTeam; index: number }>>();
+  teams.forEach((team, index) => {
+    for (const key of getKeys(team)) {
+      if (!key) {
+        continue;
+      }
+      const current = lookup.get(key) ?? [];
+      current.push({ team, index });
+      lookup.set(key, current);
+    }
+  });
+  return lookup;
+}
+
+function findFirstUniqueMatch(
+  keys: string[],
+  lookup: Map<string, Array<{ team: AnalysisImportTeam; index: number }>>
+) {
+  for (const key of keys) {
+    const matches = lookup.get(key) ?? [];
+    if (matches.length === 1) {
+      return matches[0];
+    }
+  }
+  return null;
+}
+
+function buildScoutingProfile(input: {
+  netRank: number | null;
+  kenpomRank: number | null;
+  rankedWins: number | null;
+  threePointPct: number | null;
+  quadWins: TeamScoutingProfile["quadWins"] | undefined;
+}) {
+  const scouting: TeamScoutingProfile = {
+    netRank: input.netRank ?? undefined,
+    kenpomRank: input.kenpomRank ?? undefined,
+    rankedWins: input.rankedWins ?? undefined,
+    threePointPct: input.threePointPct ?? undefined,
+    quadWins: input.quadWins
+  };
+  return Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined;
+}
+
+function buildQuadWins(
+  q1: number | null,
+  q2: number | null,
+  q3: number | null,
+  q4: number | null
+) {
+  if ([q1, q2, q3, q4].some((value) => value === null)) {
+    return undefined;
+  }
+  return {
+    q1: q1 as number,
+    q2: q2 as number,
+    q3: q3 as number,
+    q4: q4 as number
+  };
+}
+
+function parseCsvRows(content: string) {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+  const input = content.replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") {
+        index += 1;
+      }
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function buildHeaderLookup(headers: string[]) {
+  return headers.map((header) => normalizeHeader(header));
+}
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function getRequiredIndex(headers: string[], aliases: readonly string[], label: string) {
+  const index = getOptionalIndex(headers, aliases);
+  if (index < 0) {
+    throw new Error(`CSV import is missing the ${label} column.`);
+  }
+  return index;
+}
+
+function getOptionalIndex(headers: string[], aliases: readonly string[]) {
+  return headers.findIndex((header) => aliases.includes(header));
+}
+
+function stringOrNull(value: string | undefined) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : null;
+}
+
+function numberOrNull(value: string | undefined, integer: boolean) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized.endsWith("%") ? normalized.slice(0, -1).trim() : normalized);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return integer ? Math.round(parsed) : parsed;
+}
+
+function requireNumber(value: string | undefined, label: string) {
+  const parsed = Number(String(value ?? "").trim());
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Analysis CSV has an invalid ${label}.`);
+  }
+  return parsed;
+}
+
+function parseBooleanLike(value: string | undefined) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "y"].includes(normalized);
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function buildTeamNameKeys(name: string, shortName?: string | null) {
+  const keys = new Set<string>();
+  const normalizedName = normalizeKey(name);
+  if (normalizedName) {
+    keys.add(normalizedName);
+    for (const alias of expandTeamAliases(normalizedName)) {
+      keys.add(alias);
+    }
+  }
+
+  if (shortName) {
+    const normalizedShortName = normalizeKey(shortName);
+    if (normalizedShortName) {
+      keys.add(normalizedShortName);
+      for (const alias of expandTeamAliases(normalizedShortName)) {
+        keys.add(alias);
+      }
+    }
+  }
+
+  return [...keys];
+}
+
+function expandTeamAliases(key: string) {
+  return teamNameAliases[key] ?? [];
+}
+
+function toUniqueId(base: string, usedIds: Set<string>) {
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "team";
+  if (!usedIds.has(slug)) {
+    return slug;
+  }
+
+  let counter = 2;
+  while (usedIds.has(`${slug}-${counter}`)) {
+    counter += 1;
+  }
+  return `${slug}-${counter}`;
+}
+
+function buildShortName(teamName: string) {
+  const words = teamName
+    .replace(/[^A-Za-z0-9 ]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "TEAM";
+  }
+
+  if (words.length === 1) {
+    return words[0].slice(0, 4).toUpperCase();
+  }
+
+  return words
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 5)
+    .toUpperCase();
+}
+
+function uniqueMessages(messages: string[]) {
+  return [...new Set(messages)];
+}
