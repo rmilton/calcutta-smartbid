@@ -181,6 +181,16 @@ create table if not exists public.projection_overrides (
   primary key (session_id, team_id)
 );
 
+create table if not exists public.team_classifications (
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  team_id text not null,
+  classification text not null check (
+    classification in ('must-have', 'love-at-right-price', 'caution', 'nuclear-disaster')
+  ),
+  updated_at timestamptz not null default now(),
+  primary key (session_id, team_id)
+);
+
 create table if not exists public.simulation_snapshots (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,

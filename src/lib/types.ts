@@ -19,6 +19,11 @@ export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
+export type TeamClassificationValue =
+  | "must-have"
+  | "love-at-right-price"
+  | "caution"
+  | "nuclear-disaster";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -130,6 +135,12 @@ export interface ProjectionOverride {
   updatedAt: string;
 }
 
+export interface TeamClassificationTag {
+  teamId: string;
+  classification: TeamClassificationValue;
+  updatedAt: string;
+}
+
 export type TeamRoundProbabilities = Record<Stage, number>;
 
 export interface MatchupConflict {
@@ -144,6 +155,7 @@ export interface AnalysisRankingRow {
   shortName: string;
   seed: number;
   region: string;
+  classification: TeamClassificationValue | null;
   compositeScore: number;
   percentile: number;
   scoutingCoverage: number;
@@ -176,6 +188,7 @@ export interface AnalysisFieldAverages {
 export interface AnalysisBudgetRow {
   teamId: string;
   teamName: string;
+  classification: TeamClassificationValue | null;
   rank: number;
   percentile: number;
   convictionScore: number;
@@ -347,6 +360,7 @@ export interface AuctionSession {
   baseProjections: TeamProjection[];
   projections: TeamProjection[];
   projectionOverrides: Record<string, ProjectionOverride>;
+  teamClassifications: Record<string, TeamClassificationTag>;
   projectionProvider: string;
   activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
@@ -617,6 +631,17 @@ export const saveProjectionOverrideSchema = z.object({
   offense: z.number().optional(),
   defense: z.number().optional(),
   tempo: z.number().optional()
+});
+
+export const teamClassificationValueSchema = z.enum([
+  "must-have",
+  "love-at-right-price",
+  "caution",
+  "nuclear-disaster"
+]);
+
+export const saveTeamClassificationSchema = z.object({
+  classification: teamClassificationValueSchema
 });
 
 export const teamQuadWinsSchema = z.object({
