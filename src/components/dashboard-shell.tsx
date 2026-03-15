@@ -141,7 +141,7 @@ export function DashboardShell({
   );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
-  const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const winnerButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
   const pendingCommittedBidRef = useRef<number | null>(null);
@@ -560,7 +560,9 @@ export function DashboardShell({
 
     if (event.key.toLowerCase() === "w" && !isEditable) {
       event.preventDefault();
-      winnerSelectRef.current?.focus();
+      const focusTarget =
+        winnerButtonRefs.current[buyerId] ?? winnerButtonRefs.current[dashboard.ledger[0]?.id ?? ""];
+      focusTarget?.focus();
       return;
     }
 
@@ -572,7 +574,7 @@ export function DashboardShell({
       event.preventDefault();
       void saveLiveState();
     }
-  }, [activeView, saveLiveState]);
+  }, [activeView, buyerId, dashboard.ledger, saveLiveState]);
 
   useEffect(() => {
     if (viewerMode) {
@@ -990,6 +992,161 @@ export function DashboardShell({
         <>
           {activeView === "auction" ? (
             <section className="auction-layout">
+              <article className="surface-card control-panel auction-controls">
+                <div className="section-headline auction-controls__headline">
+                  <div>
+                    <p className="eyebrow">Live Controls</p>
+                  </div>
+                  <div className="shortcut-legend">
+                    <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
+                    <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
+                    <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
+                    <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
+                  </div>
+                </div>
+
+                <div className="auction-controls__bar">
+                  <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
+                    <span>Active team</span>
+                    <AssetCombobox
+                      assets={dashboard.availableAssets}
+                      soldAssets={dashboard.soldAssets}
+                      value={selectedAssetId}
+                      inputRef={teamSelectRef}
+                      onChange={(nextAssetId) => {
+                        const nextAsset =
+                          dashboard.session.auctionAssets?.find(
+                            (asset) => asset.id === nextAssetId
+                          ) ?? null;
+                        const nextBid = 0;
+                        setSelectedAssetId(nextAssetId);
+                        setSelectedTeamId(nextAsset?.projectionIds[0] ?? "");
+                        setCurrentBid(nextBid);
+                        setBidInputValue(formatBidInputValue(nextBid));
+                        void saveActiveAsset(nextAssetId);
+                      }}
+                    />
+                    {selectedAsset && selectedAsset.type !== "single_team" ? (
+                      <span className="decision-panel__note">
+                        {formatAssetMembersCompact(selectedAsset)}
+                      </span>
+                    ) : null}
+                  </label>
+
+                  <label className="field-shell auction-controls__field auction-controls__field--bid">
+                    <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
+                    <div className="live-bid-field">
+                      <input
+                        ref={bidInputRef}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={bidInputValue}
+                        onChange={(event) =>
+                          setBidInputValue(formatBidInputText(event.target.value))
+                        }
+                        onBlur={handleBidBlur}
+                        onKeyDown={handleBidKeyDown}
+                        onFocus={(event) => event.target.select()}
+                        onClick={(event) => event.currentTarget.select()}
+                      />
+                      <button
+                        type="button"
+                        data-live-bid-blur-ignore="true"
+                        className={
+                          isLiveStateDirty
+                            ? "live-bid-save live-bid-save--dirty"
+                            : "live-bid-save"
+                        }
+                        aria-label={
+                          isSavingLiveState
+                            ? "Saving current bid"
+                            : isLiveStateDirty
+                              ? "Save current bid to board"
+                              : "Current bid is synced"
+                        }
+                        title={
+                          isSavingLiveState
+                            ? "Saving current bid"
+                            : isLiveStateDirty
+                              ? "Save current bid to board"
+                              : "Current bid is synced"
+                        }
+                        disabled={isSavingLiveState || !isLiveStateDirty}
+                        onClick={() => void saveLiveState()}
+                      >
+                        {isSavingLiveState ? "…" : isLiveStateDirty ? "↵" : "✓"}
+                      </button>
+                    </div>
+                  </label>
+
+                  <div className="auction-controls__field auction-controls__field--winner">
+                    <span className="auction-controls__label">Winner</span>
+                    <div className="auction-controls__winner-list" role="group" aria-label="Winner">
+                      {dashboard.ledger.map((syndicate) => {
+                        const isSelected = buyerId === syndicate.id;
+                        return (
+                          <button
+                            key={syndicate.id}
+                            ref={(node) => {
+                              winnerButtonRefs.current[syndicate.id] = node;
+                            }}
+                            type="button"
+                            className={cn(
+                              "button button-secondary auction-controls__winner-button",
+                              isSelected && "auction-controls__winner-button--selected"
+                            )}
+                            aria-pressed={isSelected}
+                            onClick={() => setBuyerId(syndicate.id)}
+                          >
+                            {syndicate.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="auction-controls__footer">
+                  <div className="auction-controls__history">
+                    {dashboard.lastPurchase ? (
+                      <p>
+                        Last sale:{" "}
+                        <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong> to{" "}
+                        <strong>
+                          {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
+                        </strong>{" "}
+                        for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
+                      </p>
+                    ) : (
+                      <p>No purchases recorded yet.</p>
+                    )}
+                    <button
+                      type="button"
+                      className="button button-secondary button--small auction-controls__undo"
+                      data-live-bid-blur-ignore="true"
+                      disabled={!dashboard.lastPurchase || isUndoingPurchase}
+                      onClick={() => void undoPurchase()}
+                    >
+                      {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="button button-accent auction-controls__purchase"
+                    data-live-bid-blur-ignore="true"
+                    disabled={parsedBidInputValue <= 0 || !selectedAssetId}
+                    onClick={() => void recordPurchase()}
+                  >
+                    Record purchase
+                  </button>
+                </div>
+
+                {notice ? <p className="notice-text">{notice}</p> : null}
+                {error ? <p className="error-text">{error}</p> : null}
+              </article>
+
               <div className="auction-layout__main">
                 <section className="decision-grid">
                   <article className="surface-card decision-panel">
@@ -1354,146 +1511,6 @@ export function DashboardShell({
               </div>
 
               <aside className="auction-layout__side">
-                <article className="surface-card control-panel">
-                  <div className="section-headline">
-                    <div>
-                      <p className="eyebrow">Live Controls</p>
-                    </div>
-                  </div>
-                  <div className="shortcut-legend">
-                    <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
-                    <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
-                    <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
-                    <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
-                  </div>
-
-                  <div className="field-stack">
-                    <label className="field-shell field-shell--accent">
-                      <span>Active team</span>
-                      <AssetCombobox
-                        assets={dashboard.availableAssets}
-                        soldAssets={dashboard.soldAssets}
-                        value={selectedAssetId}
-                        inputRef={teamSelectRef}
-                        onChange={(nextAssetId) => {
-                          const nextAsset =
-                            dashboard.session.auctionAssets?.find(
-                              (asset) => asset.id === nextAssetId
-                            ) ?? null;
-                          const nextBid = 0;
-                          setSelectedAssetId(nextAssetId);
-                          setSelectedTeamId(nextAsset?.projectionIds[0] ?? "");
-                          setCurrentBid(nextBid);
-                          setBidInputValue(formatBidInputValue(nextBid));
-                          void saveActiveAsset(nextAssetId);
-                        }}
-                      />
-                      {selectedAsset && selectedAsset.type !== "single_team" ? (
-                        <span className="decision-panel__note">
-                          {formatAssetMembersCompact(selectedAsset)}
-                        </span>
-                      ) : null}
-                    </label>
-
-                    <label className="field-shell">
-                      <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
-                      <div className="live-bid-field">
-                        <input
-                          ref={bidInputRef}
-                          type="text"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          value={bidInputValue}
-                          onChange={(event) =>
-                            setBidInputValue(formatBidInputText(event.target.value))
-                          }
-                          onBlur={handleBidBlur}
-                          onKeyDown={handleBidKeyDown}
-                          onFocus={(event) => event.target.select()}
-                          onClick={(event) => event.currentTarget.select()}
-                        />
-                        <button
-                          type="button"
-                          data-live-bid-blur-ignore="true"
-                          className={
-                            isLiveStateDirty
-                              ? "live-bid-save live-bid-save--dirty"
-                              : "live-bid-save"
-                          }
-                          aria-label={
-                            isSavingLiveState
-                              ? "Saving current bid"
-                              : isLiveStateDirty
-                                ? "Save current bid to board"
-                                : "Current bid is synced"
-                          }
-                          title={
-                            isSavingLiveState
-                              ? "Saving current bid"
-                              : isLiveStateDirty
-                                ? "Save current bid to board"
-                                : "Current bid is synced"
-                          }
-                          disabled={isSavingLiveState || !isLiveStateDirty}
-                          onClick={() => void saveLiveState()}
-                        >
-                          {isSavingLiveState ? "…" : isLiveStateDirty ? "↵" : "✓"}
-                        </button>
-                      </div>
-                    </label>
-
-                    <label className="field-shell">
-                      <span>Winner</span>
-                      <select
-                        ref={winnerSelectRef}
-                        value={buyerId}
-                        onChange={(event) => setBuyerId(event.target.value)}
-                      >
-                        {dashboard.ledger.map((syndicate) => (
-                          <option key={syndicate.id} value={syndicate.id}>
-                            {syndicate.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="button-row">
-                    <button
-                      type="button"
-                      className="button button-accent"
-                      data-live-bid-blur-ignore="true"
-                      disabled={parsedBidInputValue <= 0 || !selectedAssetId}
-                      onClick={() => void recordPurchase()}
-                    >
-                      Record purchase
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-secondary"
-                      data-live-bid-blur-ignore="true"
-                      disabled={!dashboard.lastPurchase || isUndoingPurchase}
-                      onClick={() => void undoPurchase()}
-                    >
-                      {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
-                    </button>
-                  </div>
-
-                  {dashboard.lastPurchase ? (
-                    <p className="empty-copy">
-                      Last sale:{" "}
-                      <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong> to{" "}
-                      <strong>
-                        {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
-                      </strong>{" "}
-                      for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
-                    </p>
-                  ) : null}
-
-                  {notice ? <p className="notice-text">{notice}</p> : null}
-                  {error ? <p className="error-text">{error}</p> : null}
-                </article>
-
                 <article className="surface-card">
                   <div className="section-headline">
                     <div>

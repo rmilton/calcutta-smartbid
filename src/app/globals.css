@@ -466,7 +466,10 @@ p {
 }
 
 .live-bid-field {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .live-bid-save {
