@@ -283,6 +283,39 @@ describe("repository funding model", () => {
     expect(session.projections).toHaveLength(64);
   });
 
+  it("honors the requested simulation iterations when creating a ready session", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({ name: "Mothership" });
+    const riverboat = await repository.createSyndicateCatalogEntry({ name: "Riverboat" });
+
+    const session = await repository.createSession({
+      name: "Iteration Session",
+      sharedAccessCode: "iterations",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
+      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      bracketSelection: {
+        mode: "upload",
+        sourceName: "Official Bracket",
+        csvContent: buildFullBracketCsv()
+      },
+      analysisSelection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        csvContent: buildFullAnalysisCsv()
+      },
+      simulationIterations: 1500
+    });
+
+    expect(session.importReadiness.status).toBe("ready");
+    expect(session.simulationSnapshot?.iterations).toBe(1500);
+  });
+
   it("creates a session from a mixed saved-source and upload setup", async () => {
     const repository = await loadRepository();
     const operator = await repository.createPlatformUser({
@@ -758,6 +791,51 @@ describe("repository funding model", () => {
     expect(fallback.session.importReadiness.mode).toBe("legacy");
     expect(fallback.session.importReadiness.status).toBe("ready");
     expect(fallback.session.activeDataSource.key).toBe("builtin:mock");
+  });
+
+  it("preserves legacy API source config during metadata-only updates", async () => {
+    const now = new Date().toISOString();
+    await fs.writeFile(
+      storeFile,
+      JSON.stringify(
+        {
+          sessions: [],
+          platformUsers: [],
+          syndicateCatalog: [],
+          dataSources: [
+            {
+              id: "legacy-api",
+              name: "Legacy API Source",
+              kind: "api",
+              purpose: "analysis",
+              active: true,
+              config: {
+                url: "https://example.com/feed.json",
+                bearerToken: "secret-token"
+              },
+              createdAt: now,
+              updatedAt: now,
+              lastTestedAt: null
+            }
+          ],
+          dataImportRuns: [],
+          csvAnalysisPortfolios: []
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const repository = await loadRepository();
+    const updated = await repository.updateDataSource("legacy-api", { active: false });
+
+    expect(updated.active).toBe(false);
+    expect(updated.kind).toBe("api");
+    expect(updated.config).toEqual({
+      url: "https://example.com/feed.json",
+      bearerToken: "secret-token"
+    });
   });
 });
 

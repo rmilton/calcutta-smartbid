@@ -466,10 +466,13 @@ class LocalSessionRepository implements SessionRepository {
     if (parsed.active !== undefined) {
       source.active = parsed.active;
     }
-    source.config = {
-      csvContent: parsed.csvContent ?? (source.config as { csvContent: string }).csvContent,
-      fileName: parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
-    };
+    if (source.kind === "csv") {
+      source.config = {
+        csvContent: parsed.csvContent ?? (source.config as { csvContent: string }).csvContent,
+        fileName:
+          parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
+      };
+    }
     source.updatedAt = new Date().toISOString();
     syncSessionActiveDataSource(store.sessions, source);
     await this.writeStore(store);
@@ -1440,10 +1443,15 @@ class SupabaseSessionRepository implements SessionRepository {
     const currentResult = await client.from("data_sources").select("*").eq("id", sourceId).single();
     throwOnSupabaseError(currentResult.error);
     const current = mapDataSources([currentResult.data])[0];
-    const config = {
-      csvContent: parsed.csvContent ?? (current.config as { csvContent: string }).csvContent,
-      fileName: parsed.fileName ?? (current.config as { fileName: string | null }).fileName ?? null
-    };
+    const config =
+      current.kind === "csv"
+        ? {
+            csvContent:
+              parsed.csvContent ?? (current.config as { csvContent: string }).csvContent,
+            fileName:
+              parsed.fileName ?? (current.config as { fileName: string | null }).fileName ?? null
+          }
+        : current.config;
 
     const result = await client
       .from("data_sources")
@@ -2345,14 +2353,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
 
   setStoredSharedAccessCode(session, parsed.sharedAccessCode);
   if (session.bracketImport || session.analysisImport) {
-    applySessionManagedImports(session);
-    if (
-      session.importReadiness.status === "ready" &&
-      !session.simulationSnapshot &&
-      session.baseProjections.length > 0
-    ) {
-      recalculateSessionState(session, parsed.simulationIterations);
-    }
+    applySessionManagedImports(session, parsed.simulationIterations);
   }
   return session;
 }
@@ -2396,12 +2397,15 @@ async function applyProjectionImport(
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
-function applySessionManagedImports(session: StoredAuctionSession) {
+function applySessionManagedImports(
+  session: StoredAuctionSession,
+  requestedIterations?: number
+) {
   if (session.purchases.length > 0) {
     throw new Error("Cannot replace projections after purchases have been recorded.");
   }
 
-  const simulationIterations = session.simulationSnapshot?.iterations;
+  const simulationIterations = requestedIterations ?? session.simulationSnapshot?.iterations;
   session.updatedAt = new Date().toISOString();
   session.activeDataSource = {
     key: "session:managed-imports",
