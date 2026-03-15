@@ -110,6 +110,7 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - operator workspaces are `Auction`, `Analysis`, `Bracket`, and `Overrides`
   - `Auction` now carries the old portfolio context directly in the live board through syndicate, ownership, and decision-context panels
   - viewer workspaces are `Auction` and `Bracket`
+  - viewer `Auction` mirrors the operator decision-board language for the live call, rationale, ownership conflicts, recent sales, and ownership ledger, while staying read-only
   - active team can represent:
     - a single school
     - an unresolved play-in team
@@ -200,7 +201,7 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
   - `targetTeamCount` default `8`
   - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
-- viewer mode intentionally hides the live current bid and instead centers the active team plus Mothership context
+- viewer mode stays read-only but shows the same live current bid, decision call, and Mothership context as the operator board
 - archived sessions are hidden from the default admin sessions list but remain readable to platform admins
 - permanent delete is archive-gated and requires exact session-name confirmation
 

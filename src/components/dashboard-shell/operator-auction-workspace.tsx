@@ -12,8 +12,10 @@ import {
   TeamClassificationValue,
   TeamProjection
 } from "@/lib/types";
-import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
+  AssetSaleRow,
+  ConflictRow,
   MetricCard,
   formatAssetMembers,
   formatAssetMembersCompact,
@@ -559,53 +561,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         </aside>
       </section>
     </section>
-  );
-}
-
-function ConflictRow({
-  conflict,
-  teamLookup,
-  isOwned = false,
-  isCritical = false
-}: {
-  conflict: MatchupConflict;
-  teamLookup: Map<string, TeamProjection>;
-  isOwned?: boolean;
-  isCritical?: boolean;
-}) {
-  const opponent = teamLookup.get(conflict.opponentId);
-
-  return (
-    <div className={cn("list-row", "list-row--top-aligned", isCritical && "list-row--critical")}>
-      <div>
-        <strong>
-          {opponent?.name ?? conflict.opponentId}
-          {isOwned ? <span className="list-row__inline-note"> (you own)</span> : null}
-        </strong>
-        <span>{titleCaseStage(conflict.earliestRound)} window</span>
-      </div>
-      <strong>{formatPercent(conflict.probability)}</strong>
-    </div>
-  );
-}
-
-function AssetSaleRow({
-  sale,
-  syndicateLookup
-}: {
-  sale: SoldAssetSummary;
-  syndicateLookup: Map<string, Syndicate>;
-}) {
-  const buyer = syndicateLookup.get(sale.buyerSyndicateId);
-
-  return (
-    <div className="list-row">
-      <div>
-        <strong>{sale.asset.label}</strong>
-        <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
-      </div>
-      <strong>{formatCurrency(sale.price)}</strong>
-    </div>
   );
 }
 

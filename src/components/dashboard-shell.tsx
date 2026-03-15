@@ -88,12 +88,6 @@ const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
   pass: "Pass"
 };
 
-const fundingStatusLabels: Record<BidRecommendation["fundingStatus"], string> = {
-  safe: "Within base budget",
-  stretch: "Requires stretch budget",
-  "above-plan": "Above current funding plan"
-};
-
 function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMember["scope"]) {
   if (scope === "platform" && role === "admin") {
     return "Platform admin";
@@ -568,17 +562,27 @@ export function DashboardShell({
           <ViewerAuctionWorkspace
             dashboard={dashboard}
             recommendation={recommendation}
-            stoplightLabels={stoplightLabels}
-            fundingStatusLabels={fundingStatusLabels}
+            signalLabel={recommendation ? stoplightLabels[recommendation.stoplight] : null}
+            currentBid={currentBid}
             nominatedMatchup={matchupSummary.nominatedMatchup}
             likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
             hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
             hasOwnedLikelyRoundTwoOpponent={matchupSummary.hasOwnedLikelyRoundTwoOpponent}
-            forcedPassConflictName={forcedPassConflictName}
+            callHeadline={callHeadline}
+            callSupportText={callSupportText}
+            callDetailText={callDetailText}
+            breakEvenStage={breakEvenStage}
+            targetBidDisplay={targetBidDisplay}
+            maxBidDisplay={maxBidDisplay}
+            filteredRationale={filteredRationale}
+            ownershipConflicts={ownershipConflicts}
+            teamLookup={teamLookup}
+            forcedPassConflictTeamId={recommendation?.forcedPassConflictTeamId ?? null}
             ownershipSearch={ownershipSearch}
             onOwnershipSearchChange={setOwnershipSearch}
             ownershipGroups={ownershipGroups}
             soldFeed={soldFeed}
+            syndicateLookup={syndicateLookup}
           />
         )
       ) : (
