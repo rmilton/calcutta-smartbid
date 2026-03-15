@@ -253,8 +253,12 @@ export function DashboardShell({
     (analysisTeamId && analysisAssetLookup.get(analysisTeamId)) ?? null;
   const analysisRow =
     dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
+  const analysisBudgetLookup = useMemo(
+    () => new Map(dashboard.analysis.budgetRows.map((row) => [row.teamId, row])),
+    [dashboard.analysis.budgetRows]
+  );
   const analysisBudgetRow =
-    dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
+    (analysisTeamId && analysisBudgetLookup.get(analysisTeamId)) ?? null;
   const analysisAssetBudget = useMemo(() => {
     if (!analysisDetailAsset) {
       return null;
@@ -314,19 +318,30 @@ export function DashboardShell({
     () => new Map(dashboard.analysis.ownedTeams.map((team) => [team.teamId, team])),
     [dashboard.analysis.ownedTeams]
   );
+  const soldTeamLookup = useMemo(
+    () => new Map(dashboard.soldTeams.map((entry) => [entry.team.id, entry])),
+    [dashboard.soldTeams]
+  );
+  const soldAssetCountBySyndicate = useMemo(
+    () =>
+      dashboard.soldAssets.reduce<Record<string, number>>((counts, sale) => {
+        counts[sale.buyerSyndicateId] = (counts[sale.buyerSyndicateId] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [dashboard.soldAssets]
+  );
   const filteredAnalysisRows = useMemo(() => {
     const normalized = analysisSearch.trim().toLowerCase();
     if (!normalized) {
-      return dashboard.analysis.budgetRows;
+      return dashboard.analysis.ranking;
     }
 
-    return dashboard.analysis.budgetRows.filter((row) => {
-      const analysisItem = dashboard.analysis.ranking.find((candidate) => candidate.teamId === row.teamId);
+    return dashboard.analysis.ranking.filter((row) => {
       const auctionTeam = analysisAssetLookup.get(row.teamId);
-      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""} ${auctionTeam?.label ?? ""}`.toLowerCase();
+      const haystack = `${row.teamName} ${row.shortName} ${auctionTeam?.label ?? ""}`.toLowerCase();
       return haystack.includes(normalized);
     });
-  }, [analysisAssetLookup, analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
+  }, [analysisAssetLookup, analysisSearch, dashboard.analysis.ranking]);
   const filteredRationale = useMemo(
     () =>
       recommendation?.rationale.filter(
@@ -1633,53 +1648,65 @@ export function DashboardShell({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredAnalysisRows.map((row) => (
-                        <tr
-                          key={row.teamId}
-                          className={cn(analysisTeamId === row.teamId && "table-row--focus")}
-                          onClick={() => setAnalysisTeamId(row.teamId)}
-                        >
-                          <td>#{row.rank}</td>
-                          <td>
-                            <strong>{row.teamName}</strong>
-                          </td>
-                          <td>
-                            {(() => {
-                              const auctionTeam = analysisAssetLookup.get(row.teamId);
-                              if (!auctionTeam || auctionTeam.type === "single_team") {
-                                return <span className="team-classification-empty">Single team</span>;
-                              }
+                      {filteredAnalysisRows.map((row) => {
+                        const budgetRow = analysisBudgetLookup.get(row.teamId) ?? null;
+                        const teamStatus = ownedTeamLookup.has(row.teamId)
+                          ? "Owned"
+                          : soldTeamLookup.has(row.teamId)
+                            ? "Sold"
+                            : "Available";
 
-                              return (
-                                <>
-                                  <strong>{auctionTeam.label}</strong>
-                                  <div className="decision-panel__note">
-                                    {formatAssetMembersCompact(auctionTeam)}
-                                  </div>
-                                </>
-                              );
-                            })()}
-                          </td>
-                          <td>
-                            {row.classification ? (
-                              <TeamClassificationBadge
-                                classification={row.classification}
-                                compact
-                              />
-                            ) : (
-                              <span className="team-classification-empty">--</span>
-                            )}
-                          </td>
-                          <td>
-                            {dashboard.analysis.ranking
-                              .find((candidate) => candidate.teamId === row.teamId)
-                              ?.compositeScore.toFixed(3) ?? "--"}
-                          </td>
-                          <td>{formatCurrency(row.targetBid)}</td>
-                          <td>{formatCurrency(row.maxBid)}</td>
-                          <td>{ownedTeamLookup.has(row.teamId) ? "Owned" : "Available"}</td>
-                        </tr>
-                      ))}
+                        return (
+                          <tr
+                            key={row.teamId}
+                            className={cn(analysisTeamId === row.teamId && "table-row--focus")}
+                            onClick={() => setAnalysisTeamId(row.teamId)}
+                          >
+                            <td>
+                              #
+                              {dashboard.analysis.ranking.findIndex(
+                                (candidate) => candidate.teamId === row.teamId
+                              ) + 1}
+                            </td>
+                            <td>
+                              <strong>{row.teamName}</strong>
+                            </td>
+                            <td>
+                              {(() => {
+                                const auctionTeam = analysisAssetLookup.get(row.teamId);
+                                if (!auctionTeam || auctionTeam.type === "single_team") {
+                                  return (
+                                    <span className="team-classification-empty">Single team</span>
+                                  );
+                                }
+
+                                return (
+                                  <>
+                                    <strong>{auctionTeam.label}</strong>
+                                    <div className="decision-panel__note">
+                                      {formatAssetMembersCompact(auctionTeam)}
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </td>
+                            <td>
+                              {row.classification ? (
+                                <TeamClassificationBadge
+                                  classification={row.classification}
+                                  compact
+                                />
+                              ) : (
+                                <span className="team-classification-empty">--</span>
+                              )}
+                            </td>
+                            <td>{row.compositeScore.toFixed(3)}</td>
+                            <td>{budgetRow ? formatCurrency(budgetRow.targetBid) : "--"}</td>
+                            <td>{budgetRow ? formatCurrency(budgetRow.maxBid) : "--"}</td>
+                            <td>{teamStatus}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
