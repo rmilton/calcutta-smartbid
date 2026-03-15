@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { deriveFundingStatus, deriveMothershipFundingSnapshot } from "@/lib/funding";
+import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { getBreakEvenStage } from "@/lib/payouts";
@@ -130,8 +131,7 @@ export function DashboardShell({
     tempo: ""
   });
   const [teamNoteInput, setTeamNoteInput] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const [analysisSearch, setAnalysisSearch] = useState("");
   const [analysisTeamId, setAnalysisTeamId] = useState(
     dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
@@ -415,8 +415,7 @@ export function DashboardShell({
       const assetIdToPersist = pendingActiveTeamIdRef.current;
       pendingActiveTeamIdRef.current = null;
 
-      setError(null);
-      setNotice(null);
+      clearFeedback();
 
       const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
         method: "PATCH",
@@ -432,7 +431,7 @@ export function DashboardShell({
         const payload = (await response.json()) as { error?: string };
 
         if (pendingActiveTeamIdRef.current === null) {
-          setError(payload.error ?? "Unable to update active team.");
+          showError(payload.error ?? "Unable to update active team.");
         }
 
         continue;
@@ -449,11 +448,10 @@ export function DashboardShell({
     }
 
     activeTeamSaveInFlightRef.current = false;
-  }, [broadcastRefresh, refresh, sessionId]);
+  }, [broadcastRefresh, clearFeedback, refresh, sessionId, showError]);
 
   const saveLiveState = useCallback(async () => {
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingLiveState(true);
     const nextBid = parsedBidInputValue;
     try {
@@ -470,7 +468,7 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to update live state.");
+        showError(payload.error ?? "Unable to update live state.");
         return;
       }
 
@@ -482,11 +480,19 @@ export function DashboardShell({
         void refresh();
       });
     } catch {
-      setError("Unable to update live state.");
+      showError("Unable to update live state.");
     } finally {
       setIsSavingLiveState(false);
     }
-  }, [broadcastRefresh, parsedBidInputValue, refresh, selectedAssetId, sessionId]);
+  }, [
+    broadcastRefresh,
+    clearFeedback,
+    parsedBidInputValue,
+    refresh,
+    selectedAssetId,
+    sessionId,
+    showError
+  ]);
 
   const handleBidBlur = useCallback(
     (event: React.FocusEvent<HTMLInputElement>) => {
@@ -578,17 +584,16 @@ export function DashboardShell({
   }, [handleShortcut, viewerMode]);
 
   const recordPurchase = useCallback(async () => {
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     const nextBid = parsedBidInputValue;
 
     if (nextBid <= 0) {
-      setError("Enter a bid greater than $0 before recording a purchase.");
+      showError("Enter a bid greater than $0 before recording a purchase.");
       return;
     }
 
     if (!selectedAssetId) {
-      setError("Choose a nominated team before recording a purchase.");
+      showError("Choose a nominated team before recording a purchase.");
       return;
     }
 
@@ -606,24 +611,33 @@ export function DashboardShell({
 
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to record purchase.");
+      showError(payload.error ?? "Unable to record purchase.");
       return;
     }
 
     const nextDashboard = (await response.json()) as AuctionDashboard;
     replaceDashboard(nextDashboard);
-    setNotice("Purchase recorded.");
+    showNotice("Purchase recorded.");
     void broadcastRefresh("purchase");
-  }, [broadcastRefresh, buyerId, parsedBidInputValue, replaceDashboard, selectedAssetId, sessionId]);
+  }, [
+    broadcastRefresh,
+    clearFeedback,
+    buyerId,
+    parsedBidInputValue,
+    replaceDashboard,
+    selectedAssetId,
+    sessionId,
+    showError,
+    showNotice
+  ]);
 
   const undoPurchase = useCallback(async () => {
     if (!dashboard.lastPurchase) {
-      setError("No purchase is available to undo.");
+      showError("No purchase is available to undo.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsUndoingPurchase(true);
 
     const purchaseToUndo = dashboard.lastPurchase;
@@ -639,36 +653,38 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to undo purchase.");
+        showError(payload.error ?? "Unable to undo purchase.");
         return;
       }
 
       const nextDashboard = (await response.json()) as AuctionDashboard;
       replaceDashboard(nextDashboard);
       setBuyerId(purchaseToUndo.buyerSyndicateId);
-      setNotice(`Undid purchase for ${undoneTeamName}.`);
+      showNotice(`Undid purchase for ${undoneTeamName}.`);
       void broadcastRefresh("purchase-undo");
     } catch {
-      setError("Unable to undo purchase.");
+      showError("Unable to undo purchase.");
     } finally {
       setIsUndoingPurchase(false);
     }
   }, [
     broadcastRefresh,
+    clearFeedback,
     dashboard.lastPurchase,
     lastPurchaseTeam,
     replaceDashboard,
-    sessionId
+    sessionId,
+    showError,
+    showNotice
   ]);
 
   async function saveProjectionOverride() {
     if (!overrideTeamId) {
-      setError("Choose a team before saving an override.");
+      showError("Choose a team before saving an override.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     const response = await fetch(
       `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
@@ -687,11 +703,11 @@ export function DashboardShell({
 
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to save projection override.");
+      showError(payload.error ?? "Unable to save projection override.");
       return;
     }
 
-    setNotice("Projection override saved and simulation rebuilt.");
+    showNotice("Projection override saved and simulation rebuilt.");
     startTransition(() => {
       void refresh();
     });
@@ -699,12 +715,11 @@ export function DashboardShell({
 
   async function clearProjectionOverride() {
     if (!overrideTeamId) {
-      setError("Choose a team before clearing an override.");
+      showError("Choose a team before clearing an override.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     const response = await fetch(
       `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
@@ -714,11 +729,11 @@ export function DashboardShell({
 
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to clear projection override.");
+      showError(payload.error ?? "Unable to clear projection override.");
       return;
     }
 
-    setNotice("Projection override cleared.");
+    showNotice("Projection override cleared.");
     startTransition(() => {
       void refresh();
     });
@@ -726,12 +741,11 @@ export function DashboardShell({
 
   async function saveTeamClassification(classification: TeamClassificationValue) {
     if (!analysisDetailTeam) {
-      setError("Choose a team before saving a classification.");
+      showError("Choose a team before saving a classification.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingClassification(true);
 
     try {
@@ -748,7 +762,7 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to save team classification.");
+        showError(payload.error ?? "Unable to save team classification.");
         return;
       }
 
@@ -756,7 +770,7 @@ export function DashboardShell({
       replaceDashboard(nextDashboard);
       void broadcastRefresh("team-classification");
     } catch {
-      setError("Unable to save team classification.");
+      showError("Unable to save team classification.");
     } finally {
       setIsSavingClassification(false);
     }
@@ -764,12 +778,11 @@ export function DashboardShell({
 
   async function clearTeamClassification() {
     if (!analysisDetailTeam) {
-      setError("Choose a team before clearing a classification.");
+      showError("Choose a team before clearing a classification.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingClassification(true);
 
     try {
@@ -782,7 +795,7 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to clear team classification.");
+        showError(payload.error ?? "Unable to clear team classification.");
         return;
       }
 
@@ -790,7 +803,7 @@ export function DashboardShell({
       replaceDashboard(nextDashboard);
       void broadcastRefresh("team-classification");
     } catch {
-      setError("Unable to clear team classification.");
+      showError("Unable to clear team classification.");
     } finally {
       setIsSavingClassification(false);
     }
@@ -798,12 +811,11 @@ export function DashboardShell({
 
   async function saveTeamNote() {
     if (!analysisDetailTeam) {
-      setError("Choose a team before saving a note.");
+      showError("Choose a team before saving a note.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingTeamNote(true);
 
     try {
@@ -820,16 +832,16 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to save team note.");
+        showError(payload.error ?? "Unable to save team note.");
         return;
       }
 
       const nextDashboard = (await response.json()) as AuctionDashboard;
       replaceDashboard(nextDashboard);
-      setNotice("Team note saved.");
+      showNotice("Team note saved.");
       void broadcastRefresh("team-note");
     } catch {
-      setError("Unable to save team note.");
+      showError("Unable to save team note.");
     } finally {
       setIsSavingTeamNote(false);
     }
@@ -837,12 +849,11 @@ export function DashboardShell({
 
   async function clearTeamNote() {
     if (!analysisDetailTeam) {
-      setError("Choose a team before clearing a note.");
+      showError("Choose a team before clearing a note.");
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingTeamNote(true);
 
     try {
@@ -855,17 +866,17 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to clear team note.");
+        showError(payload.error ?? "Unable to clear team note.");
         return;
       }
 
       const nextDashboard = (await response.json()) as AuctionDashboard;
       replaceDashboard(nextDashboard);
       setTeamNoteInput("");
-      setNotice("Team note cleared.");
+      showNotice("Team note cleared.");
       void broadcastRefresh("team-note");
     } catch {
-      setError("Unable to clear team note.");
+      showError("Unable to clear team note.");
     } finally {
       setIsSavingTeamNote(false);
     }
@@ -877,8 +888,7 @@ export function DashboardShell({
   }
 
   async function saveBracketWinner(gameId: string, winnerTeamId: string | null) {
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     setIsSavingBracket(true);
 
     try {
@@ -894,16 +904,16 @@ export function DashboardShell({
 
       if (!response.ok) {
         const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "Unable to update bracket game.");
+        showError(payload.error ?? "Unable to update bracket game.");
         return;
       }
 
       const nextDashboard = (await response.json()) as AuctionDashboard;
       replaceDashboard(nextDashboard);
-      setNotice(winnerTeamId ? "Bracket winner advanced." : "Bracket winner cleared.");
+      showNotice(winnerTeamId ? "Bracket winner advanced." : "Bracket winner cleared.");
       void broadcastRefresh("bracket");
     } catch {
-      setError("Unable to update bracket game.");
+      showError("Unable to update bracket game.");
     } finally {
       setIsSavingBracket(false);
     }
