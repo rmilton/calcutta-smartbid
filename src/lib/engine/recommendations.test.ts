@@ -213,6 +213,39 @@ describe("recommendations", () => {
     expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
   });
 
+  it("forces a pass when an owned Round of 64 collision is guaranteed", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    if (!team || !session.simulationSnapshot) {
+      throw new Error("Expected mock team and simulation snapshot");
+    }
+
+    session.simulationSnapshot.matchupMatrix[team.id] = {
+      ...(session.simulationSnapshot.matchupMatrix[team.id] ?? {}),
+      duke: 1
+    };
+    session.simulationSnapshot.teamResults[team.id] = {
+      ...session.simulationSnapshot.teamResults[team.id],
+      likelyConflicts: [
+        {
+          opponentId: "duke",
+          probability: 1,
+          earliestRound: "roundOf64"
+        }
+      ]
+    };
+
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
+
+    expect(recommendation?.stoplight).toBe("pass");
+    expect(recommendation?.forcedPassConflictTeamId).toBe("duke");
+    expect(recommendation?.forcedPassReason).toContain("Round of 64");
+    expect(recommendation?.rationale[0]).toContain("Automatic pass");
+    expect(recommendation?.rationale[0]).toContain("owned team duke");
+  });
+
   it("describes bundle teams explicitly in recommendation rationale", () => {
     const session = buildSession();
     const focus = session.syndicates[0];

@@ -551,6 +551,8 @@ export interface BidRecommendation {
   stretchBudgetHeadroom: number;
   fundingStatus: FundingStatus;
   concentrationScore: number;
+  forcedPassConflictTeamId: string | null;
+  forcedPassReason: string | null;
   drivers: RecommendationDriver[];
   rationale: string[];
 }

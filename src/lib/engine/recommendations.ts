@@ -68,12 +68,19 @@ export function buildBidRecommendation(
   const valueGap = roundCurrency(maxBid - currentBid);
   const buyThreshold = Math.min(targetBid, maxBid);
   const hasBudgetWindow = buyThreshold > 0 || maxBid > 0;
+  const forcedPassConflict =
+    ownershipExposure.likelyConflicts.find(
+      (conflict) => conflict.earliestRound === "roundOf64" && conflict.probability >= 0.999
+    ) ?? null;
 
   let stoplight: BidRecommendation["stoplight"] = "pass";
   if (hasBudgetWindow && buyThreshold > 0 && currentBid <= buyThreshold && expectedNetValue > 0) {
     stoplight = "buy";
   } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
     stoplight = "caution";
+  }
+  if (forcedPassConflict) {
+    stoplight = "pass";
   }
 
   const subjectLabel = asset?.label ?? team?.name ?? "This team";
@@ -107,6 +114,11 @@ export function buildBidRecommendation(
     const topConflict = ownershipExposure.likelyConflicts[0];
     rationale.push(
       `Largest collision risk is against ${topConflict.opponentId} in the ${titleCaseStage(topConflict.earliestRound)} window at ${Math.round(topConflict.probability * 100)}%.`
+    );
+  }
+  if (forcedPassConflict) {
+    rationale.unshift(
+      `Automatic pass: ${subjectLabel} is guaranteed to hit owned team ${forcedPassConflict.opponentId} in the Round of 64.`
     );
   }
 
@@ -159,6 +171,10 @@ export function buildBidRecommendation(
     stretchBudgetHeadroom: roundCurrency(stretchBudgetHeadroom),
     fundingStatus,
     concentrationScore: ownershipExposure.concentrationScore,
+    forcedPassConflictTeamId: forcedPassConflict?.opponentId ?? null,
+    forcedPassReason: forcedPassConflict
+      ? `Guaranteed Round of 64 collision with owned team ${forcedPassConflict.opponentId}.`
+      : null,
     drivers: [...drivers],
     rationale
   };

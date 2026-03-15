@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { deriveFundingStatus, deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
-import { buildBidRecommendation } from "@/lib/engine/recommendations";
+import { buildBidRecommendation, computeOwnershipExposure } from "@/lib/engine/recommendations";
 import { getBreakEvenStage } from "@/lib/payouts";
 import {
   formatBidInputText,
@@ -214,6 +214,15 @@ export function DashboardShell({
       ),
     [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
   );
+  const ownershipConflicts = useMemo(
+    () =>
+      computeOwnershipExposure(
+        liveSession,
+        selectedAsset?.projectionIds ?? (selectedTeam ? [selectedTeam.id] : []),
+        dashboard.focusSyndicate
+      ).likelyConflicts,
+    [dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
+  );
   const overrideSelectedTeam =
     dashboard.session.projections.find((team) => team.id === overrideTeamId) ?? null;
   const selectedOverride =
@@ -291,20 +300,23 @@ export function DashboardShell({
         ),
     [dashboard.focusSyndicate.id, dashboard.soldTeams]
   );
-  const focusOwnedAssets = useMemo(
+  const operatorSyndicateHoldings = useMemo(
     () =>
-      dashboard.soldAssets
-        .filter((item) => item.buyerSyndicateId === dashboard.focusSyndicate.id)
-        .sort(
-          (left, right) =>
-            right.price - left.price || left.asset.label.localeCompare(right.asset.label)
-        ),
-    [dashboard.focusSyndicate.id, dashboard.soldAssets]
+      orderedSyndicateBoard.map((syndicate) => ({
+        syndicate,
+        sales: dashboard.soldAssets
+          .filter((item) => item.buyerSyndicateId === syndicate.id)
+          .sort(
+            (left, right) => right.price - left.price || left.asset.label.localeCompare(right.asset.label)
+          )
+      })),
+    [dashboard.soldAssets, orderedSyndicateBoard]
   );
   const recentSales = useMemo(
     () => [...dashboard.soldAssets].slice(-4).reverse(),
     [dashboard.soldAssets]
   );
+  const [expandedSyndicateIds, setExpandedSyndicateIds] = useState<string[]>([]);
   const lastPurchaseTeam = dashboard.lastPurchase
     ? teamLookup.get(
         dashboard.lastPurchase.projectionIds?.find((teamId) => teamLookup.has(teamId)) ??
@@ -336,9 +348,38 @@ export function DashboardShell({
   }, [analysisAssetLookup, analysisSearch, dashboard.analysis.ranking]);
   const filteredRationale = useMemo(
     () =>
-      recommendation?.rationale.filter(
-        (line) => !line.toLowerCase().includes("likely bidder pressure")
-      ) ?? [],
+      recommendation?.rationale.filter((line) => {
+        const normalized = line.toLowerCase();
+        if (normalized.includes("likely bidder pressure")) {
+          return false;
+        }
+        if (
+          normalized.includes("sits within base funding") ||
+          normalized.includes("inside stretch funding") ||
+          normalized.includes("above the current funding plan")
+        ) {
+          return false;
+        }
+        if (
+          recommendation.forcedPassConflictTeamId &&
+          normalized.includes("largest collision risk is against")
+        ) {
+          return false;
+        }
+        return true;
+      }) ?? [],
+    [recommendation]
+  );
+  const fundingRationale = useMemo(
+    () =>
+      recommendation?.rationale.find((line) => {
+        const normalized = line.toLowerCase();
+        return (
+          normalized.includes("sits within base funding") ||
+          normalized.includes("inside stretch funding") ||
+          normalized.includes("above the current funding plan")
+        );
+      }) ?? null,
     [recommendation]
   );
   const activeOverrideRows = useMemo(
@@ -391,6 +432,31 @@ export function DashboardShell({
         : null,
     [dashboard.bracket, dashboard.session.simulationSnapshot, nominatedTeam]
   );
+  const hasOwnedRoundOneOpponent = Boolean(
+    nominatedMatchup &&
+      dashboard.focusSyndicate.ownedTeamIds.includes(nominatedMatchup.opponent.teamId)
+  );
+  const forcedPassConflictName = recommendation?.forcedPassConflictTeamId
+    ? teamLookup.get(recommendation.forcedPassConflictTeamId)?.name ??
+      recommendation.forcedPassConflictTeamId
+    : null;
+  const hasOwnedLikelyRoundTwoOpponent = Boolean(
+    likelyRound2Matchup &&
+      dashboard.focusSyndicate.ownedTeamIds.includes(likelyRound2Matchup.opponent.teamId)
+  );
+  const callDetailText = recommendation?.forcedPassConflictTeamId
+    ? recommendation.forcedPassReason
+    : fundingRationale;
+  const targetBidDisplay = recommendation
+    ? recommendation.forcedPassConflictTeamId
+      ? "Pass"
+      : formatCurrency(recommendation.targetBid)
+    : "--";
+  const maxBidDisplay = recommendation
+    ? recommendation.forcedPassConflictTeamId
+      ? "Pass"
+      : formatCurrency(recommendation.maxBid)
+    : "--";
 
   useEffect(() => {
     setOverrideTeamId(dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? "");
@@ -900,11 +966,6 @@ export function DashboardShell({
     router.replace(getWorkspacePath(sessionId, nextView));
   }
 
-  function openAnalysisView(teamId: string) {
-    setAnalysisTeamId(teamId);
-    switchWorkspace("analysis");
-  }
-
   async function saveBracketWinner(gameId: string, winnerTeamId: string | null) {
     clearFeedback();
     setIsSavingBracket(true);
@@ -1137,21 +1198,82 @@ export function DashboardShell({
                 {error ? <p className="error-text">{error}</p> : null}
               </article>
 
-              <section className="decision-grid">
-                <article className="surface-card decision-panel decision-panel--combined">
-                  <div className="decision-panel__header">
-                    <div>
+              <section className="operator-board-layout">
+                <div className="operator-board-layout__main">
+                  <article className="surface-card decision-panel decision-panel--combined">
+                    <div className="decision-panel__header">
                       <p className="eyebrow">Live Decision Board</p>
-                      <h2>{nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}</h2>
-                      <p className="decision-panel__subcopy">
-                        {nominatedAsset
-                          ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-                          : "Set an active team to unlock bid guidance."}
-                      </p>
+                      {recommendation ? (
+                        <div
+                          className={cn(
+                            "signal-pill",
+                            `signal-pill--${recommendation.stoplight}`
+                          )}
+                        >
+                          {stoplightLabels[recommendation.stoplight]}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div
+                      className={cn(
+                        "decision-panel__hero",
+                        nominatedAsset
+                          ? "decision-panel__hero--active"
+                          : "decision-panel__hero--waiting"
+                      )}
+                    >
+                      <div className="decision-panel__hero-topline">
+                        <div className="decision-panel__hero-content">
+                          <div className="decision-panel__hero-pulse">
+                            <span
+                              className={cn(
+                                "pulse-dot",
+                                !nominatedAsset && "pulse-dot--muted"
+                              )}
+                            />
+                            <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
+                          </div>
+                          <h2
+                            className={cn(
+                              "decision-panel__hero-title",
+                              !nominatedAsset && "decision-panel__hero-title--waiting"
+                            )}
+                          >
+                            {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
+                          </h2>
+                          <p className="decision-panel__subcopy">
+                            {nominatedAsset
+                              ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
+                              : "Set an active team to unlock bid guidance."}
+                          </p>
+                        </div>
+                        <div className="decision-panel__hero-stat">
+                          <span className="insight-label">
+                            Current bid
+                            <button
+                              type="button"
+                              className="tooltip-hint"
+                              aria-label="Current bid explanation"
+                            >
+                              ?
+                              <span className="tooltip-content">
+                                The live price currently on the board for this team. Break-even,
+                                funding status, and recommendation context all update against this
+                                number.
+                              </span>
+                            </button>
+                          </span>
+                          <strong>{formatCurrency(currentBid)}</strong>
+                        </div>
+                      </div>
                       {nominatedMatchup ? (
                         <p className="decision-panel__matchup">
                           Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
                           {nominatedMatchup.opponent.name}
+                          {hasOwnedRoundOneOpponent ? (
+                            <span className="decision-panel__matchup-owned">you own</span>
+                          ) : null}
                         </p>
                       ) : null}
                       {likelyRound2Matchup ? (
@@ -1159,6 +1281,9 @@ export function DashboardShell({
                           Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
                           {likelyRound2Matchup.opponent.name} (
                           {formatPercent(likelyRound2Matchup.probability)})
+                          {hasOwnedLikelyRoundTwoOpponent ? (
+                            <span className="decision-panel__matchup-owned">you own</span>
+                          ) : null}
                         </p>
                       ) : null}
                       {nominatedAsset && nominatedAsset.type !== "single_team" ? (
@@ -1170,9 +1295,7 @@ export function DashboardShell({
                         <div className="decision-panel__annotation">
                           {nominatedTeamClassification ? (
                             <div className="decision-panel__classification">
-                              <TeamClassificationBadge
-                                classification={nominatedTeamClassification}
-                              />
+                              <TeamClassificationBadge classification={nominatedTeamClassification} />
                             </div>
                           ) : null}
                           {nominatedTeamNote ? (
@@ -1181,391 +1304,252 @@ export function DashboardShell({
                         </div>
                       ) : null}
                     </div>
-                    {recommendation ? (
-                      <div
-                        className={cn(
-                          "signal-pill",
-                          `signal-pill--${recommendation.stoplight}`
-                        )}
-                      >
-                        {stoplightLabels[recommendation.stoplight]}
+                  </article>
+
+                  <article className="surface-card decision-context">
+                    <div className="decision-context__overview">
+                      <div className="decision-panel__callout decision-context__callout">
+                        <p className="eyebrow">Call</p>
+                        <h3>
+                          {recommendation
+                            ? recommendation.forcedPassConflictTeamId
+                              ? "Pass"
+                              : recommendation.stoplight === "buy"
+                              ? `Bid through ${formatCurrency(recommendation.targetBid)}`
+                              : recommendation.stoplight === "caution"
+                                ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
+                                : `Pass above ${formatCurrency(recommendation.maxBid)}`
+                            : "Pick a team to set the board"}
+                        </h3>
+                        <p>
+                          {recommendation
+                            ? recommendation.forcedPassConflictTeamId
+                              ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
+                              : fundingStatusLabels[recommendation.fundingStatus]
+                            : "The live room stays focused on the current nomination and bankroll position."}
+                        </p>
+                        {callDetailText ? (
+                          <p className="call-conflict">{callDetailText}</p>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
 
-                  <div className="decision-panel__callout">
-                    <p className="eyebrow">Call</p>
-                    <h3>
-                      {recommendation
-                        ? recommendation.stoplight === "buy"
-                          ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-                          : recommendation.stoplight === "caution"
-                            ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-                            : `Pass above ${formatCurrency(recommendation.maxBid)}`
-                        : "Pick a team to set the board"}
-                    </h3>
-                    <p>
-                      {recommendation
-                        ? fundingStatusLabels[recommendation.fundingStatus]
-                        : "The live room stays focused on the current nomination and bankroll position."}
-                    </p>
-                    {recommendation?.rationale[2] ? (
-                      <p className="call-conflict">{recommendation.rationale[2]}</p>
-                    ) : null}
-                  </div>
-
-                  <div className="decision-strip">
-                    <div className="decision-stat decision-stat--active">
-                      <span className="insight-label">
-                        Current bid
-                        <button
-                          type="button"
-                          className="tooltip-hint"
-                          aria-label="Current bid explanation"
-                        >
-                          ?
-                          <span className="tooltip-content">
-                            The live price currently on the board for this team. Break-even,
-                            funding status, and recommendation context all update against this
-                            number.
-                          </span>
-                        </button>
-                      </span>
-                      <strong>{formatCurrency(currentBid)}</strong>
-                    </div>
-                    <div className="decision-stat">
-                      <span className="insight-label">
-                        Target bid
-                        <button
-                          type="button"
-                          className="tooltip-hint"
-                          aria-label="Target bid explanation"
-                        >
-                          ?
-                          <span className="tooltip-content">
-                            The model&apos;s normal buy price for this team based on conviction and
-                            Mothership&apos;s remaining base-plan buying room.
-                          </span>
-                        </button>
-                      </span>
-                      <strong>
-                        {recommendation ? formatCurrency(recommendation.targetBid) : "--"}
-                      </strong>
-                    </div>
-                    <div className="decision-stat">
-                      <span className="insight-label">
-                        Max bid
-                        <button
-                          type="button"
-                          className="tooltip-hint"
-                          aria-label="Max bid explanation"
-                        >
-                          ?
-                          <span className="tooltip-content">
-                            The highest bid the model can justify after stretch funding room and
-                            portfolio overlap penalties are applied.
-                          </span>
-                        </button>
-                      </span>
-                      <strong>
-                        {recommendation ? formatCurrency(recommendation.maxBid) : "--"}
-                      </strong>
-                    </div>
-                    <div className="decision-stat">
-                      <span className="insight-label">
-                        Base room after buy
-                        <button
-                          type="button"
-                          className="tooltip-hint"
-                          aria-label="Base room after buy explanation"
-                        >
-                          ?
-                          <span className="tooltip-content">
-                            How much room would remain inside Mothership&apos;s base funding plan
-                            after buying this team at the current bid.
-                          </span>
-                        </button>
-                      </span>
-                      <strong>{formatCurrency(projectedBaseRoom)}</strong>
-                    </div>
-                  </div>
-                </article>
-
-                <SyndicateBoardCard
-                  syndicates={orderedSyndicateBoard}
-                  focusSyndicateId={dashboard.focusSyndicate.id}
-                  focusFunding={focusFunding}
-                />
-              </section>
-
-              <section className="detail-grid detail-grid--balanced">
-                <article className="surface-card">
-                  <div className="section-headline">
-                    <div>
-                      <p className="eyebrow">Mothership Position</p>
-                      <h3>Owned teams</h3>
-                    </div>
-                  </div>
-
-                  <div className="owned-team-list">
-                    <div className="owned-team-list__header">
-                      <p className="eyebrow">Owned Teams</p>
-                      <span className="status-pill status-pill--muted">
-                        Sorted by purchase price
-                      </span>
-                    </div>
-                    {focusOwnedAssets.length ? (
-                      focusOwnedAssets.map((item) => {
-                        const representativeTeam =
-                          teamLookup.get(item.asset.projectionIds[0]) ?? null;
-                        const modeledValue = item.asset.projectionIds.reduce(
-                          (total, projectionId) =>
-                            total +
-                            (snapshot?.teamResults[projectionId]?.expectedGrossPayout ?? 0),
-                          0
-                        );
-                        const valueDelta = modeledValue - item.price;
-                        const analysisTargetTeamId = item.asset.projectionIds[0] ?? null;
-
-                        return (
-                          <button
-                            key={item.asset.id}
-                            type="button"
-                            className="owned-team-button"
-                            disabled={!analysisTargetTeamId}
-                            onClick={() => {
-                              if (analysisTargetTeamId) {
-                                openAnalysisView(analysisTargetTeamId);
-                              }
-                            }}
-                          >
-                            <div className="owned-team-button__header">
-                              <div>
-                                <strong>{item.asset.label}</strong>
-                                <span>
-                                  {formatAssetSubtitle(item.asset, representativeTeam) ||
-                                    formatAssetMembers(item.asset)}
-                                </span>
-                              </div>
-                              <span className="status-pill">Open in Analysis</span>
-                            </div>
-                            <div className="owned-team-button__metrics">
-                              <MetricCard
-                                label="Purchase price"
-                                value={formatCurrency(item.price)}
-                                compact
-                              />
-                              <MetricCard
-                                label="Modeled value"
-                                value={formatCurrency(modeledValue)}
-                                compact
-                              />
-                              <MetricCard
-                                label="Delta"
-                                value={formatCurrency(valueDelta)}
-                                compact
-                              />
-                            </div>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <p className="empty-copy">
-                        No purchased teams yet for {dashboard.focusSyndicate.name}.
-                      </p>
-                    )}
-                  </div>
-                </article>
-
-                <article className="surface-card decision-context">
-                  <div className="section-headline">
-                    <div>
-                      <p className="eyebrow">Decision Context</p>
-                      <h3>Why the model is leaning this way</h3>
-                    </div>
-                  </div>
-
-                  <div className="mini-grid decision-context__summary">
-                    <MetricCard
-                      label="Break-even round"
-                      value={formatBreakEvenStage(breakEvenStage)}
-                      compact
-                    />
-                    <MetricCard
-                      label="Simulated net"
-                      value={
-                        recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
-                      }
-                      compact
-                    />
-                    <MetricCard
-                      label="Title odds"
-                      value={formatPercent(titleOdds)}
-                      compact
-                    />
-                  </div>
-
-                  <section className="decision-context__section">
-                    <div className="section-headline section-headline--compact">
-                      <div>
-                        <p className="eyebrow">Rationale</p>
+                      <div className="decision-context__summary-grid">
+                        <MetricCard
+                          label="Break-even round"
+                          value={formatBreakEvenStage(breakEvenStage)}
+                          compact
+                          tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
+                        />
+                        <MetricCard
+                          label="Simulated net"
+                          value={
+                            recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
+                          }
+                          compact
+                          tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
+                        />
+                        <MetricCard
+                          label="Target bid"
+                          value={targetBidDisplay}
+                          compact
+                          tooltip="The model&apos;s normal buy price for this team based on conviction and Mothership&apos;s remaining base-plan buying room."
+                        />
+                        <MetricCard
+                          label="Max bid"
+                          value={maxBidDisplay}
+                          compact
+                          tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
+                        />
                       </div>
                     </div>
-                    {filteredRationale.length ? (
-                      <div className="list-stack">
-                        {filteredRationale.map((line) => (
-                          <div key={line} className="list-line">
-                            {line}
+
+                    <div className="decision-context__columns">
+                      <section className="decision-context__section">
+                        <div className="section-headline section-headline--compact">
+                          <div>
+                            <p className="eyebrow">Rationale</p>
                           </div>
+                        </div>
+                        {filteredRationale.length ? (
+                          <div className="list-stack">
+                            {filteredRationale.map((line) => (
+                              <div key={line} className="list-line">
+                                {line}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">
+                            Choose a team to unlock simulation-backed rationale.
+                          </p>
+                        )}
+                      </section>
+
+                      <section className="decision-context__section">
+                        <div className="section-headline section-headline--compact">
+                          <div>
+                            <p className="eyebrow">Ownership Conflicts</p>
+                          </div>
+                        </div>
+                        {ownershipConflicts.length ? (
+                          <div className="list-stack">
+                            {ownershipConflicts.slice(0, 4).map((conflict) => (
+                              <ConflictRow
+                                key={conflict.opponentId}
+                                conflict={conflict}
+                                teamLookup={teamLookup}
+                                isOwned
+                                isCritical={
+                                  conflict.opponentId === recommendation?.forcedPassConflictTeamId
+                                }
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">No immediate portfolio collision flags.</p>
+                        )}
+                      </section>
+                    </div>
+                  </article>
+
+                  <article className="surface-card">
+                    <div className="section-headline">
+                      <div>
+                        <p className="eyebrow">Model Drivers</p>
+                        <h3>Visible metrics that justify the bid call</h3>
+                      </div>
+                    </div>
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Expected gross"
+                        value={
+                          recommendation ? formatCurrency(recommendation.expectedGrossPayout) : "--"
+                        }
+                        tooltip="Average modeled payout for this team across the simulation before subtracting what you would pay for it."
+                      />
+                      <MetricCard
+                        label="Expected net"
+                        value={
+                          recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
+                        }
+                        tooltip="Expected gross minus the current bid and the model's overlap penalty for teams Mothership already owns."
+                      />
+                      <MetricCard
+                        label="Sim confidence"
+                        value={
+                          recommendation
+                            ? `${formatCurrency(recommendation.confidenceBand[0])}-${formatCurrency(
+                                recommendation.confidenceBand[1]
+                              )}`
+                            : "--"
+                        }
+                        longValue={Boolean(recommendation)}
+                        tooltip="The model's typical value range for this team. It is shown as expected payout plus or minus about one standard deviation."
+                      />
+                      <MetricCard
+                        label="Opening bid"
+                        value={recommendation ? formatCurrency(recommendation.openingBid) : "--"}
+                        tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
+                      />
+                      <MetricCard
+                        label="Base budget room"
+                        value={
+                          recommendation
+                            ? formatCurrency(recommendation.baseBudgetHeadroom)
+                            : formatCurrency(projectedBaseRoom)
+                        }
+                        tooltip="Room left inside Mothership's base funding plan after the current bid."
+                      />
+                      <MetricCard
+                        label="Stretch budget room"
+                        value={
+                          recommendation
+                            ? formatCurrency(recommendation.stretchBudgetHeadroom)
+                            : formatCurrency(projectedStretchRoom)
+                        }
+                        tooltip="Room left if Mothership moves beyond base and into its stretch funding plan."
+                      />
+                      <MetricCard
+                        label="Ownership penalty"
+                        value={
+                          recommendation ? formatCurrency(recommendation.ownershipPenalty) : "--"
+                        }
+                        tooltip="How much value the model subtracts because this team overlaps with teams Mothership already owns."
+                      />
+                      <MetricCard
+                        label="Value gap to max"
+                        value={recommendation ? formatCurrency(recommendation.valueGap) : "--"}
+                        tooltip="The room left between the current bid and the model's adjusted max bid for this team. Negative means the bid is already above max."
+                      />
+                      <MetricCard
+                        label="Portfolio concentration"
+                        value={
+                          recommendation ? formatPercent(recommendation.concentrationScore) : "--"
+                        }
+                        tooltip="How concentrated Mothership already is. Higher concentration means the model gets more cautious about adding more exposure."
+                      />
+                      <MetricCard
+                        label="Effective share price"
+                        value={
+                          focusFunding.impliedSharePrice === null
+                            ? "--"
+                            : formatCurrency(focusFunding.impliedSharePrice)
+                        }
+                        tooltip="What each equivalent Mothership share implies based on current spend."
+                      />
+                      <MetricCard
+                        label="Title odds"
+                        value={formatPercent(titleOdds)}
+                        tooltip="The simulated chance this team wins the tournament."
+                      />
+                    </div>
+                  </article>
+                </div>
+
+                <aside className="operator-board-layout__side">
+                  <OperatorSyndicateBoardCard
+                    holdings={operatorSyndicateHoldings}
+                    focusSyndicateId={dashboard.focusSyndicate.id}
+                    teamLookup={teamLookup}
+                    expandedSyndicateIds={expandedSyndicateIds}
+                    onToggleSyndicate={(syndicateId) =>
+                      setExpandedSyndicateIds((current) =>
+                        current.includes(syndicateId)
+                          ? current.filter((candidate) => candidate !== syndicateId)
+                          : [...current, syndicateId]
+                      )
+                    }
+                    onExpandAll={() =>
+                      setExpandedSyndicateIds(
+                        operatorSyndicateHoldings.map(({ syndicate }) => syndicate.id)
+                      )
+                    }
+                    onCollapseAll={() => setExpandedSyndicateIds([])}
+                  />
+
+                  <article className="surface-card">
+                    <div className="section-headline">
+                      <div>
+                        <p className="eyebrow">Recent Sales</p>
+                        <h3>Latest auction activity</h3>
+                      </div>
+                    </div>
+                    {recentSales.length ? (
+                      <div className="list-stack">
+                        {recentSales.map((sale) => (
+                          <AssetSaleRow
+                            key={`${sale.asset.id}-${sale.price}`}
+                            sale={sale}
+                            syndicateLookup={syndicateLookup}
+                          />
                         ))}
                       </div>
                     ) : (
-                      <p className="empty-copy">
-                        Choose a team to unlock simulation-backed rationale.
-                      </p>
+                      <p className="empty-copy">No sales have been recorded yet.</p>
                     )}
-                  </section>
-
-                  <section className="decision-context__section">
-                    <div className="section-headline section-headline--compact">
-                      <div>
-                        <p className="eyebrow">Ownership Conflicts</p>
-                      </div>
-                    </div>
-                    {nominatedTeam &&
-                    snapshot?.teamResults[nominatedTeam.id]?.likelyConflicts.length ? (
-                      <div className="list-stack">
-                        {snapshot.teamResults[nominatedTeam.id].likelyConflicts
-                          .slice(0, 4)
-                          .map((conflict) => (
-                            <ConflictRow
-                              key={conflict.opponentId}
-                              conflict={conflict}
-                              teamLookup={teamLookup}
-                            />
-                          ))}
-                      </div>
-                    ) : (
-                      <p className="empty-copy">No immediate portfolio collision flags.</p>
-                    )}
-                  </section>
-                </article>
+                  </article>
+                </aside>
               </section>
-
-              <article className="surface-card">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Recent Sales</p>
-                    <h3>Latest auction activity</h3>
-                  </div>
-                </div>
-                {recentSales.length ? (
-                  <div className="list-stack">
-                    {recentSales.map((sale) => (
-                      <AssetSaleRow
-                        key={`${sale.asset.id}-${sale.price}`}
-                        sale={sale}
-                        syndicateLookup={syndicateLookup}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="empty-copy">No sales have been recorded yet.</p>
-                )}
-              </article>
-
-              <article className="surface-card">
-                <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Model Drivers</p>
-                    <h3>Visible metrics that justify the bid call</h3>
-                  </div>
-                </div>
-                <div className="metric-grid">
-                  <MetricCard
-                    label="Expected gross"
-                    value={
-                      recommendation ? formatCurrency(recommendation.expectedGrossPayout) : "--"
-                    }
-                    tooltip="Average modeled payout for this team across the simulation before subtracting what you would pay for it."
-                  />
-                  <MetricCard
-                    label="Expected net"
-                    value={
-                      recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
-                    }
-                    tooltip="Expected gross minus the current bid and the model's overlap penalty for teams Mothership already owns."
-                  />
-                  <MetricCard
-                    label="Sim confidence"
-                    value={
-                      recommendation
-                        ? `${formatCurrency(recommendation.confidenceBand[0])}-${formatCurrency(
-                            recommendation.confidenceBand[1]
-                          )}`
-                        : "--"
-                    }
-                    longValue={Boolean(recommendation)}
-                    tooltip="The model's typical value range for this team. It is shown as expected payout plus or minus about one standard deviation."
-                  />
-                  <MetricCard
-                    label="Opening bid"
-                    value={recommendation ? formatCurrency(recommendation.openingBid) : "--"}
-                    tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
-                  />
-                  <MetricCard
-                    label="Base budget room"
-                    value={
-                      recommendation
-                        ? formatCurrency(recommendation.baseBudgetHeadroom)
-                        : formatCurrency(projectedBaseRoom)
-                    }
-                    tooltip="Room left inside Mothership's base funding plan after the current bid."
-                  />
-                  <MetricCard
-                    label="Stretch budget room"
-                    value={
-                      recommendation
-                        ? formatCurrency(recommendation.stretchBudgetHeadroom)
-                        : formatCurrency(projectedStretchRoom)
-                    }
-                    tooltip="Room left if Mothership moves beyond base and into its stretch funding plan."
-                  />
-                  <MetricCard
-                    label="Ownership penalty"
-                    value={
-                      recommendation ? formatCurrency(recommendation.ownershipPenalty) : "--"
-                    }
-                    tooltip="How much value the model subtracts because this team overlaps with teams Mothership already owns."
-                  />
-                  <MetricCard
-                    label="Value gap to max"
-                    value={recommendation ? formatCurrency(recommendation.valueGap) : "--"}
-                    tooltip="The room left between the current bid and the model's adjusted max bid for this team. Negative means the bid is already above max."
-                  />
-                  <MetricCard
-                    label="Portfolio concentration"
-                    value={
-                      recommendation ? formatPercent(recommendation.concentrationScore) : "--"
-                    }
-                    tooltip="How concentrated Mothership already is. Higher concentration means the model gets more cautious about adding more exposure."
-                  />
-                  <MetricCard
-                    label="Effective share price"
-                    value={
-                      focusFunding.impliedSharePrice === null
-                        ? "--"
-                        : formatCurrency(focusFunding.impliedSharePrice)
-                    }
-                    tooltip="What each equivalent Mothership share implies based on current spend."
-                  />
-                  <MetricCard
-                    label="Title odds"
-                    value={formatPercent(titleOdds)}
-                    tooltip="The simulated chance this team wins the tournament."
-                  />
-                </div>
-              </article>
             </section>
           ) : null}
 
@@ -2157,6 +2141,27 @@ function ViewerBoard({
         : null,
     [dashboard.bracket, dashboard.session.simulationSnapshot, nominatedTeam]
   );
+  const teamLookup = useMemo(
+    () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
+    [dashboard.session.projections]
+  );
+  const hasOwnedRoundOneOpponent = Boolean(
+    nominatedMatchup &&
+      dashboard.focusSyndicate.ownedTeamIds.includes(nominatedMatchup.opponent.teamId)
+  );
+  const forcedPassConflictName = recommendation?.forcedPassConflictTeamId
+    ? teamLookup.get(recommendation.forcedPassConflictTeamId)?.name ??
+      recommendation.forcedPassConflictTeamId
+    : null;
+  const hasOwnedLikelyRoundTwoOpponent = Boolean(
+    likelyRound2Matchup &&
+      dashboard.focusSyndicate.ownedTeamIds.includes(likelyRound2Matchup.opponent.teamId)
+  );
+  const viewerTargetMaxDisplay = recommendation
+    ? recommendation.forcedPassConflictTeamId
+      ? "Pass"
+      : `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
+    : "--";
   const [ownershipSearch, setOwnershipSearch] = useState("");
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
   const ownershipGroups = useMemo(() => {
@@ -2212,6 +2217,9 @@ function ViewerBoard({
               <p className="viewer-board__matchup">
                 Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
                 {nominatedMatchup.opponent.name}
+                {hasOwnedRoundOneOpponent ? (
+                  <span className="viewer-board__matchup-owned">you own</span>
+                ) : null}
               </p>
             ) : null}
             {likelyRound2Matchup ? (
@@ -2219,6 +2227,9 @@ function ViewerBoard({
                 Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
                 {likelyRound2Matchup.opponent.name} (
                 {formatPercent(likelyRound2Matchup.probability)})
+                {hasOwnedLikelyRoundTwoOpponent ? (
+                  <span className="viewer-board__matchup-owned">you own</span>
+                ) : null}
               </p>
             ) : null}
             {nominatedAsset ? <p className="viewer-note">{formatAssetMembers(nominatedAsset)}</p> : null}
@@ -2239,7 +2250,9 @@ function ViewerBoard({
             <p className="eyebrow">Call</p>
             <h3>
               {recommendation
-                ? recommendation.stoplight === "buy"
+                ? recommendation.forcedPassConflictTeamId
+                  ? "Pass"
+                  : recommendation.stoplight === "buy"
                   ? `Bid through ${formatCurrency(recommendation.targetBid)}`
                   : recommendation.stoplight === "caution"
                     ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
@@ -2248,7 +2261,9 @@ function ViewerBoard({
             </h3>
             <p>
               {recommendation
-                ? fundingStatusLabels[recommendation.fundingStatus]
+                ? recommendation.forcedPassConflictTeamId
+                  ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
+                  : fundingStatusLabels[recommendation.fundingStatus]
                 : "The operator's live recommendation will appear here when a team is active."}
             </p>
           </div>
@@ -2256,11 +2271,7 @@ function ViewerBoard({
           <div className="metric-grid viewer-board__metrics">
             <MetricCard
               label="Target / max"
-              value={
-                recommendation
-                  ? `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
-                  : "--"
-              }
+              value={viewerTargetMaxDisplay}
               longValue={Boolean(recommendation)}
             />
             <MetricCard
@@ -2467,6 +2478,144 @@ function SyndicateBoardCard({
   );
 }
 
+function OperatorSyndicateBoardCard({
+  holdings,
+  focusSyndicateId,
+  teamLookup,
+  expandedSyndicateIds,
+  onToggleSyndicate,
+  onExpandAll,
+  onCollapseAll
+}: {
+  holdings: Array<{ syndicate: Syndicate; sales: SoldAssetSummary[] }>;
+  focusSyndicateId: string;
+  teamLookup: Map<string, TeamProjection>;
+  expandedSyndicateIds: string[];
+  onToggleSyndicate: (syndicateId: string) => void;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}) {
+  return (
+    <article className="surface-card syndicate-board-card syndicate-board-card--operator">
+      <div className="section-headline">
+        <div>
+          <p className="eyebrow">Syndicate Board</p>
+          <h3>Spend and holdings</h3>
+        </div>
+        <div className="admin-inline-actions">
+          <button type="button" className="button button-ghost button--small" onClick={onExpandAll}>
+            Expand all
+          </button>
+          <button
+            type="button"
+            className="button button-ghost button--small"
+            onClick={onCollapseAll}
+            disabled={!expandedSyndicateIds.length}
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
+      <div className="syndicate-board-frame syndicate-board-frame--operator">
+        <div className="syndicate-board">
+          {holdings.map(({ syndicate, sales }) => {
+            const isFocusSyndicate = syndicate.id === focusSyndicateId;
+            const isExpanded = expandedSyndicateIds.includes(syndicate.id);
+
+            return (
+              <div
+                key={syndicate.id}
+                className={cn(
+                  "syndicate-row syndicate-row--operator",
+                  isFocusSyndicate && "syndicate-row--focus",
+                  isExpanded && "syndicate-row--expanded"
+                )}
+              >
+                <div className="syndicate-row__summary">
+                  <div className="syndicate-row__title">
+                    <span className="syndicate-dot" style={{ backgroundColor: syndicate.color }} />
+                    <div>
+                      <strong>{syndicate.name}</strong>
+                      <span>
+                        {sales.length} {sales.length === 1 ? "team" : "teams"} owned
+                      </span>
+                    </div>
+                  </div>
+                  <div className="syndicate-row__metric">
+                    <span>Spend</span>
+                    <strong>{formatCurrency(syndicate.spend)}</strong>
+                  </div>
+                  <div className="syndicate-row__actions">
+                    {syndicate.id !== focusSyndicateId && syndicate.estimateExceeded ? (
+                      <div className="syndicate-row__flag">
+                        <span>Room read</span>
+                        <strong>Estimate exceeded</strong>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="syndicate-row__toggle"
+                      aria-expanded={isExpanded}
+                      aria-label={
+                        isExpanded
+                          ? `Collapse ${syndicate.name} teams`
+                          : `Expand ${syndicate.name} teams`
+                      }
+                      onClick={() => onToggleSyndicate(syndicate.id)}
+                    >
+                      <span
+                        className={cn(
+                          "syndicate-row__chevron",
+                          isExpanded && "syndicate-row__chevron--expanded"
+                        )}
+                        aria-hidden="true"
+                      >
+                        ▾
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                {isExpanded ? (
+                  <div className="syndicate-row__details">
+                    {sales.length ? (
+                      <div className="syndicate-owned-list">
+                        {sales.map((sale, index) => {
+                          const representativeTeam =
+                            teamLookup.get(sale.asset.projectionIds[0] ?? "") ?? null;
+                          const subtitle =
+                            formatAssetSubtitle(sale.asset, representativeTeam) ||
+                            (sale.asset.type === "single_team"
+                              ? formatAssetMembers(sale.asset)
+                              : formatAssetMembersCompact(sale.asset));
+
+                          return (
+                            <div
+                              key={`${syndicate.id}-${sale.asset.id}-${sale.price}-${index}`}
+                              className="syndicate-owned-item"
+                            >
+                              <div>
+                                <strong>{sale.asset.label}</strong>
+                                <span>{subtitle}</span>
+                              </div>
+                              <strong>{formatCurrency(sale.price)}</strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="empty-copy">No purchased teams yet for {syndicate.name}.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function ViewerSoldAssetRow({
   sale,
   buyerName
@@ -2618,17 +2767,24 @@ function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
 
 function ConflictRow({
   conflict,
-  teamLookup
+  teamLookup,
+  isOwned = false,
+  isCritical = false
 }: {
   conflict: MatchupConflict;
   teamLookup: Map<string, TeamProjection>;
+  isOwned?: boolean;
+  isCritical?: boolean;
 }) {
   const opponent = teamLookup.get(conflict.opponentId);
 
   return (
-    <div className="list-row">
+    <div className={cn("list-row", "list-row--top-aligned", isCritical && "list-row--critical")}>
       <div>
-        <strong>{opponent?.name ?? conflict.opponentId}</strong>
+        <strong>
+          {opponent?.name ?? conflict.opponentId}
+          {isOwned ? <span className="list-row__inline-note"> (you own)</span> : null}
+        </strong>
         <span>{titleCaseStage(conflict.earliestRound)} window</span>
       </div>
       <strong>{formatPercent(conflict.probability)}</strong>
