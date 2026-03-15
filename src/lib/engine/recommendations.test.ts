@@ -132,6 +132,9 @@ describe("recommendations", () => {
     expect(recommendation).not.toBeNull();
     expect(recommendation?.maxBid).toBeGreaterThan(0);
     expect(recommendation?.targetBid).toBeGreaterThan(0);
+    expect(recommendation?.targetBid).toBeGreaterThan(
+      (recommendation?.expectedGrossPayout ?? 0) * 0.35
+    );
     expect(recommendation?.drivers).toHaveLength(3);
     expect(recommendation?.valueGap).toBeDefined();
   });

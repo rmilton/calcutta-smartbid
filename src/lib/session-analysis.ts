@@ -7,7 +7,7 @@ import {
   SessionAnalysisSnapshot,
   Syndicate
 } from "@/lib/types";
-import { roundCurrency } from "@/lib/utils";
+import { clamp, roundCurrency } from "@/lib/utils";
 
 export function buildSessionAnalysisSnapshot(
   session: AuctionSession,
@@ -42,8 +42,36 @@ export function buildSessionAnalysisSnapshot(
   const budgetRows = convictionRows
     .map(({ row, conviction }) => {
       const share = convictionSum > 0 ? conviction / convictionSum : fallbackShare;
-      const targetBid = roundCurrency(investableCash * share);
-      const maxBid = roundCurrency(Math.max(targetBid, stretchCash * share));
+      const simulationResult = session.simulationSnapshot?.teamResults[row.teamId];
+      const expectedGrossPayout = simulationResult?.expectedGrossPayout ?? 0;
+      const confidenceFloor = simulationResult?.confidenceBand[0] ?? 0;
+      const confidenceCeiling = simulationResult?.confidenceBand[1] ?? 0;
+      const relativeConviction =
+        fallbackShare > 0 ? share / fallbackShare : 1;
+      const convictionTilt = clamp(0.78 + relativeConviction * 0.22, 0.72, 1.28);
+
+      const legacyTargetBid = investableCash * share;
+      const legacyMaxBid = stretchCash * share;
+      const valueAnchoredTargetBase =
+        expectedGrossPayout > 0
+          ? Math.max(expectedGrossPayout * 0.42, confidenceFloor * 0.72)
+          : legacyTargetBid;
+      const valueAnchoredMaxBase =
+        expectedGrossPayout > 0
+          ? Math.max(
+              valueAnchoredTargetBase * 1.08,
+              Math.min(expectedGrossPayout * 0.62, confidenceCeiling * 0.76)
+            )
+          : legacyMaxBid;
+      const targetBid = roundCurrency(
+        Math.min(investableCash, valueAnchoredTargetBase * convictionTilt)
+      );
+      const maxBid = roundCurrency(
+        Math.max(
+          targetBid,
+          Math.min(stretchCash, valueAnchoredMaxBase * convictionTilt)
+        )
+      );
       const openingBid = roundCurrency(
         Math.max((targetBid > 0 ? targetBid : maxBid) * 0.62, 1)
       );

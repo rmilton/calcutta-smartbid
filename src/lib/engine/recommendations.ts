@@ -84,7 +84,7 @@ export function buildBidRecommendation(
   const investableShare = budgetRows.reduce((total, row) => total + row.investableShare, 0);
 
   const rationale = [
-    `${subjectLabel} carries a ${convictionScore.toFixed(3)} conviction score with ${Math.round(investableShare * 100)}% of the current investable budget.`,
+    `${subjectLabel} carries a ${convictionScore.toFixed(3)} conviction score with ${Math.round(investableShare * 100)}% relative pricing weight on the current board.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
     `${focusSyndicate.name} sits ${fundingStatus === "safe" ? "within base funding" : fundingStatus === "stretch" ? "inside stretch funding" : "above the current funding plan"} with ${roundCurrency(baseBudgetHeadroom)} base room and ${roundCurrency(stretchBudgetHeadroom)} stretch room after this bid.`
   ];

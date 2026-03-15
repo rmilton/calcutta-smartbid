@@ -1944,7 +1944,7 @@ export function DashboardShell({
                         longValue={Boolean(selectedSimulation)}
                       />
                       <MetricCard
-                        label="Conviction share"
+                        label="Conviction weight"
                         value={
                           analysisBudgetRow
                             ? formatPercent(analysisBudgetRow.investableShare)

@@ -161,4 +161,21 @@ describe("session analysis classifications", () => {
     expect(analysis.budgetRows.some((row) => row.teamId === "alabama")).toBe(false);
     expect(analysis.budgetRows.every((row) => row.targetBid > 0)).toBe(true);
   });
+
+  it("anchors top-team bid guidance to simulated value, not just bankroll share", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const alabamaBudget = analysis.budgetRows.find((row) => row.teamId === "alabama");
+    const alabamaSimulation = session.simulationSnapshot?.teamResults.alabama;
+
+    expect(alabamaBudget).toBeDefined();
+    expect(alabamaSimulation).toBeDefined();
+    expect(alabamaBudget?.targetBid).toBeGreaterThan(
+      analysis.investableCash * (alabamaBudget?.investableShare ?? 0)
+    );
+    expect(alabamaBudget?.targetBid).toBeLessThanOrEqual(
+      alabamaSimulation?.expectedGrossPayout ?? 0
+    );
+  });
 });
