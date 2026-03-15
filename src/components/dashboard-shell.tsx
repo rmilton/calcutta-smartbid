@@ -166,8 +166,6 @@ export function DashboardShell({
     bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
   const liveNominatedAssetId = dashboard.session.liveState.nominatedAssetId ?? "";
   const liveNominatedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
-  const hasLiveNominationMismatch =
-    liveNominatedAssetId !== selectedAssetId || liveNominatedTeamId !== selectedTeamId;
 
   useEffect(() => {
     if (!availableViews.includes(activeView)) {
@@ -176,7 +174,7 @@ export function DashboardShell({
   }, [activeView, availableViews]);
 
   useEffect(() => {
-    if (isLiveStateDirty && !viewerMode && !hasLiveNominationMismatch) {
+    if (isLiveStateDirty && !viewerMode) {
       return;
     }
 
@@ -197,7 +195,6 @@ export function DashboardShell({
     setBidInputValue(formatBidInputValue(liveBid));
   }, [
     dashboard.session.liveState,
-    hasLiveNominationMismatch,
     isLiveStateDirty,
     liveNominatedAssetId,
     liveNominatedTeamId,
@@ -416,6 +413,7 @@ export function DashboardShell({
             asset.region,
             representativeRow.teamName,
             representativeRow.shortName,
+            ...memberRows.map((row) => row.shortName),
             ...asset.members.map((member) => member.label)
           ]
             .join(" ")
