@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, Fragment, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import { AdminCenterData, DataSource, PlatformUser, SyndicateCatalogEntry } from "@/lib/types";
 
 type AdminTab = "sessions" | "users" | "syndicates" | "data";
@@ -127,8 +128,7 @@ export function AdminCenter({
   const [data, setData] = useState(initialData);
   const [tab, setTab] = useState<AdminTab>("sessions");
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
 
   const [sessionSearch, setSessionSearch] = useState("");
   const [showArchivedSessions, setShowArchivedSessions] = useState(false);
@@ -207,11 +207,6 @@ export function AdminCenter({
     );
   }, [data.dataSources, sourceFilter, sourceSearch]);
 
-  function resetMessages() {
-    setError(null);
-    setNotice(null);
-  }
-
   async function refreshData() {
     const response = await fetch("/api/admin/center", { cache: "no-store" });
     if (!response.ok) {
@@ -229,7 +224,7 @@ export function AdminCenter({
     body: unknown,
     successMessage: string
   ) {
-    resetMessages();
+    clearFeedback();
     const response = await fetch(url, {
       method,
       headers: {
@@ -244,11 +239,11 @@ export function AdminCenter({
     }
 
     await refreshData();
-    setNotice(successMessage);
+    showNotice(successMessage);
   }
 
   async function archiveSession(sessionId: string) {
-    resetMessages();
+    clearFeedback();
     const response = await fetch(`/api/admin/sessions/${sessionId}/lifecycle`, {
       method: "PUT",
       headers: {
@@ -263,11 +258,11 @@ export function AdminCenter({
     }
 
     await refreshData();
-    setNotice("Session archived.");
+    showNotice("Session archived.");
   }
 
   async function deleteSessionPermanently(sessionId: string, confirmationName: string) {
-    resetMessages();
+    clearFeedback();
     const response = await fetch(`/api/admin/sessions/${sessionId}/lifecycle`, {
       method: "DELETE",
       headers: {
@@ -284,7 +279,7 @@ export function AdminCenter({
     await refreshData();
     setDeleteTarget(null);
     setDeleteConfirmationName("");
-    setNotice("Session deleted permanently.");
+    showNotice("Session deleted permanently.");
   }
 
   function onCsvFileSelect(
@@ -336,7 +331,7 @@ export function AdminCenter({
         setNewUser(emptyUserDraft());
         setShowAddUser(false);
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to create user.");
+        showError(submitError instanceof Error ? submitError.message : "Unable to create user.");
       }
     });
   }
@@ -349,7 +344,7 @@ export function AdminCenter({
         setEditingUserId(null);
         setEditingUser(emptyUserDraft());
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to update user.");
+        showError(submitError instanceof Error ? submitError.message : "Unable to update user.");
       }
     });
   }
@@ -367,7 +362,7 @@ export function AdminCenter({
         setNewSyndicate(emptySyndicateDraft());
         setShowAddSyndicate(false);
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to create syndicate."
         );
       }
@@ -387,7 +382,7 @@ export function AdminCenter({
         setEditingSyndicateId(null);
         setEditingSyndicate(emptySyndicateDraft());
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update syndicate."
         );
       }
@@ -441,7 +436,7 @@ export function AdminCenter({
         setNewSource(emptySourceDraft());
         setShowAddSource(false);
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to create data source."
         );
       }
@@ -461,7 +456,7 @@ export function AdminCenter({
         setEditingSourceId(null);
         setEditingSource(emptySourceDraft());
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update data source."
         );
       }
@@ -471,7 +466,7 @@ export function AdminCenter({
   function onTestSource(sourceId: string) {
     startTransition(async () => {
       try {
-        resetMessages();
+        clearFeedback();
         const response = await fetch(`/api/admin/data-sources/${sourceId}/test`, {
           method: "POST"
         });
@@ -481,9 +476,9 @@ export function AdminCenter({
         }
 
         await refreshData();
-        setNotice("Data source test succeeded.");
+        showNotice("Data source test succeeded.");
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to test data source."
         );
       }
@@ -627,7 +622,7 @@ export function AdminCenter({
                                     try {
                                       await archiveSession(session.id);
                                     } catch (submitError) {
-                                      setError(
+                                      showError(
                                         submitError instanceof Error
                                           ? submitError.message
                                           : "Unable to archive session."
@@ -803,7 +798,7 @@ export function AdminCenter({
                                       user.active ? "User archived." : "User reactivated."
                                     );
                                   } catch (submitError) {
-                                    setError(
+                                    showError(
                                       submitError instanceof Error
                                         ? submitError.message
                                         : "Unable to update user."
@@ -1041,7 +1036,7 @@ export function AdminCenter({
                                         : "Syndicate reactivated."
                                     );
                                   } catch (submitError) {
-                                    setError(
+                                    showError(
                                       submitError instanceof Error
                                         ? submitError.message
                                         : "Unable to update syndicate."
@@ -1355,7 +1350,7 @@ export function AdminCenter({
                                         : "Data source enabled."
                                     );
                                   } catch (submitError) {
-                                    setError(
+                                    showError(
                                       submitError instanceof Error
                                         ? submitError.message
                                         : "Unable to update data source."
@@ -1549,7 +1544,7 @@ export function AdminCenter({
                             deleteConfirmationName
                           );
                         } catch (submitError) {
-                          setError(
+                          showError(
                             submitError instanceof Error
                               ? submitError.message
                               : "Unable to delete session."
