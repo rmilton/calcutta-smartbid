@@ -1,43 +1,45 @@
 "use client";
+
 import Image from "next/image";
 import type { Route } from "next";
-import {
-  useCallback,
-  startTransition,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { deriveFundingStatus, deriveMothershipFundingSnapshot } from "@/lib/funding";
+import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
-import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
+import {
+  buildOperatorSyndicateHoldings,
+  buildViewerOwnershipGroups,
+  deriveAuctionMatchups,
+  filterRecommendationRationale,
+  getFocusOwnedTeams,
+  orderSyndicateBoard
+} from "@/lib/live-room";
 import { buildBidRecommendation, computeOwnershipExposure } from "@/lib/engine/recommendations";
 import { getBreakEvenStage } from "@/lib/payouts";
-import {
-  formatBidInputText,
-  formatBidInputValue,
-  parseBidInputValue
-} from "@/lib/bid-input";
 import {
   AuctionAsset,
   AuctionDashboard,
   AuthenticatedMember,
   BidRecommendation,
-  BracketGameTeam,
-  BracketViewModel,
-  MatchupConflict,
   ProjectionOverride,
-  SimulationSnapshot,
-  SoldAssetSummary,
-  Stage,
-  Syndicate,
   TeamClassificationValue,
   TeamProjection
 } from "@/lib/types";
 import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team-classifications";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
+import { OperatorAuctionWorkspace } from "@/components/dashboard-shell/operator-auction-workspace";
+import {
+  MetricCard,
+  displayNullableNumber,
+  displayNullablePercent,
+  formatBreakEvenStage,
+  formatAssetMembersCompact
+} from "@/components/dashboard-shell/shared";
+import {
+  useLiveRoomController,
+  WorkspaceView
+} from "@/components/dashboard-shell/use-live-room-controller";
+import { ViewerAuctionWorkspace } from "@/components/dashboard-shell/viewer-auction-workspace";
 import { SessionBracket } from "@/components/session-bracket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
@@ -49,8 +51,6 @@ interface DashboardShellProps {
   viewerMode: boolean;
   currentMember: AuthenticatedMember;
 }
-
-type WorkspaceView = "auction" | "analysis" | "bracket" | "overrides";
 
 interface ActiveOverrideRow {
   override: ProjectionOverride;
@@ -108,7 +108,6 @@ function getWorkspacePath(sessionId: string, view: WorkspaceView) {
   ) as Route;
 }
 
-
 export function DashboardShell({
   sessionId,
   initialDashboard,
@@ -118,100 +117,69 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const router = useRouter();
   const availableViews = viewerMode ? viewerViews : editorViews;
-  const { dashboard, refresh, broadcastRefresh, replaceDashboard } = useSessionDashboard(
-    sessionId,
-    initialDashboard
-  );
-  const [activeView, setActiveView] = useState<WorkspaceView>(
-    availableViews.includes(initialView) ? initialView : "auction"
-  );
-  const [selectedAssetId, setSelectedAssetId] = useState(
-    dashboard.session.liveState.nominatedAssetId ?? dashboard.nominatedAsset?.id ?? ""
-  );
-  const [selectedTeamId, setSelectedTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
-  );
-  const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
-  const [bidInputValue, setBidInputValue] = useState(
-    formatBidInputValue(dashboard.session.liveState.currentBid)
-  );
-  const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
-  const [isSavingLiveState, setIsSavingLiveState] = useState(false);
-  const [isUndoingPurchase, setIsUndoingPurchase] = useState(false);
-  const [isSavingClassification, setIsSavingClassification] = useState(false);
-  const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
-  const [isSavingBracket, setIsSavingBracket] = useState(false);
-  const [overrideForm, setOverrideForm] = useState({
-    rating: "",
-    offense: "",
-    defense: "",
-    tempo: ""
-  });
-  const [teamNoteInput, setTeamNoteInput] = useState("");
   const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
-  const [analysisSearch, setAnalysisSearch] = useState("");
-  const [analysisTeamId, setAnalysisTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
-  );
-  const [overrideTeamId, setOverrideTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
-  );
-  const teamSelectRef = useRef<HTMLInputElement | null>(null);
-  const bidInputRef = useRef<HTMLInputElement | null>(null);
-  const activeTeamSaveInFlightRef = useRef(false);
-  const pendingActiveTeamIdRef = useRef<string | null>(null);
-  const pendingCommittedBidRef = useRef<number | null>(null);
-  const parsedBidInputValue = parseBidInputValue(bidInputValue);
-  const isLiveStateDirty =
-    bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
-  const liveNominatedAssetId = dashboard.session.liveState.nominatedAssetId ?? "";
-  const liveNominatedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
-
-  useEffect(() => {
-    if (!availableViews.includes(activeView)) {
-      setActiveView("auction");
-    }
-  }, [activeView, availableViews]);
-
-  useEffect(() => {
-    if (isLiveStateDirty && !viewerMode) {
-      return;
-    }
-
-    const liveBid = dashboard.session.liveState.currentBid;
-    if (pendingCommittedBidRef.current !== null) {
-      if (liveBid !== pendingCommittedBidRef.current) {
-        setSelectedAssetId(liveNominatedAssetId);
-        setSelectedTeamId(liveNominatedTeamId);
-        return;
-      }
-
-      pendingCommittedBidRef.current = null;
-    }
-
-    setSelectedAssetId(liveNominatedAssetId);
-    setSelectedTeamId(liveNominatedTeamId);
-    setCurrentBid(liveBid);
-    setBidInputValue(formatBidInputValue(liveBid));
-  }, [
-    dashboard.session.liveState,
-    isLiveStateDirty,
-    liveNominatedAssetId,
-    liveNominatedTeamId,
-    viewerMode
-  ]);
-
-  useEffect(() => {
-    if (!dashboard.ledger.some((syndicate) => syndicate.id === buyerId)) {
-      setBuyerId(dashboard.focusSyndicate.id);
-    }
-  }, [buyerId, dashboard.focusSyndicate.id, dashboard.ledger]);
+  const controller = useLiveRoomController({
+    sessionId,
+    initialDashboard,
+    initialView,
+    availableViews,
+    viewerMode,
+    clearFeedback,
+    showError,
+    showNotice
+  });
+  const {
+    dashboard,
+    activeView,
+    setActiveView,
+    selectedAssetId,
+    selectedTeamId,
+    currentBid,
+    bidInputValue,
+    parsedBidInputValue,
+    buyerId,
+    isUndoingPurchase,
+    isSavingClassification,
+    isSavingTeamNote,
+    isSavingBracket,
+    overrideForm,
+    teamNoteInput,
+    analysisSearch,
+    analysisTeamId,
+    overrideTeamId,
+    expandedSyndicateIds,
+    ownershipSearch,
+    teamSelectRef,
+    bidInputRef,
+    selectedAsset,
+    selectedTeam,
+    overrideSelectedTeam,
+    selectedOverride,
+    analysisDetailTeam,
+    setBuyerId,
+    setOverrideForm,
+    setTeamNoteInput,
+    setAnalysisSearch,
+    setAnalysisTeamId,
+    setOverrideTeamId,
+    setExpandedSyndicateIds,
+    setOwnershipSearch,
+    handleAssetChange,
+    setBidInputValue,
+    handleBidBlur,
+    handleBidKeyDown,
+    recordPurchase,
+    undoPurchase,
+    saveProjectionOverride,
+    clearProjectionOverride,
+    saveTeamClassification,
+    clearTeamClassification,
+    saveTeamNote,
+    clearTeamNote,
+    saveBracketWinner
+  } = controller;
 
   const snapshot = dashboard.session.simulationSnapshot;
-  const selectedAsset =
-    dashboard.session.auctionAssets?.find((asset) => asset.id === selectedAssetId) ?? null;
-  const selectedTeam =
-    dashboard.session.projections.find((team) => team.id === selectedTeamId) ?? null;
   const liveSession = useMemo(
     () => ({
       ...dashboard.session,
@@ -224,8 +192,6 @@ export function DashboardShell({
     }),
     [currentBid, dashboard.session, selectedAssetId, selectedTeamId]
   );
-  const nominatedAsset = selectedAsset;
-  const nominatedTeam = selectedTeam;
   const recommendation = useMemo(
     () =>
       buildBidRecommendation(
@@ -246,10 +212,6 @@ export function DashboardShell({
       ).likelyConflicts,
     [dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
   );
-  const overrideSelectedTeam =
-    dashboard.session.projections.find((team) => team.id === overrideTeamId) ?? null;
-  const selectedOverride =
-    (overrideTeamId && dashboard.session.projectionOverrides[overrideTeamId]) || null;
   const teamLookup = useMemo(
     () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
     [dashboard.session.projections]
@@ -258,21 +220,11 @@ export function DashboardShell({
     () => new Map(dashboard.ledger.map((syndicate) => [syndicate.id, syndicate])),
     [dashboard.ledger]
   );
-  const orderedSyndicateBoard = useMemo(() => {
-    const mothershipId = dashboard.focusSyndicate.id;
-    return [...dashboard.ledger].sort((left, right) => {
-      if (left.id === mothershipId) {
-        return -1;
-      }
-      if (right.id === mothershipId) {
-        return 1;
-      }
-      return 0;
-    });
-  }, [dashboard.focusSyndicate.id, dashboard.ledger]);
-  const analysisDetailTeam =
-    dashboard.session.projections.find((t) => t.id === analysisTeamId) ?? null;
-  const analysisAssetLookup = useMemo(() => {
+  const orderedSyndicateBoard = useMemo(
+    () => orderSyndicateBoard(dashboard.ledger, dashboard.focusSyndicate.id),
+    [dashboard.focusSyndicate.id, dashboard.ledger]
+  );
+  const analysisDetailAssetLookup = useMemo(() => {
     const lookup = new Map<string, AuctionAsset>();
     for (const asset of dashboard.session.auctionAssets ?? []) {
       for (const projectionId of asset.projectionIds) {
@@ -282,7 +234,7 @@ export function DashboardShell({
     return lookup;
   }, [dashboard.session.auctionAssets]);
   const analysisDetailAsset = analysisTeamId
-    ? analysisAssetLookup.get(analysisTeamId) ?? null
+    ? analysisDetailAssetLookup.get(analysisTeamId) ?? null
     : null;
   const analysisRow =
     dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
@@ -315,33 +267,15 @@ export function DashboardShell({
   const analysisTeamNote = analysisRow?.note ?? null;
   const trimmedTeamNoteInput = teamNoteInput.trim();
   const teamNoteIsDirty = trimmedTeamNoteInput !== (analysisTeamNote ?? "");
-  const focusOwnedTeams = useMemo(
-    () =>
-      dashboard.soldTeams
-        .filter((item) => item.buyerSyndicateId === dashboard.focusSyndicate.id)
-        .sort(
-          (left, right) =>
-            right.price - left.price || left.team.name.localeCompare(right.team.name)
-        ),
-    [dashboard.focusSyndicate.id, dashboard.soldTeams]
-  );
+  const focusOwnedTeams = useMemo(() => getFocusOwnedTeams(dashboard), [dashboard]);
   const operatorSyndicateHoldings = useMemo(
-    () =>
-      orderedSyndicateBoard.map((syndicate) => ({
-        syndicate,
-        sales: dashboard.soldAssets
-          .filter((item) => item.buyerSyndicateId === syndicate.id)
-          .sort(
-            (left, right) => right.price - left.price || left.asset.label.localeCompare(right.asset.label)
-          )
-      })),
+    () => buildOperatorSyndicateHoldings(dashboard.soldAssets, orderedSyndicateBoard),
     [dashboard.soldAssets, orderedSyndicateBoard]
   );
   const recentSales = useMemo(
     () => [...dashboard.soldAssets].slice(-4).reverse(),
     [dashboard.soldAssets]
   );
-  const [expandedSyndicateIds, setExpandedSyndicateIds] = useState<string[]>([]);
   const lastPurchaseTeam = dashboard.lastPurchase
     ? teamLookup.get(
         dashboard.lastPurchase.projectionIds?.find((teamId) => teamLookup.has(teamId)) ??
@@ -441,32 +375,10 @@ export function DashboardShell({
   }, [analysisAssetRows, analysisSearch]);
   const filteredRationale = useMemo(
     () =>
-      recommendation?.rationale.filter((line) => {
-        const normalized = line.toLowerCase();
-        if (normalized.includes("likely bidder pressure")) {
-          return false;
-        }
-        if (
-          normalized.includes("bundles") ||
-          normalized.includes("is an unresolved play-in team made up of")
-        ) {
-          return false;
-        }
-        if (
-          normalized.includes("sits within base funding") ||
-          normalized.includes("inside stretch funding") ||
-          normalized.includes("above the current funding plan")
-        ) {
-          return false;
-        }
-        if (
-          recommendation.forcedPassConflictTeamId &&
-          normalized.includes("largest collision risk is against")
-        ) {
-          return false;
-        }
-        return true;
-      }) ?? [],
+      filterRecommendationRationale(
+        recommendation?.rationale,
+        recommendation?.forcedPassConflictTeamId
+      ),
     [recommendation]
   );
   const activeOverrideRows = useMemo(
@@ -480,14 +392,11 @@ export function DashboardShell({
     [dashboard.session.projectionOverrides, teamLookup]
   );
   const titleOdds =
-    (nominatedTeam &&
-      snapshot?.teamResults[nominatedTeam.id]?.roundProbabilities.champion) ||
-    0;
+    (selectedTeam && snapshot?.teamResults[selectedTeam.id]?.roundProbabilities.champion) || 0;
   const nominatedTeamClassification =
-    (nominatedTeam && dashboard.session.teamClassifications[nominatedTeam.id]?.classification) ||
-    null;
+    (selectedTeam && dashboard.session.teamClassifications[selectedTeam.id]?.classification) || null;
   const nominatedTeamNote =
-    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
+    (selectedTeam && dashboard.session.teamNotes[selectedTeam.id]?.note) || null;
   const focusFunding = useMemo(
     () =>
       deriveMothershipFundingSnapshot(
@@ -504,33 +413,25 @@ export function DashboardShell({
   const breakEvenStage = selectedTeam
     ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
-  const nominatedMatchup = useMemo(
-    () => (nominatedTeam ? getFirstRoundMatchup(dashboard.bracket, nominatedTeam.id) : null),
-    [dashboard.bracket, nominatedTeam]
-  );
-  const likelyRound2Matchup = useMemo(
+  const matchupSummary = useMemo(
     () =>
-      nominatedTeam
-        ? getLikelyRound2Matchup(
-            dashboard.bracket,
-            dashboard.session.simulationSnapshot,
-            nominatedTeam.id
-          )
-        : null,
-    [dashboard.bracket, dashboard.session.simulationSnapshot, nominatedTeam]
-  );
-  const hasOwnedRoundOneOpponent = Boolean(
-    nominatedMatchup &&
-      dashboard.focusSyndicate.ownedTeamIds.includes(nominatedMatchup.opponent.teamId)
+      deriveAuctionMatchups({
+        bracket: dashboard.bracket,
+        snapshot: dashboard.session.simulationSnapshot,
+        nominatedTeam: selectedTeam,
+        ownedTeamIds: dashboard.focusSyndicate.ownedTeamIds
+      }),
+    [
+      dashboard.bracket,
+      dashboard.focusSyndicate.ownedTeamIds,
+      dashboard.session.simulationSnapshot,
+      selectedTeam
+    ]
   );
   const forcedPassConflictName = recommendation?.forcedPassConflictTeamId
     ? teamLookup.get(recommendation.forcedPassConflictTeamId)?.name ??
       recommendation.forcedPassConflictTeamId
     : null;
-  const hasOwnedLikelyRoundTwoOpponent = Boolean(
-    likelyRound2Matchup &&
-      dashboard.focusSyndicate.ownedTeamIds.includes(likelyRound2Matchup.opponent.teamId)
-  );
   const topOwnershipConflict = ownershipConflicts[0] ?? null;
   const callSupportText = recommendation
     ? recommendation.forcedPassConflictTeamId
@@ -558,6 +459,15 @@ export function DashboardShell({
             ? `The price is above the model's comfort range before the ${titleCaseStage(topOwnershipConflict.earliestRound)} ownership risk is even priced in.`
             : "The live price is above the model's comfort range for this team."
       : null;
+  const callHeadline = recommendation
+    ? recommendation.forcedPassConflictTeamId
+      ? "Pass"
+      : recommendation.stoplight === "buy"
+        ? `Bid through ${formatCurrency(recommendation.targetBid)}`
+        : recommendation.stoplight === "caution"
+          ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
+          : `Pass above ${formatCurrency(recommendation.maxBid)}`
+    : "Pick a team to set the board";
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
@@ -568,550 +478,21 @@ export function DashboardShell({
       ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
-
-  useEffect(() => {
-    setOverrideTeamId(dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? "");
-  }, [dashboard.nominatedTeam?.id, dashboard.session.liveState.nominatedTeamId]);
-
-  useEffect(() => {
-    if (!overrideSelectedTeam) {
-      setOverrideForm({
-        rating: "",
-        offense: "",
-        defense: "",
-        tempo: ""
-      });
-      return;
-    }
-
-    setOverrideForm({
-      rating: selectedOverride?.rating?.toString() ?? overrideSelectedTeam.rating.toString(),
-      offense: selectedOverride?.offense?.toString() ?? overrideSelectedTeam.offense.toString(),
-      defense: selectedOverride?.defense?.toString() ?? overrideSelectedTeam.defense.toString(),
-      tempo: selectedOverride?.tempo?.toString() ?? overrideSelectedTeam.tempo.toString()
-    });
-  }, [overrideSelectedTeam, selectedOverride]);
-
-  useEffect(() => {
-    setTeamNoteInput(analysisTeamNote ?? "");
-  }, [analysisTeamId, analysisTeamNote]);
-
-  const saveActiveAsset = useCallback(async (nextAssetId: string) => {
-    pendingActiveTeamIdRef.current = nextAssetId;
-
-    if (activeTeamSaveInFlightRef.current) {
-      return;
-    }
-
-    activeTeamSaveInFlightRef.current = true;
-
-    while (pendingActiveTeamIdRef.current !== null) {
-      const assetIdToPersist = pendingActiveTeamIdRef.current;
-      pendingActiveTeamIdRef.current = null;
-
-      clearFeedback();
-
-      const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          nominatedAssetId: assetIdToPersist || null
-        })
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-
-        if (pendingActiveTeamIdRef.current === null) {
-          showError(payload.error ?? "Unable to update active team.");
-        }
-
-        continue;
-      }
-
-      if (pendingActiveTeamIdRef.current !== null) {
-        continue;
-      }
-
-      void broadcastRefresh("active-team");
-      startTransition(() => {
-        void refresh();
-      });
-    }
-
-    activeTeamSaveInFlightRef.current = false;
-  }, [broadcastRefresh, clearFeedback, refresh, sessionId, showError]);
-
-  const saveLiveState = useCallback(async () => {
-    clearFeedback();
-    setIsSavingLiveState(true);
-    const nextBid = parsedBidInputValue;
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          nominatedAssetId: selectedAssetId || null,
-          currentBid: nextBid
-        })
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to update live state.");
-        return;
-      }
-
-      pendingCommittedBidRef.current = nextBid;
-      setCurrentBid(nextBid);
-      setBidInputValue(formatBidInputValue(nextBid));
-      void broadcastRefresh("live-state");
-      startTransition(() => {
-        void refresh();
-      });
-    } catch {
-      showError("Unable to update live state.");
-    } finally {
-      setIsSavingLiveState(false);
-    }
-  }, [
-    broadcastRefresh,
-    clearFeedback,
-    parsedBidInputValue,
-    refresh,
-    selectedAssetId,
-    sessionId,
-    showError
-  ]);
-
-  const handleBidBlur = useCallback(
-    (event: React.FocusEvent<HTMLInputElement>) => {
-      const nextFocusTarget = event.relatedTarget as HTMLElement | null;
-
-      if (
-        nextFocusTarget?.dataset.liveBidBlurIgnore === "true" ||
-        isSavingLiveState ||
-        !isLiveStateDirty
-      ) {
-        return;
-      }
-
-      void saveLiveState();
-    },
-    [isLiveStateDirty, isSavingLiveState, saveLiveState]
+  const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
+  const ownershipGroups = useMemo(
+    () =>
+      buildViewerOwnershipGroups(
+        dashboard.soldAssets,
+        dashboard.focusSyndicate,
+        dashboard.ledger,
+        ownershipSearch
+      ),
+    [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldAssets, ownershipSearch]
   );
-
-  const handleBidKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>) => {
-      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
-        return;
-      }
-
-      event.preventDefault();
-      const delta = event.key === "ArrowUp" ? 100 : -100;
-      const nextBid = Math.max(0, parsedBidInputValue + delta);
-      setBidInputValue(formatBidInputValue(nextBid));
-    },
-    [parsedBidInputValue]
-  );
-
-  const handleShortcut = useCallback((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
-      return;
-    }
-
-    const target = event.target as HTMLElement | null;
-    const tagName = target?.tagName ?? "";
-    const isButtonTarget = target?.closest("button") !== null;
-    const isEditable =
-      target !== null &&
-      (tagName === "INPUT" ||
-        tagName === "TEXTAREA" ||
-        tagName === "SELECT" ||
-        target.isContentEditable);
-
-    if (event.key === "Escape" && isEditable) {
-      event.preventDefault();
-      target.blur();
-      return;
-    }
-
-    if (event.key === "/" && !isEditable) {
-      event.preventDefault();
-      teamSelectRef.current?.focus();
-      return;
-    }
-
-    if (event.key.toLowerCase() === "b" && !isEditable) {
-      event.preventDefault();
-      bidInputRef.current?.focus();
-      bidInputRef.current?.select();
-      return;
-    }
-
-    if (
-      event.key === "Enter" &&
-      activeView === "auction" &&
-      !isButtonTarget &&
-      (tagName === "INPUT" || !isEditable)
-    ) {
-      event.preventDefault();
-      void saveLiveState();
-    }
-  }, [activeView, saveLiveState]);
-
-  useEffect(() => {
-    if (viewerMode) {
-      return;
-    }
-
-    window.addEventListener("keydown", handleShortcut);
-    return () => window.removeEventListener("keydown", handleShortcut);
-  }, [handleShortcut, viewerMode]);
-
-  const recordPurchase = useCallback(async () => {
-    clearFeedback();
-    const nextBid = parsedBidInputValue;
-
-    if (nextBid <= 0) {
-      showError("Enter a bid greater than $0 before recording a purchase.");
-      return;
-    }
-
-    if (!selectedAssetId) {
-      showError("Choose a nominated team before recording a purchase.");
-      return;
-    }
-
-    const response = await fetch(`/api/sessions/${sessionId}/purchases`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        assetId: selectedAssetId || undefined,
-        buyerSyndicateId: buyerId,
-        price: nextBid
-      })
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      showError(payload.error ?? "Unable to record purchase.");
-      return;
-    }
-
-    const nextDashboard = (await response.json()) as AuctionDashboard;
-    replaceDashboard(nextDashboard);
-    pendingCommittedBidRef.current = null;
-    setSelectedAssetId(nextDashboard.session.liveState.nominatedAssetId ?? "");
-    setSelectedTeamId(nextDashboard.session.liveState.nominatedTeamId ?? "");
-    setCurrentBid(nextDashboard.session.liveState.currentBid);
-    setBidInputValue(formatBidInputValue(nextDashboard.session.liveState.currentBid));
-    showNotice("Purchase recorded.");
-    void broadcastRefresh("purchase");
-  }, [
-    broadcastRefresh,
-    clearFeedback,
-    buyerId,
-    parsedBidInputValue,
-    replaceDashboard,
-    selectedAssetId,
-    sessionId,
-    showError,
-    showNotice
-  ]);
-
-  const undoPurchase = useCallback(async () => {
-    if (!dashboard.lastPurchase) {
-      showError("No purchase is available to undo.");
-      return;
-    }
-
-    clearFeedback();
-    setIsUndoingPurchase(true);
-
-    const purchaseToUndo = dashboard.lastPurchase;
-    const undoneTeamName = lastPurchaseTeam?.name ?? purchaseToUndo.teamId;
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/purchases?purchaseId=${encodeURIComponent(purchaseToUndo.id)}`,
-        {
-          method: "DELETE"
-        }
-      );
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to undo purchase.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      setBuyerId(purchaseToUndo.buyerSyndicateId);
-      showNotice(`Undid purchase for ${undoneTeamName}.`);
-      void broadcastRefresh("purchase-undo");
-    } catch {
-      showError("Unable to undo purchase.");
-    } finally {
-      setIsUndoingPurchase(false);
-    }
-  }, [
-    broadcastRefresh,
-    clearFeedback,
-    dashboard.lastPurchase,
-    lastPurchaseTeam,
-    replaceDashboard,
-    sessionId,
-    showError,
-    showNotice
-  ]);
-
-  async function saveProjectionOverride() {
-    if (!overrideTeamId) {
-      showError("Choose a team before saving an override.");
-      return;
-    }
-
-    clearFeedback();
-    const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          rating: Number(overrideForm.rating),
-          offense: Number(overrideForm.offense),
-          defense: Number(overrideForm.defense),
-          tempo: Number(overrideForm.tempo)
-        })
-      }
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      showError(payload.error ?? "Unable to save projection override.");
-      return;
-    }
-
-    showNotice("Projection override saved and simulation rebuilt.");
-    startTransition(() => {
-      void refresh();
-    });
-  }
-
-  async function clearProjectionOverride() {
-    if (!overrideTeamId) {
-      showError("Choose a team before clearing an override.");
-      return;
-    }
-
-    clearFeedback();
-    const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
-      {
-        method: "DELETE"
-      }
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      showError(payload.error ?? "Unable to clear projection override.");
-      return;
-    }
-
-    showNotice("Projection override cleared.");
-    startTransition(() => {
-      void refresh();
-    });
-  }
-
-  async function saveTeamClassification(classification: TeamClassificationValue) {
-    if (!analysisDetailTeam) {
-      showError("Choose a team before saving a classification.");
-      return;
-    }
-
-    clearFeedback();
-    setIsSavingClassification(true);
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/classification`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ classification })
-        }
-      );
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to save team classification.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      void broadcastRefresh("team-classification");
-    } catch {
-      showError("Unable to save team classification.");
-    } finally {
-      setIsSavingClassification(false);
-    }
-  }
-
-  async function clearTeamClassification() {
-    if (!analysisDetailTeam) {
-      showError("Choose a team before clearing a classification.");
-      return;
-    }
-
-    clearFeedback();
-    setIsSavingClassification(true);
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/classification`,
-        {
-          method: "DELETE"
-        }
-      );
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to clear team classification.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      void broadcastRefresh("team-classification");
-    } catch {
-      showError("Unable to clear team classification.");
-    } finally {
-      setIsSavingClassification(false);
-    }
-  }
-
-  async function saveTeamNote() {
-    if (!analysisDetailTeam) {
-      showError("Choose a team before saving a note.");
-      return;
-    }
-
-    clearFeedback();
-    setIsSavingTeamNote(true);
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ note: teamNoteInput })
-        }
-      );
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to save team note.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      showNotice("Team note saved.");
-      void broadcastRefresh("team-note");
-    } catch {
-      showError("Unable to save team note.");
-    } finally {
-      setIsSavingTeamNote(false);
-    }
-  }
-
-  async function clearTeamNote() {
-    if (!analysisDetailTeam) {
-      showError("Choose a team before clearing a note.");
-      return;
-    }
-
-    clearFeedback();
-    setIsSavingTeamNote(true);
-
-    try {
-      const response = await fetch(
-        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
-        {
-          method: "DELETE"
-        }
-      );
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to clear team note.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      setTeamNoteInput("");
-      showNotice("Team note cleared.");
-      void broadcastRefresh("team-note");
-    } catch {
-      showError("Unable to clear team note.");
-    } finally {
-      setIsSavingTeamNote(false);
-    }
-  }
 
   function switchWorkspace(nextView: WorkspaceView) {
     setActiveView(nextView);
     router.replace(getWorkspacePath(sessionId, nextView));
-  }
-
-  async function saveBracketWinner(gameId: string, winnerTeamId: string | null) {
-    clearFeedback();
-    setIsSavingBracket(true);
-
-    try {
-      const response = await fetch(`/api/sessions/${sessionId}/bracket/games/${gameId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          winnerTeamId
-        })
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        showError(payload.error ?? "Unable to update bracket game.");
-        return;
-      }
-
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      replaceDashboard(nextDashboard);
-      showNotice(winnerTeamId ? "Bracket winner advanced." : "Bracket winner cleared.");
-      void broadcastRefresh("bracket");
-    } catch {
-      showError("Unable to update bracket game.");
-    } finally {
-      setIsSavingBracket(false);
-    }
   }
 
   async function logout() {
@@ -1184,488 +565,90 @@ export function DashboardShell({
         activeView === "bracket" ? (
           bracketWorkspace
         ) : (
-          <ViewerBoard dashboard={dashboard} recommendation={recommendation} />
+          <ViewerAuctionWorkspace
+            dashboard={dashboard}
+            recommendation={recommendation}
+            stoplightLabels={stoplightLabels}
+            fundingStatusLabels={fundingStatusLabels}
+            nominatedMatchup={matchupSummary.nominatedMatchup}
+            likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
+            hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
+            hasOwnedLikelyRoundTwoOpponent={matchupSummary.hasOwnedLikelyRoundTwoOpponent}
+            forcedPassConflictName={forcedPassConflictName}
+            ownershipSearch={ownershipSearch}
+            onOwnershipSearchChange={setOwnershipSearch}
+            ownershipGroups={ownershipGroups}
+            soldFeed={soldFeed}
+          />
         )
       ) : (
         <>
           {activeView === "auction" ? (
-            <section className="auction-layout">
-              <article className="surface-card control-panel auction-controls">
-                <div className="section-headline auction-controls__headline">
-                  <div>
-                    <p className="eyebrow">Live Controls</p>
-                  </div>
-                  <div className="shortcut-legend">
-                    <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
-                    <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
-                    <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
-                  </div>
-                </div>
-
-                <div className="auction-controls__bar">
-                  <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
-                    <span>Active team</span>
-                    <AssetCombobox
-                      assets={dashboard.availableAssets}
-                      soldAssets={dashboard.soldAssets}
-                      value={selectedAssetId}
-                      inputRef={teamSelectRef}
-                      onChange={(nextAssetId) => {
-                        const nextAsset =
-                          dashboard.session.auctionAssets?.find(
-                            (asset) => asset.id === nextAssetId
-                          ) ?? null;
-                        const nextBid = 0;
-                        setSelectedAssetId(nextAssetId);
-                        setSelectedTeamId(nextAsset?.projectionIds[0] ?? "");
-                        setCurrentBid(nextBid);
-                        setBidInputValue(formatBidInputValue(nextBid));
-                        void saveActiveAsset(nextAssetId);
-                      }}
-                    />
-                  </label>
-
-                  <label className="field-shell auction-controls__field auction-controls__field--bid">
-                    <span>Current bid</span>
-                    <div className="live-bid-field">
-                      <input
-                        ref={bidInputRef}
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="off"
-                        value={bidInputValue}
-                        onChange={(event) =>
-                          setBidInputValue(formatBidInputText(event.target.value))
-                        }
-                        onBlur={handleBidBlur}
-                        onKeyDown={handleBidKeyDown}
-                        onFocus={(event) => event.target.select()}
-                        onClick={(event) => event.currentTarget.select()}
-                      />
-                    </div>
-                  </label>
-
-                  <div className="auction-controls__field auction-controls__field--winner">
-                    <span className="auction-controls__label">Winner</span>
-                    <div className="auction-controls__winner-list" role="group" aria-label="Winner">
-                      {dashboard.ledger.map((syndicate) => {
-                        const isSelected = buyerId === syndicate.id;
-                        return (
-                          <button
-                            key={syndicate.id}
-                            type="button"
-                            className={cn(
-                              "button button-secondary auction-controls__winner-button",
-                              isSelected && "auction-controls__winner-button--selected"
-                            )}
-                            aria-pressed={isSelected}
-                            onClick={() => setBuyerId(syndicate.id)}
-                          >
-                            {syndicate.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="auction-controls__footer">
-                  <div className="auction-controls__history">
-                    {dashboard.lastPurchase ? (
-                      <p>
-                        Last sale:{" "}
-                        <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong> to{" "}
-                        <strong>
-                          {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
-                        </strong>{" "}
-                        for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
-                      </p>
-                    ) : (
-                      <p>No purchases recorded yet.</p>
-                    )}
-                    <button
-                      type="button"
-                      className="button button-secondary button--small auction-controls__undo"
-                      data-live-bid-blur-ignore="true"
-                      disabled={!dashboard.lastPurchase || isUndoingPurchase}
-                      onClick={() => void undoPurchase()}
-                    >
-                      {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="button button-accent auction-controls__purchase"
-                    data-live-bid-blur-ignore="true"
-                    disabled={parsedBidInputValue <= 0 || !selectedAssetId}
-                    onClick={() => void recordPurchase()}
-                  >
-                    Record purchase
-                  </button>
-                </div>
-
-                {notice ? <p className="notice-text">{notice}</p> : null}
-                {error ? <p className="error-text">{error}</p> : null}
-              </article>
-
-              <section className="operator-board-layout">
-                <div className="operator-board-layout__main">
-                  <article className="surface-card decision-panel decision-panel--combined">
-                    <div className="decision-panel__header">
-                      <p className="eyebrow">Live Decision Board</p>
-                      {recommendation ? (
-                        <div
-                          className={cn(
-                            "signal-pill",
-                            `signal-pill--${recommendation.stoplight}`
-                          )}
-                        >
-                          {stoplightLabels[recommendation.stoplight]}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div
-                      className={cn(
-                        "decision-panel__hero",
-                        nominatedAsset
-                          ? "decision-panel__hero--active"
-                          : "decision-panel__hero--waiting"
-                      )}
-                    >
-                      <div className="decision-panel__hero-topline">
-	                        <div className="decision-panel__hero-content">
-	                          <div className="decision-panel__hero-pulse">
-	                            <span
-	                              className={cn(
-	                                "pulse-dot",
-	                                !nominatedAsset && "pulse-dot--muted"
-	                              )}
-	                            />
-	                            <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
-	                            {nominatedTeamClassification ? (
-	                              <div className="decision-panel__classification">
-	                                <TeamClassificationBadge classification={nominatedTeamClassification} />
-	                              </div>
-	                            ) : null}
-	                          </div>
-                          <h2
-                            className={cn(
-                              "decision-panel__hero-title",
-                              nominatedAsset &&
-                                nominatedAsset.type === "seed_bundle" &&
-                                "decision-panel__hero-title--bundle",
-                              nominatedAsset &&
-                                (nominatedAsset.type === "play_in_slot" ||
-                                  nominatedAsset.label.length > 24) &&
-                                "decision-panel__hero-title--long",
-                              !nominatedAsset && "decision-panel__hero-title--waiting"
-                            )}
-                          >
-                            {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
-                          </h2>
-                          {nominatedAsset && nominatedAsset.type !== "single_team" ? (
-                            <p className="decision-panel__note">
-                              {formatAssetMembersCompact(nominatedAsset, { includeParens: false })}
-                            </p>
-                          ) : (
-                            <p className="decision-panel__subcopy">
-                              {nominatedAsset
-                                ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-                                : "Set an active team to unlock bid guidance."}
-                            </p>
-                          )}
-                        </div>
-                        <div className="decision-panel__hero-stat">
-                          <span className="insight-label">
-                            Current bid
-                            <button
-                              type="button"
-                              className="tooltip-hint"
-                              aria-label="Current bid explanation"
-                            >
-                              ?
-                              <span className="tooltip-content">
-                                The live price currently on the board for this team. Break-even,
-                                funding status, and recommendation context all update against this
-                                number.
-                              </span>
-                            </button>
-                          </span>
-                          <strong>{formatCurrency(currentBid)}</strong>
-                        </div>
-                      </div>
-                      {nominatedMatchup ? (
-                        <p className="decision-panel__matchup">
-                          Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                          {nominatedMatchup.opponent.name}
-                          {hasOwnedRoundOneOpponent ? (
-                            <span className="decision-panel__matchup-owned">you own</span>
-                          ) : null}
-                        </p>
-                      ) : null}
-                      {likelyRound2Matchup ? (
-                        <p className="decision-panel__path">
-                          Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                          {likelyRound2Matchup.opponent.name} (
-                          {formatPercent(likelyRound2Matchup.probability)})
-                          {hasOwnedLikelyRoundTwoOpponent ? (
-                            <span className="decision-panel__matchup-owned">you own</span>
-                          ) : null}
-                        </p>
-                      ) : null}
-	                      {nominatedTeamNote ? (
-	                        <div className="decision-panel__annotation">
-	                          {nominatedTeamNote ? (
-	                            <span className="decision-panel__note">{nominatedTeamNote}</span>
-	                          ) : null}
-	                        </div>
-	                      ) : null}
-                    </div>
-                  </article>
-
-                  <article className="surface-card decision-context">
-                    <div className="decision-context__overview">
-                      <div className="decision-panel__callout decision-context__callout">
-                        <p className="eyebrow">Call</p>
-                        <h3>
-                          {recommendation
-                            ? recommendation.forcedPassConflictTeamId
-                              ? "Pass"
-                              : recommendation.stoplight === "buy"
-                              ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-                              : recommendation.stoplight === "caution"
-                                ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-                                : `Pass above ${formatCurrency(recommendation.maxBid)}`
-                            : "Pick a team to set the board"}
-                        </h3>
-	                        <p>
-	                          {callSupportText}
-	                        </p>
-                        {callDetailText ? (
-                          <p className="call-conflict">{callDetailText}</p>
-                        ) : null}
-                      </div>
-
-                      <div className="decision-context__summary-grid">
-                        <MetricCard
-                          label="Break-even round"
-                          value={formatBreakEvenStage(breakEvenStage)}
-                          compact
-                          tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                        />
-                        <MetricCard
-                          label="Simulated net"
-                          value={
-                            recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
-                          }
-                          compact
-                          tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                        />
-                        <MetricCard
-                          label="Target bid"
-                          value={targetBidDisplay}
-                          compact
-                          tooltip="The model&apos;s normal buy price for this team based on conviction and Mothership&apos;s remaining base-plan buying room."
-                        />
-                        <MetricCard
-                          label="Max bid"
-                          value={maxBidDisplay}
-                          compact
-                          tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
-                        />
-                      </div>
-                    </div>
-
-                    <div className="decision-context__columns">
-                      <section className="decision-context__section">
-                        <div className="section-headline section-headline--compact">
-                          <div>
-                            <p className="eyebrow">Rationale</p>
-                          </div>
-                        </div>
-                        {filteredRationale.length ? (
-                          <div className="list-stack">
-                            {filteredRationale.map((line) => (
-                              <div key={line} className="list-line">
-                                {line}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="empty-copy">
-                            Choose a team to unlock simulation-backed rationale.
-                          </p>
-                        )}
-                      </section>
-
-                      <section className="decision-context__section">
-                        <div className="section-headline section-headline--compact">
-                          <div>
-                            <p className="eyebrow">Ownership Conflicts</p>
-                          </div>
-                        </div>
-                        {ownershipConflicts.length ? (
-                          <div className="list-stack">
-                            {ownershipConflicts.slice(0, 4).map((conflict) => (
-                              <ConflictRow
-                                key={conflict.opponentId}
-                                conflict={conflict}
-                                teamLookup={teamLookup}
-                                isOwned
-                                isCritical={
-                                  conflict.opponentId === recommendation?.forcedPassConflictTeamId
-                                }
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="empty-copy">No immediate portfolio collision flags.</p>
-                        )}
-                      </section>
-                    </div>
-                  </article>
-
-                  <article className="surface-card">
-                    <div className="section-headline">
-                      <div>
-                        <p className="eyebrow">Model Drivers</p>
-                        <h3>Visible metrics that justify the bid call</h3>
-                      </div>
-                    </div>
-                    <div className="metric-grid">
-                      <MetricCard
-                        label="Expected gross"
-                        value={
-                          recommendation ? formatCurrency(recommendation.expectedGrossPayout) : "--"
-                        }
-                        tooltip="Average modeled payout for this team across the simulation before subtracting what you would pay for it."
-                      />
-                      <MetricCard
-                        label="Expected net"
-                        value={
-                          recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
-                        }
-                        tooltip="Expected gross minus the current bid and the model's overlap penalty for teams Mothership already owns."
-                      />
-                      <MetricCard
-                        label="Sim confidence"
-                        value={
-                          recommendation
-                            ? `${formatCurrency(recommendation.confidenceBand[0])}-${formatCurrency(
-                                recommendation.confidenceBand[1]
-                              )}`
-                            : "--"
-                        }
-                        longValue={Boolean(recommendation)}
-                        tooltip="The model's typical value range for this team. It is shown as expected payout plus or minus about one standard deviation."
-                      />
-                      <MetricCard
-                        label="Opening bid"
-                        value={recommendation ? formatCurrency(recommendation.openingBid) : "--"}
-                        tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
-                      />
-                      <MetricCard
-                        label="Base budget room"
-                        value={
-                          recommendation
-                            ? formatCurrency(recommendation.baseBudgetHeadroom)
-                            : formatCurrency(projectedBaseRoom)
-                        }
-                        tooltip="Room left inside Mothership's base funding plan after the current bid."
-                      />
-                      <MetricCard
-                        label="Stretch budget room"
-                        value={
-                          recommendation
-                            ? formatCurrency(recommendation.stretchBudgetHeadroom)
-                            : formatCurrency(projectedStretchRoom)
-                        }
-                        tooltip="Room left if Mothership moves beyond base and into its stretch funding plan."
-                      />
-                      <MetricCard
-                        label="Ownership penalty"
-                        value={
-                          recommendation ? formatCurrency(recommendation.ownershipPenalty) : "--"
-                        }
-                        tooltip="How much value the model subtracts because this team overlaps with teams Mothership already owns."
-                      />
-                      <MetricCard
-                        label="Value gap to max"
-                        value={recommendation ? formatCurrency(recommendation.valueGap) : "--"}
-                        tooltip="The room left between the current bid and the model's adjusted max bid for this team. Negative means the bid is already above max."
-                      />
-                      <MetricCard
-                        label="Portfolio concentration"
-                        value={
-                          recommendation ? formatPercent(recommendation.concentrationScore) : "--"
-                        }
-                        tooltip="How concentrated Mothership already is. Higher concentration means the model gets more cautious about adding more exposure."
-                      />
-                      <MetricCard
-                        label="Effective share price"
-                        value={
-                          focusFunding.impliedSharePrice === null
-                            ? "--"
-                            : formatCurrency(focusFunding.impliedSharePrice)
-                        }
-                        tooltip="What each equivalent Mothership share implies based on current spend."
-                      />
-                      <MetricCard
-                        label="Title odds"
-                        value={formatPercent(titleOdds)}
-                        tooltip="The simulated chance this team wins the tournament."
-                      />
-                    </div>
-                  </article>
-                </div>
-
-                <aside className="operator-board-layout__side">
-                  <OperatorSyndicateBoardCard
-                    holdings={operatorSyndicateHoldings}
-                    focusSyndicateId={dashboard.focusSyndicate.id}
-                    teamLookup={teamLookup}
-                    expandedSyndicateIds={expandedSyndicateIds}
-                    onToggleSyndicate={(syndicateId) =>
-                      setExpandedSyndicateIds((current) =>
-                        current.includes(syndicateId)
-                          ? current.filter((candidate) => candidate !== syndicateId)
-                          : [...current, syndicateId]
-                      )
-                    }
-                    onExpandAll={() =>
-                      setExpandedSyndicateIds(
-                        operatorSyndicateHoldings.map(({ syndicate }) => syndicate.id)
-                      )
-                    }
-                    onCollapseAll={() => setExpandedSyndicateIds([])}
-                  />
-
-                  <article className="surface-card">
-                    <div className="section-headline">
-                      <div>
-                        <p className="eyebrow">Recent Sales</p>
-                        <h3>Latest auction activity</h3>
-                      </div>
-                    </div>
-                    {recentSales.length ? (
-                      <div className="list-stack">
-                        {recentSales.map((sale) => (
-                          <AssetSaleRow
-                            key={`${sale.asset.id}-${sale.price}`}
-                            sale={sale}
-                            syndicateLookup={syndicateLookup}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="empty-copy">No sales have been recorded yet.</p>
-                    )}
-                  </article>
-                </aside>
-              </section>
-            </section>
+            <OperatorAuctionWorkspace
+              dashboard={dashboard}
+              recommendation={recommendation}
+              notice={notice}
+              error={error}
+              selectedAssetId={selectedAssetId}
+              bidInputValue={bidInputValue}
+              parsedBidInputValue={parsedBidInputValue}
+              buyerId={buyerId}
+              currentBid={currentBid}
+              isUndoingPurchase={isUndoingPurchase}
+              teamSelectRef={teamSelectRef}
+              bidInputRef={bidInputRef}
+              onAssetChange={handleAssetChange}
+              onBidInputChange={setBidInputValue}
+              onBidBlur={handleBidBlur}
+              onBidKeyDown={handleBidKeyDown}
+              onBuyerChange={setBuyerId}
+              onUndoPurchase={() =>
+                void undoPurchase(lastPurchaseTeam?.name ?? dashboard.lastPurchase?.teamId ?? null)
+              }
+              onRecordPurchase={() => void recordPurchase()}
+              lastPurchaseTeamName={lastPurchaseTeam?.name ?? null}
+              lastPurchaseBuyerName={lastPurchaseBuyer?.name ?? null}
+              signalLabel={recommendation ? stoplightLabels[recommendation.stoplight] : null}
+              nominatedAsset={selectedAsset}
+              nominatedTeam={selectedTeam}
+              nominatedTeamClassification={nominatedTeamClassification}
+              nominatedTeamNote={nominatedTeamNote}
+              nominatedMatchup={matchupSummary.nominatedMatchup}
+              likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
+              hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
+              hasOwnedLikelyRoundTwoOpponent={matchupSummary.hasOwnedLikelyRoundTwoOpponent}
+              callHeadline={callHeadline}
+              callSupportText={callSupportText}
+              callDetailText={callDetailText}
+              breakEvenStage={breakEvenStage}
+              targetBidDisplay={targetBidDisplay}
+              maxBidDisplay={maxBidDisplay}
+              filteredRationale={filteredRationale}
+              ownershipConflicts={ownershipConflicts}
+              teamLookup={teamLookup}
+              forcedPassConflictTeamId={recommendation?.forcedPassConflictTeamId ?? null}
+              projectedBaseRoom={projectedBaseRoom}
+              projectedStretchRoom={projectedStretchRoom}
+              titleOdds={titleOdds}
+              operatorSyndicateHoldings={operatorSyndicateHoldings}
+              expandedSyndicateIds={expandedSyndicateIds}
+              onToggleSyndicate={(syndicateId) =>
+                setExpandedSyndicateIds((current) =>
+                  current.includes(syndicateId)
+                    ? current.filter((candidate) => candidate !== syndicateId)
+                    : [...current, syndicateId]
+                )
+              }
+              onExpandAll={() =>
+                setExpandedSyndicateIds(
+                  operatorSyndicateHoldings.map(({ syndicate }) => syndicate.id)
+                )
+              }
+              onCollapseAll={() => setExpandedSyndicateIds([])}
+              recentSales={recentSales}
+              syndicateLookup={syndicateLookup}
+              focusFundingImpliedSharePrice={focusFunding.impliedSharePrice}
+            />
           ) : null}
 
           {activeView === "analysis" ? (
@@ -1732,52 +715,47 @@ export function DashboardShell({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredAnalysisRows.map((row) => {
-                        return (
-                          <tr
-                            key={row.asset.id}
-                            className={cn(
-                              analysisDetailAsset?.id === row.asset.id && "table-row--focus"
+                      {filteredAnalysisRows.map((row) => (
+                        <tr
+                          key={row.asset.id}
+                          className={cn(
+                            analysisDetailAsset?.id === row.asset.id && "table-row--focus"
+                          )}
+                          onClick={() => setAnalysisTeamId(row.representativeTeamId)}
+                        >
+                          <td>#{row.rank}</td>
+                          <td>
+                            <strong>{row.representativeTeamName}</strong>
+                          </td>
+                          <td>
+                            {row.asset.type === "single_team" ? (
+                              <span className="team-classification-empty">Single team</span>
+                            ) : (
+                              <>
+                                <strong>
+                                  {row.asset.type === "play_in_slot"
+                                    ? "Play-in team"
+                                    : row.asset.label}
+                                </strong>
+                                {row.memberSummary ? (
+                                  <div className="decision-panel__note">{row.memberSummary}</div>
+                                ) : null}
+                              </>
                             )}
-                            onClick={() => setAnalysisTeamId(row.representativeTeamId)}
-                          >
-                            <td>#{row.rank}</td>
-                            <td>
-                              <strong>{row.representativeTeamName}</strong>
-                            </td>
-                            <td>
-                              {row.asset.type === "single_team" ? (
-                                <span className="team-classification-empty">Single team</span>
-                              ) : (
-                                <>
-                                  <strong>
-                                    {row.asset.type === "play_in_slot"
-                                      ? "Play-in team"
-                                      : row.asset.label}
-                                  </strong>
-                                  {row.memberSummary ? (
-                                    <div className="decision-panel__note">{row.memberSummary}</div>
-                                  ) : null}
-                                </>
-                              )}
-                            </td>
-                            <td>
-                              {row.classification ? (
-                                <TeamClassificationBadge
-                                  classification={row.classification}
-                                  compact
-                                />
-                              ) : (
-                                <span className="team-classification-empty">--</span>
-                              )}
-                            </td>
-                            <td>{row.compositeScore.toFixed(3)}</td>
-                            <td>{row.targetBid !== null ? formatCurrency(row.targetBid) : "--"}</td>
-                            <td>{row.maxBid !== null ? formatCurrency(row.maxBid) : "--"}</td>
-                            <td>{row.status}</td>
-                          </tr>
-                        );
-                      })}
+                          </td>
+                          <td>
+                            {row.classification ? (
+                              <TeamClassificationBadge classification={row.classification} compact />
+                            ) : (
+                              <span className="team-classification-empty">--</span>
+                            )}
+                          </td>
+                          <td>{row.compositeScore.toFixed(3)}</td>
+                          <td>{row.targetBid !== null ? formatCurrency(row.targetBid) : "--"}</td>
+                          <td>{row.maxBid !== null ? formatCurrency(row.maxBid) : "--"}</td>
+                          <td>{row.status}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1802,10 +780,13 @@ export function DashboardShell({
                           </div>
                           {analysisAssetBudget ? (
                             <span className="status-pill">
-                              {formatCurrency(analysisAssetBudget.targetBid)} / {formatCurrency(analysisAssetBudget.maxBid)}
+                              {formatCurrency(analysisAssetBudget.targetBid)} /{" "}
+                              {formatCurrency(analysisAssetBudget.maxBid)}
                             </span>
                           ) : (
-                            <span className="status-pill status-pill--muted">Sold / unavailable</span>
+                            <span className="status-pill status-pill--muted">
+                              Sold / unavailable
+                            </span>
                           )}
                         </div>
                         <p className="decision-panel__note">
@@ -1855,7 +836,9 @@ export function DashboardShell({
                                       unoptimized
                                       onError={(event) => {
                                         event.currentTarget.style.display = "none";
-                                        event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                                        event.currentTarget.nextElementSibling?.removeAttribute(
+                                          "hidden"
+                                        );
                                       }}
                                     />
                                     <span className="classification-option__icon-fallback" hidden>
@@ -1986,7 +969,9 @@ export function DashboardShell({
                             ))}
                           </div>
                         ) : (
-                          <p className="empty-copy">No standout strengths from available scouting data.</p>
+                          <p className="empty-copy">
+                            No standout strengths from available scouting data.
+                          </p>
                         )}
                       </article>
 
@@ -2006,7 +991,9 @@ export function DashboardShell({
                             ))}
                           </div>
                         ) : (
-                          <p className="empty-copy">No material risk flags from available scouting data.</p>
+                          <p className="empty-copy">
+                            No material risk flags from available scouting data.
+                          </p>
                         )}
                       </article>
                     </div>
@@ -2148,9 +1135,7 @@ export function DashboardShell({
                       </div>
                     </>
                   ) : (
-                    <p className="empty-copy">
-                      Choose a team to edit projection inputs.
-                    </p>
+                    <p className="empty-copy">Choose a team to edit projection inputs.</p>
                   )}
                 </div>
 
@@ -2210,990 +1195,8 @@ export function DashboardShell({
           ) : null}
 
           {activeView === "bracket" ? bracketWorkspace : null}
-
         </>
       )}
     </main>
   );
-}
-
-function ViewerBoard({
-  dashboard,
-  recommendation
-}: {
-  dashboard: AuctionDashboard;
-  recommendation: BidRecommendation | null;
-}) {
-  const nominatedAsset = dashboard.nominatedAsset;
-  const nominatedTeam = dashboard.nominatedTeam;
-  const nominatedTeamNote =
-    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
-  const nominatedMatchup = useMemo(
-    () => (nominatedTeam ? getFirstRoundMatchup(dashboard.bracket, nominatedTeam.id) : null),
-    [dashboard.bracket, nominatedTeam]
-  );
-  const likelyRound2Matchup = useMemo(
-    () =>
-      nominatedTeam
-        ? getLikelyRound2Matchup(
-            dashboard.bracket,
-            dashboard.session.simulationSnapshot,
-            nominatedTeam.id
-          )
-        : null,
-    [dashboard.bracket, dashboard.session.simulationSnapshot, nominatedTeam]
-  );
-  const teamLookup = useMemo(
-    () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
-    [dashboard.session.projections]
-  );
-  const hasOwnedRoundOneOpponent = Boolean(
-    nominatedMatchup &&
-      dashboard.focusSyndicate.ownedTeamIds.includes(nominatedMatchup.opponent.teamId)
-  );
-  const forcedPassConflictName = recommendation?.forcedPassConflictTeamId
-    ? teamLookup.get(recommendation.forcedPassConflictTeamId)?.name ??
-      recommendation.forcedPassConflictTeamId
-    : null;
-  const hasOwnedLikelyRoundTwoOpponent = Boolean(
-    likelyRound2Matchup &&
-      dashboard.focusSyndicate.ownedTeamIds.includes(likelyRound2Matchup.opponent.teamId)
-  );
-  const viewerTargetMaxDisplay = recommendation
-    ? recommendation.forcedPassConflictTeamId
-      ? "Pass"
-      : `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
-    : "--";
-  const [ownershipSearch, setOwnershipSearch] = useState("");
-  const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
-  const ownershipGroups = useMemo(() => {
-    const normalized = ownershipSearch.trim().toLowerCase();
-    const hasActiveSearch = normalized.length > 0;
-    const matchesSearch = (sale: SoldAssetSummary) =>
-      !normalized ||
-      sale.asset.label.toLowerCase().includes(normalized) ||
-      sale.asset.members.some((member) => member.label.toLowerCase().includes(normalized));
-
-    return [
-      ...[
-        {
-          syndicate: dashboard.focusSyndicate,
-          sales: dashboard.soldAssets.filter(
-            (sale) =>
-              sale.buyerSyndicateId === dashboard.focusSyndicate.id && matchesSearch(sale)
-          ),
-          highlight: true
-        }
-      ].filter((group) => group.sales.length > 0 || !hasActiveSearch),
-      ...dashboard.ledger
-        .filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
-        .map((syndicate) => ({
-          syndicate,
-          sales: dashboard.soldAssets.filter(
-            (sale) => sale.buyerSyndicateId === syndicate.id && matchesSearch(sale)
-          ),
-          highlight: false
-        }))
-        .filter((group) => group.sales.length > 0 || !hasActiveSearch)
-      ];
-  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldAssets, ownershipSearch]);
-  return (
-    <section className="viewer-layout">
-      <section className="decision-grid">
-        <article className="surface-card viewer-board viewer-board--spotlight">
-          <p className="eyebrow">Live Decision Board</p>
-          <div className="viewer-bid-hero viewer-bid-hero--team">
-            <div className="viewer-bid-hero__pulse">
-              <span className="pulse-dot" />
-              <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
-            </div>
-            <strong className={cn(!nominatedAsset && "viewer-bid-hero__title--waiting")}>
-              {nominatedAsset ? nominatedAsset.label : "Waiting for next team"}
-            </strong>
-            <p className="viewer-board__subcopy">
-              {nominatedAsset
-                ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-                : "The next active team will take over this board as soon as the operator makes a nomination."}
-            </p>
-            {nominatedMatchup ? (
-              <p className="viewer-board__matchup">
-                Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                {nominatedMatchup.opponent.name}
-                {hasOwnedRoundOneOpponent ? (
-                  <span className="viewer-board__matchup-owned">you own</span>
-                ) : null}
-              </p>
-            ) : null}
-            {likelyRound2Matchup ? (
-              <p className="viewer-board__path">
-                Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                {likelyRound2Matchup.opponent.name} (
-                {formatPercent(likelyRound2Matchup.probability)})
-                {hasOwnedLikelyRoundTwoOpponent ? (
-                  <span className="viewer-board__matchup-owned">you own</span>
-                ) : null}
-              </p>
-            ) : null}
-            {nominatedAsset ? <p className="viewer-note">{formatAssetMembers(nominatedAsset)}</p> : null}
-            {nominatedTeam &&
-            dashboard.session.teamClassifications[nominatedTeam.id]?.classification ? (
-              <div className="viewer-bid-hero__classification">
-                <TeamClassificationBadge
-                  classification={
-                    dashboard.session.teamClassifications[nominatedTeam.id]?.classification
-                  }
-                />
-              </div>
-            ) : null}
-            {nominatedTeamNote ? <p className="viewer-note">{nominatedTeamNote}</p> : null}
-          </div>
-
-          <div className="viewer-board__call">
-            <p className="eyebrow">Call</p>
-            <h3>
-              {recommendation
-                ? recommendation.forcedPassConflictTeamId
-                  ? "Pass"
-                  : recommendation.stoplight === "buy"
-                  ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-                  : recommendation.stoplight === "caution"
-                    ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-                    : `Pass above ${formatCurrency(recommendation.maxBid)}`
-                : "Waiting for the next nomination"}
-            </h3>
-            <p>
-              {recommendation
-                ? recommendation.forcedPassConflictTeamId
-                  ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
-                  : fundingStatusLabels[recommendation.fundingStatus]
-                : "The operator's live recommendation will appear here when a team is active."}
-            </p>
-          </div>
-
-          <div className="metric-grid viewer-board__metrics">
-            <MetricCard
-              label="Target / max"
-              value={viewerTargetMaxDisplay}
-              longValue={Boolean(recommendation)}
-            />
-            <MetricCard
-              label="Stoplight"
-              value={recommendation ? stoplightLabels[recommendation.stoplight] : "Idle"}
-            />
-            <MetricCard
-              label="Funding status"
-              value={
-                recommendation
-                  ? fundingStatusLabels[recommendation.fundingStatus]
-                  : fundingStatusLabels[
-                      deriveFundingStatus(
-                        dashboard.focusSyndicate.spend,
-                        dashboard.session.mothershipFunding
-                      )
-                    ]
-              }
-            />
-            <MetricCard
-              label="Effective share price"
-              value={
-                dashboard.analysis.funding.impliedSharePrice === null
-                  ? "--"
-                  : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
-              }
-            />
-            <MetricCard label="Teams remaining to sell" value={`${dashboard.availableAssets.length}`} />
-            <MetricCard
-              label="Underlying teams remaining"
-              value={`${dashboard.availableTeams.length}`}
-            />
-            <MetricCard
-              label="Mothership total spent"
-              value={formatCurrency(dashboard.focusSyndicate.spend)}
-            />
-          </div>
-        </article>
-
-        <SyndicateBoardCard
-          syndicates={[
-            dashboard.focusSyndicate,
-            ...dashboard.ledger.filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
-          ]}
-          focusSyndicateId={dashboard.focusSyndicate.id}
-          focusFunding={dashboard.analysis.funding}
-        />
-      </section>
-
-      <section className="detail-grid detail-grid--balanced">
-        <article className="surface-card">
-          <div className="section-headline">
-            <div>
-              <p className="eyebrow">Ownership Ledger</p>
-              <h3>Syndicate Holdings</h3>
-            </div>
-            <div className="viewer-ledger-search">
-              <input
-                type="search"
-                value={ownershipSearch}
-                onChange={(event) => setOwnershipSearch(event.target.value)}
-                placeholder="Filter by team name"
-              />
-            </div>
-          </div>
-          {ownershipGroups.length ? (
-            <div className="viewer-ledger">
-              {ownershipGroups.map((group) => (
-                <ViewerOwnershipLedgerGroup
-                  key={group.syndicate.id}
-                  group={group}
-                  isMothership={group.highlight}
-                  hasActiveSearch={ownershipSearch.trim().length > 0}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="empty-copy">No matching teams in current syndicate holdings.</p>
-          )}
-        </article>
-
-        <aside className="viewer-layout__side">
-          {recommendation ? (
-            <article className="surface-card viewer-guidance-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Live Guidance</p>
-                  <h3>What Mothership should keep in view</h3>
-                </div>
-              </div>
-              <div className="list-stack">
-                {recommendation.rationale.slice(0, 3).map((line) => (
-                  <div key={line} className="list-line">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </article>
-          ) : null}
-
-          <article className="surface-card">
-            <div className="section-headline">
-              <div>
-                <p className="eyebrow">Sold Teams</p>
-                <h3>Most recent sales first</h3>
-              </div>
-            </div>
-            {soldFeed.length ? (
-              <div className="list-stack">
-                {soldFeed.map((sale) => (
-                  <ViewerSoldAssetRow
-                    key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
-                    sale={sale}
-                    buyerName={
-                      dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
-                        ?.name ?? sale.buyerSyndicateId
-                    }
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="empty-copy">No teams have sold yet.</p>
-            )}
-          </article>
-        </aside>
-      </section>
-    </section>
-  );
-}
-
-function SyndicateBoardCard({
-  syndicates,
-  focusSyndicateId,
-  focusFunding
-}: {
-  syndicates: Syndicate[];
-  focusSyndicateId: string;
-  focusFunding: ReturnType<typeof deriveMothershipFundingSnapshot>;
-}) {
-  return (
-    <article className="surface-card syndicate-board-card">
-      <div className="section-headline">
-        <div>
-          <p className="eyebrow">Syndicate Board</p>
-          <h3>Spend, room, and EV</h3>
-        </div>
-      </div>
-      <div className="syndicate-board-frame">
-        <div className="syndicate-board">
-          {syndicates.map((syndicate) => {
-            const isFocusSyndicate = syndicate.id === focusSyndicateId;
-
-            return (
-              <div
-                key={syndicate.id}
-                className={cn(
-                  "syndicate-row syndicate-row--compact",
-                  isFocusSyndicate && "syndicate-row--focus"
-                )}
-              >
-                <div className="syndicate-row__title">
-                  <span className="syndicate-dot" style={{ backgroundColor: syndicate.color }} />
-                  <div>
-                    <strong>{syndicate.name}</strong>
-                    <span>{syndicate.ownedTeamIds.length} teams owned</span>
-                  </div>
-                </div>
-                <div>
-                  <span>Spend</span>
-                  <strong>{formatCurrency(syndicate.spend)}</strong>
-                </div>
-                <div>
-                  <span>{isFocusSyndicate ? "Base room" : "Est. room"}</span>
-                  <strong>
-                    {formatCurrency(
-                      isFocusSyndicate
-                        ? focusFunding.baseBidRoom
-                        : syndicate.estimatedRemainingBudget
-                    )}
-                  </strong>
-                </div>
-                <div>
-                  <span>{isFocusSyndicate ? "Portfolio EV" : "Est. budget"}</span>
-                  <strong>
-                    {formatCurrency(
-                      isFocusSyndicate
-                        ? syndicate.portfolioExpectedValue
-                        : syndicate.estimatedBudget
-                    )}
-                  </strong>
-                </div>
-                {syndicate.id !== focusSyndicateId && syndicate.estimateExceeded ? (
-                  <div className="syndicate-row__flag">
-                    <span>Room read</span>
-                    <strong>Estimate exceeded</strong>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function OperatorSyndicateBoardCard({
-  holdings,
-  focusSyndicateId,
-  teamLookup,
-  expandedSyndicateIds,
-  onToggleSyndicate,
-  onExpandAll,
-  onCollapseAll
-}: {
-  holdings: Array<{ syndicate: Syndicate; sales: SoldAssetSummary[] }>;
-  focusSyndicateId: string;
-  teamLookup: Map<string, TeamProjection>;
-  expandedSyndicateIds: string[];
-  onToggleSyndicate: (syndicateId: string) => void;
-  onExpandAll: () => void;
-  onCollapseAll: () => void;
-}) {
-  return (
-    <article className="surface-card syndicate-board-card syndicate-board-card--operator">
-      <div className="section-headline">
-        <div>
-          <p className="eyebrow">Syndicate Board</p>
-          <h3>Spend and holdings</h3>
-        </div>
-        <div className="admin-inline-actions">
-          <button type="button" className="button button-ghost button--small" onClick={onExpandAll}>
-            Expand all
-          </button>
-          <button
-            type="button"
-            className="button button-ghost button--small"
-            onClick={onCollapseAll}
-            disabled={!expandedSyndicateIds.length}
-          >
-            Collapse all
-          </button>
-        </div>
-      </div>
-      <div className="syndicate-board-frame syndicate-board-frame--operator">
-        <div className="syndicate-board">
-          {holdings.map(({ syndicate, sales }) => {
-            const isFocusSyndicate = syndicate.id === focusSyndicateId;
-            const isExpanded = expandedSyndicateIds.includes(syndicate.id);
-
-            return (
-              <div
-                key={syndicate.id}
-                className={cn(
-                  "syndicate-row syndicate-row--operator",
-                  isFocusSyndicate && "syndicate-row--focus",
-                  isExpanded && "syndicate-row--expanded"
-                )}
-              >
-                <div className="syndicate-row__summary">
-                  <div className="syndicate-row__title">
-                    <span className="syndicate-dot" style={{ backgroundColor: syndicate.color }} />
-                    <div>
-                      <strong>{syndicate.name}</strong>
-                      <span>
-                        {sales.length} {sales.length === 1 ? "team" : "teams"} owned
-                      </span>
-                    </div>
-                  </div>
-                  <div className="syndicate-row__metric">
-                    <span>Spend</span>
-                    <strong>{formatCurrency(syndicate.spend)}</strong>
-                  </div>
-                  <div className="syndicate-row__actions">
-                    {syndicate.id !== focusSyndicateId && syndicate.estimateExceeded ? (
-                      <div className="syndicate-row__flag">
-                        <span>Room read</span>
-                        <strong>Estimate exceeded</strong>
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="syndicate-row__toggle"
-                      aria-expanded={isExpanded}
-                      aria-label={
-                        isExpanded
-                          ? `Collapse ${syndicate.name} teams`
-                          : `Expand ${syndicate.name} teams`
-                      }
-                      onClick={() => onToggleSyndicate(syndicate.id)}
-                    >
-                      <span
-                        className={cn(
-                          "syndicate-row__chevron",
-                          isExpanded && "syndicate-row__chevron--expanded"
-                        )}
-                        aria-hidden="true"
-                      >
-                        ▾
-                      </span>
-                    </button>
-                  </div>
-                </div>
-                {isExpanded ? (
-                  <div className="syndicate-row__details">
-                    {sales.length ? (
-                      <div className="syndicate-owned-list">
-                        {sales.map((sale, index) => {
-                          const representativeTeam =
-                            teamLookup.get(sale.asset.projectionIds[0] ?? "") ?? null;
-                          const subtitle =
-                            formatAssetSubtitle(sale.asset, representativeTeam) ||
-                            (sale.asset.type === "single_team"
-                              ? formatAssetMembers(sale.asset)
-                              : formatAssetMembersCompact(sale.asset));
-
-                          return (
-                            <div
-                              key={`${syndicate.id}-${sale.asset.id}-${sale.price}-${index}`}
-                              className="syndicate-owned-item"
-                            >
-                              <div>
-                                <strong>{sale.asset.label}</strong>
-                                <span>{subtitle}</span>
-                              </div>
-                              <strong>{formatCurrency(sale.price)}</strong>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="empty-copy">No purchased teams yet for {syndicate.name}.</p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ViewerSoldAssetRow({
-  sale,
-  buyerName
-}: {
-  sale: SoldAssetSummary;
-  buyerName: string;
-}) {
-  return (
-    <div className="list-row">
-      <div>
-        <strong>{sale.asset.label}</strong>
-        <span>{formatAssetMembers(sale.asset)}</span>
-        <span>To {buyerName}</span>
-      </div>
-      <strong>{formatCurrency(sale.price)}</strong>
-    </div>
-  );
-}
-
-function getFirstRoundMatchup(bracket: BracketViewModel, teamId: string) {
-  if (!bracket.isSupported) {
-    return null;
-  }
-
-  for (const region of bracket.regions) {
-    const openingRound = region.rounds.find((round) => round.key === "roundOf64");
-    if (!openingRound) {
-      continue;
-    }
-
-    for (const game of openingRound.games) {
-      const containsTeam = game.entrants.some((entrant) => entrant?.teamId === teamId);
-      if (!containsTeam) {
-        continue;
-      }
-
-      const opponent = game.entrants.find(
-        (entrant): entrant is BracketGameTeam => entrant !== null && entrant.teamId !== teamId
-      );
-
-      return opponent ? { opponent, game } : null;
-    }
-  }
-
-  return null;
-}
-
-function getLikelyRound2Matchup(
-  bracket: BracketViewModel,
-  snapshot: SimulationSnapshot | null,
-  teamId: string
-) {
-  if (!bracket.isSupported || !snapshot) {
-    return null;
-  }
-
-  for (const region of bracket.regions) {
-    const openingRound = region.rounds.find((round) => round.key === "roundOf64");
-    if (!openingRound) {
-      continue;
-    }
-
-    const openingGameIndex = openingRound.games.findIndex((game) =>
-      game.entrants.some((entrant) => entrant?.teamId === teamId)
-    );
-    if (openingGameIndex === -1) {
-      continue;
-    }
-
-    const pairedGameIndex = openingGameIndex % 2 === 0 ? openingGameIndex + 1 : openingGameIndex - 1;
-    const pairedGame = openingRound.games[pairedGameIndex];
-    if (!pairedGame) {
-      return null;
-    }
-
-    const candidates = pairedGame.entrants.filter(
-      (entrant): entrant is BracketGameTeam => entrant !== null
-    );
-    if (!candidates.length) {
-      return null;
-    }
-
-    const matchupProbabilities = snapshot.matchupMatrix[teamId] ?? {};
-    const opponent = [...candidates].sort((left, right) => {
-      const rightProbability = matchupProbabilities[right.teamId] ?? 0;
-      const leftProbability = matchupProbabilities[left.teamId] ?? 0;
-      return rightProbability - leftProbability;
-    })[0];
-
-    if (!opponent) {
-      return null;
-    }
-
-    return {
-      opponent,
-      probability: matchupProbabilities[opponent.teamId] ?? 0
-    };
-  }
-
-  return null;
-}
-
-function MetricCard({
-  label,
-  value,
-  tooltip,
-  compact = false,
-  longValue = false
-}: {
-  label: string;
-  value: string;
-  tooltip?: string;
-  compact?: boolean;
-  longValue?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "metric-card",
-        compact && "metric-card--compact",
-        longValue && "metric-card--long-value"
-      )}
-    >
-      <span className={tooltip ? "insight-label" : undefined}>
-        {label}
-        {tooltip ? (
-          <button type="button" className="tooltip-hint" aria-label={`${label} explanation`}>
-            ?
-            <span className="tooltip-content">{tooltip}</span>
-          </button>
-        ) : null}
-      </span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
-  if (stage === null) {
-    return "--";
-  }
-
-  if (stage === "negativeReturn") {
-    return "Negative return";
-  }
-
-  return titleCaseStage(stage);
-}
-
-function ConflictRow({
-  conflict,
-  teamLookup,
-  isOwned = false,
-  isCritical = false
-}: {
-  conflict: MatchupConflict;
-  teamLookup: Map<string, TeamProjection>;
-  isOwned?: boolean;
-  isCritical?: boolean;
-}) {
-  const opponent = teamLookup.get(conflict.opponentId);
-
-  return (
-    <div className={cn("list-row", "list-row--top-aligned", isCritical && "list-row--critical")}>
-      <div>
-        <strong>
-          {opponent?.name ?? conflict.opponentId}
-          {isOwned ? <span className="list-row__inline-note"> (you own)</span> : null}
-        </strong>
-        <span>{titleCaseStage(conflict.earliestRound)} window</span>
-      </div>
-      <strong>{formatPercent(conflict.probability)}</strong>
-    </div>
-  );
-}
-
-function AssetSaleRow({
-  sale,
-  syndicateLookup
-}: {
-  sale: SoldAssetSummary;
-  syndicateLookup: Map<string, Syndicate>;
-}) {
-  const buyer = syndicateLookup.get(sale.buyerSyndicateId);
-
-  return (
-    <div className="list-row">
-      <div>
-        <strong>{sale.asset.label}</strong>
-        <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
-      </div>
-      <strong>{formatCurrency(sale.price)}</strong>
-    </div>
-  );
-}
-
-function ViewerOwnershipLedgerGroup({
-  group,
-  isMothership,
-  hasActiveSearch
-}: {
-  group: { syndicate: Syndicate; sales: SoldAssetSummary[] };
-  isMothership: boolean;
-  hasActiveSearch: boolean;
-}) {
-  return (
-    <article
-      className={cn("viewer-ledger-group", isMothership && "viewer-ledger-group--focus")}
-    >
-      <div className="viewer-ledger-group__header">
-        <div className="viewer-ledger-group__title">
-          <span
-            className="syndicate-dot"
-            style={{ backgroundColor: group.syndicate.color }}
-          />
-          <div>
-            <strong>{group.syndicate.name}</strong>
-          </div>
-        </div>
-        <div className="viewer-ledger-group__total">
-          <strong>
-            {formatCurrency(group.syndicate.spend)} · {group.sales.length}{" "}
-            {group.sales.length === 1 ? "team" : "teams"}
-          </strong>
-        </div>
-      </div>
-      {group.sales.length ? (
-        <div className="viewer-ledger-group__rows">
-          {group.sales.map((sale) => (
-            <div key={`${group.syndicate.id}-${sale.asset.id}-${sale.price}`} className="viewer-ledger-row">
-              <div className="viewer-ledger-row__team">
-                <strong>{sale.asset.label}</strong>
-                <span>{formatAssetSubtitle(sale.asset, null)}</span>
-                <span>{formatAssetMembers(sale.asset)}</span>
-              </div>
-              <div className="viewer-ledger-row__price">
-                <strong>{formatCurrency(sale.price)}</strong>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="empty-copy">
-          {hasActiveSearch
-            ? `No matching teams for ${group.syndicate.name}.`
-            : `No purchased teams yet for ${group.syndicate.name}.`}
-        </p>
-      )}
-    </article>
-  );
-}
-
-function AssetCombobox({
-  assets,
-  soldAssets,
-  value,
-  inputRef,
-  onChange
-}: {
-  assets: AuctionAsset[];
-  soldAssets: SoldAssetSummary[];
-  value: string;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onChange: (assetId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [highlightIndex, setHighlightIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const soldLookup = useMemo(
-    () => new Set(soldAssets.map((sale) => sale.asset.id)),
-    [soldAssets]
-  );
-  const selectedAsset = useMemo(
-    () => assets.find((asset) => asset.id === value) ?? null,
-    [assets, value]
-  );
-
-  const sorted = useMemo(() => {
-    const compareAssets = (left: AuctionAsset, right: AuctionAsset) => {
-      if (left.region === right.region) {
-        return (left.seedRange?.[0] ?? left.seed ?? 99) - (right.seedRange?.[0] ?? right.seed ?? 99);
-      }
-      return left.region.localeCompare(right.region);
-    };
-    const available = assets.filter((asset) => !soldLookup.has(asset.id)).sort(compareAssets);
-    const sold = assets.filter((asset) => soldLookup.has(asset.id)).sort(compareAssets);
-    return [...available, ...sold];
-  }, [assets, soldLookup]);
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return sorted;
-    const lower = search.toLowerCase();
-    return sorted.filter(
-      (asset) =>
-        asset.label.toLowerCase().includes(lower) ||
-        asset.region.toLowerCase().includes(lower) ||
-        asset.members.some((member) => member.label.toLowerCase().includes(lower)) ||
-        asset.members.some((member) => String(member.seed) === lower) ||
-        (asset.seed !== null && String(asset.seed) === lower)
-    );
-  }, [sorted, search]);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [open]);
-
-  function handleFocus() {
-    setOpen(true);
-    setSearch("");
-    setHighlightIndex(0);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightIndex((i) => Math.min(i + 1, filtered.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const asset = filtered[highlightIndex];
-      if (asset && !soldLookup.has(asset.id)) {
-        onChange(asset.id);
-        setOpen(false);
-        setSearch("");
-      }
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setSearch("");
-    }
-  }
-
-  const displayValue = open ? search : selectedAsset ? selectedAsset.label : "";
-
-  return (
-    <div className="combobox" ref={containerRef}>
-      <input
-        ref={inputRef}
-        className="combobox__input"
-        value={displayValue}
-        placeholder={open ? "Search teams…" : "Select a team"}
-        readOnly={!open}
-        autoComplete="off"
-        onFocus={handleFocus}
-        onClick={() => { if (!open) handleFocus(); }}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setHighlightIndex(0);
-        }}
-        onKeyDown={handleKeyDown}
-      />
-      {open && (
-        <ul className="combobox__list">
-          {filtered.length === 0 ? (
-            <li className="combobox__empty">No teams found</li>
-          ) : (
-            filtered.map((asset, index) => {
-              const sold = soldLookup.has(asset.id);
-              return (
-                <li
-                  key={asset.id}
-                  className={cn(
-                    "combobox__item",
-                    index === highlightIndex && "combobox__item--highlighted",
-                    sold && "combobox__item--sold"
-                  )}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    if (!sold) {
-                      onChange(asset.id);
-                      setOpen(false);
-                      setSearch("");
-                    }
-                  }}
-                  onMouseEnter={() => setHighlightIndex(index)}
-                >
-                  <span className="combobox__seed">{formatAssetSeed(asset)}</span>
-                  <span className="combobox__name">{asset.label}</span>
-                  <span className="combobox__region">{asset.region}</span>
-                  {sold ? <span className="combobox__sold-badge">sold</span> : null}
-                </li>
-              );
-            })
-          )}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function formatAssetSeed(asset: AuctionAsset) {
-  if (asset.seedRange) {
-    return `${asset.seedRange[0]}-${asset.seedRange[1]}`;
-  }
-
-  if (asset.seed !== null) {
-    return `${asset.seed}`;
-  }
-
-  return "--";
-}
-
-function formatAssetSubtitle(asset: AuctionAsset, nominatedTeam: TeamProjection | null) {
-  if (asset.type === "single_team") {
-    if (nominatedTeam) {
-      return `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`;
-    }
-
-    return `${formatAssetSeed(asset)}-seed, ${asset.region} region`;
-  }
-
-  if (asset.type === "play_in_slot") {
-    const matchup = asset.members.map((member) => member.label).join(" / ");
-    return `${formatAssetSeed(asset)}-seed play-in slot in the ${asset.region} region: ${matchup}`;
-  }
-
-  if (asset.type === "seed_bundle" && asset.seedRange) {
-    return "";
-  }
-
-  return `${asset.region} auction team`;
-}
-
-function formatAssetMembers(asset: AuctionAsset) {
-  if (asset.type === "single_team") {
-    return asset.members[0]?.label ?? asset.label;
-  }
-
-  if (asset.type === "play_in_slot") {
-    return `Includes ${asset.members.map((member) => member.label).join(" and ")}`;
-  }
-
-  return `Includes ${asset.members.map((member) => member.label).join(", ")}`;
-}
-
-function formatAssetMembersCompact(
-  asset: AuctionAsset,
-  options?: { includeParens?: boolean }
-) {
-  const includeParens = options?.includeParens ?? true;
-  if (asset.type === "single_team") {
-    return asset.members[0]?.label ?? asset.label;
-  }
-
-  if (asset.type === "play_in_slot") {
-    const value = asset.members.map((member) => member.label).join(" / ");
-    return includeParens ? `(${value})` : value;
-  }
-
-  const value = asset.members.map((member) => `${member.seed} ${member.label}`).join(" • ");
-  return includeParens ? `(${value})` : value;
-}
-
-function displayNullableNumber(value: number | null) {
-  if (value === null || value === undefined) {
-    return "--";
-  }
-
-  return `${value}`;
-}
-
-function displayNullablePercent(value: number | null) {
-  if (value === null || value === undefined) {
-    return "--";
-  }
-
-  return `${value.toFixed(1)}%`;
 }

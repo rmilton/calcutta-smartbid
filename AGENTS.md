@@ -47,8 +47,13 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
 - [src/components/session-admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-admin-center.tsx)
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
+- [src/components/dashboard-shell/use-live-room-controller.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts)
+- [src/components/dashboard-shell/operator-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx)
+- [src/components/dashboard-shell/viewer-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx)
+- [src/components/dashboard-shell/shared.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx)
 - [src/components/session-bracket.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-bracket.tsx)
 - [src/components/theme-toggle.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/theme-toggle.tsx)
+- [src/lib/live-room.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.ts)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)
 - [src/lib/engine/recommendations.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/recommendations.ts)
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
@@ -100,14 +105,21 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 ### Live Board UI
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
-  - role-aware live room
-  - `Auction`, `Analysis`, `Bracket`, and `Overrides` workspaces
-  - single searchable `Active Team for Bidding` control
-  - consolidated top-of-room operator board with live decision, syndicate, Mothership position, and decision context panels
-  - live nomination can represent one school, a play-in team, or a grouped `13-16` package
-  - auto-save on team selection
-  - undo for the most recent purchase
-  - shared selected-team state between `Auction` and `Analysis`
+  - role-aware live room composition shell
+  - owns shared session header, workspace routing, and `Analysis` / `Overrides` rendering
+  - builds the live-room recommendation payload used by operator and viewer auction workspaces
+- [src/components/dashboard-shell/use-live-room-controller.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts)
+  - live-room local state and mutation orchestration
+  - keyboard shortcuts, bid persistence, purchase actions, bracket saves, and analysis annotations
+  - sync guards so operator local state is not clobbered during polling/realtime refresh
+- [src/components/dashboard-shell/operator-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx)
+  - operator-only `Auction` workspace
+  - live controls, decision board, decision context, model drivers, recent sales, and expandable syndicate holdings
+- [src/components/dashboard-shell/viewer-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx)
+  - viewer-only `Auction` workspace
+  - read-only decision board, ownership ledger, sold feed, and synchronized Mothership guidance
+- [src/components/dashboard-shell/shared.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx)
+  - shared live-room presentation primitives and asset-formatting helpers
 - [src/components/session-bracket.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-bracket.tsx)
   - full-field tournament bracket surface
   - owned-team syndicate markers
@@ -130,6 +142,9 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
   - session-native ranking and bid-planning model
   - builds the shared analysis snapshot consumed by `Auction` and `Analysis`
   - still team-level, but now surfaces grouped auction-team context
+- [src/lib/live-room.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.ts)
+  - shared live-room selectors and matchup helpers
+  - syndicate ordering, ownership grouping, operator holdings, and recommendation-rationale filtering
 - [src/lib/bracket.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/bracket.ts)
   - builds the session-native 64-team bracket view
   - validates bracket readiness and winner advancement
@@ -256,6 +271,8 @@ The cleanest parallel split remains:
 ### Track B: Live board UX and auction intelligence
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
+- [src/components/dashboard-shell](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell)
+- [src/lib/live-room.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.ts)
 - [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
 - [src/lib/bracket.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/bracket.ts)
 - [src/lib/engine/simulation.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/engine/simulation.ts)

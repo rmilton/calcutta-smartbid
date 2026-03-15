@@ -4,7 +4,7 @@ This is the current-state handoff document. Update it when behavior, architectur
 
 ## Last Known Good State
 
-As of `2026-03-14`:
+As of `2026-03-15`:
 
 - app runs locally against Supabase via `.env.local`
 - local smoke test passed:
@@ -43,6 +43,7 @@ As of `2026-03-14`:
   - consolidated `Auction` workspace with live decision board, syndicate board, Mothership position, and decision context
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
   - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
+  - extracted live-room controller and dedicated operator/viewer auction workspace components
 - live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
@@ -172,6 +173,9 @@ Key files:
 - the bracket surface shows syndicate ownership markers for purchased teams
 - the live room now supports undoing the most recent purchase, restoring that team as active with its last bid
 - feedback notices now auto-dismiss and use one shared feedback hook across admin and live surfaces
+- live-room controller/state orchestration now lives in `src/components/dashboard-shell/use-live-room-controller.ts`
+- operator and viewer `Auction` surfaces now live in dedicated workspace components under `src/components/dashboard-shell/`
+- shared matchup and live-room selector helpers now live in `src/lib/live-room.ts` with focused unit coverage
 - likely bidders were removed
 - `Nominated team` became `Active Team for Bidding`
 - the team selector is now a single searchable control

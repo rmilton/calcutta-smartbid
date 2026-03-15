@@ -24,6 +24,15 @@ Additional project context lives in:
 - [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md): current deployment status, recent fixes, regression checklist
 - [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md): product intent and design principles
 
+## Live-room code map
+
+- [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces
+- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, and keyboard shortcuts
+- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace
+- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace
+- [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives and asset-formatting helpers
+- [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors and matchup helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
+
 ## Run locally
 
 ```bash
