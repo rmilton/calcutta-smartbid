@@ -22,9 +22,9 @@ Calcutta SmartBid now has two major surfaces:
 - `Live room`
   - session member login with `email + shared code`
   - role-driven `operator` vs `viewer` behavior at `/session/[sessionId]`
-  - in-room workspaces for `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides`
+  - in-room workspaces for `Auction`, `Analysis`, `Bracket`, and `Overrides`
 
-The admin center is the control plane. The live room is the shared Mothership execution surface. `Auction` and `Analysis` are now two views over the same session-native recommendation model, not two separate tools.
+The admin center is the control plane. The live room is the shared Mothership execution surface. `Auction` and `Analysis` are now two views over the same session-native recommendation model, not two separate tools. Portfolio context now lives directly inside the `Auction` workspace instead of a separate room tab.
 Selection Sunday prep is now session-managed: bracket structure and team analysis are imported separately, then merged into the live room.
 
 ## Current Stack
@@ -101,8 +101,9 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
   - role-aware live room
-  - `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides` workspaces
+  - `Auction`, `Analysis`, `Bracket`, and `Overrides` workspaces
   - single searchable `Active Team for Bidding` control
+  - consolidated top-of-room operator board with live decision, syndicate, Mothership position, and decision context panels
   - live nomination can represent one school, a play-in team, or a grouped `13-16` package
   - auto-save on team selection
   - undo for the most recent purchase
@@ -173,7 +174,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - Viewer mode is role-driven and read-only.
 - Purchases are authoritative. Do not let UI-only state become the source of truth.
 - Only the most recent purchase can be undone in the current correction flow.
-- Session purchases are the owned-portfolio truth for live recommendation math.
+- Session purchases are the owned-position truth for live recommendation math.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - `Auction` and `Analysis` must stay consistent for the same selected team because they read from the same analysis payload.
 - The UI still says `team`, but the live nomination model can represent grouped auction teams such as play-ins and regional `13-16` packages.

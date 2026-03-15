@@ -19,7 +19,6 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
     const dashboard = await repository.getDashboard(sessionId);
     const initialView =
       view === "analysis" ||
-      view === "portfolio" ||
       view === "bracket" ||
       view === "overrides"
         ? view
