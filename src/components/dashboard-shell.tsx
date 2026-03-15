@@ -469,18 +469,6 @@ export function DashboardShell({
       }) ?? [],
     [recommendation]
   );
-  const fundingRationale = useMemo(
-    () =>
-      recommendation?.rationale.find((line) => {
-        const normalized = line.toLowerCase();
-        return (
-          normalized.includes("sits within base funding") ||
-          normalized.includes("inside stretch funding") ||
-          normalized.includes("above the current funding plan")
-        );
-      }) ?? null,
-    [recommendation]
-  );
   const activeOverrideRows = useMemo(
     (): ActiveOverrideRow[] =>
       Object.values(dashboard.session.projectionOverrides)
@@ -543,9 +531,33 @@ export function DashboardShell({
     likelyRound2Matchup &&
       dashboard.focusSyndicate.ownedTeamIds.includes(likelyRound2Matchup.opponent.teamId)
   );
+  const topOwnershipConflict = ownershipConflicts[0] ?? null;
+  const callSupportText = recommendation
+    ? recommendation.forcedPassConflictTeamId
+      ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
+      : recommendation.stoplight === "buy"
+        ? "Model supports buying here"
+        : recommendation.stoplight === "caution"
+          ? "Model is getting cautious here"
+          : "Model does not support chasing here"
+    : "The live room stays focused on the current nomination and bankroll position.";
   const callDetailText = recommendation?.forcedPassConflictTeamId
     ? recommendation.forcedPassReason
-    : fundingRationale;
+    : recommendation
+      ? recommendation.stoplight === "buy"
+        ? topOwnershipConflict && topOwnershipConflict.probability >= 0.05
+          ? `The live price remains below target, and the main ownership collision risk does not arrive until the ${titleCaseStage(topOwnershipConflict.earliestRound)}.`
+          : breakEvenStage && breakEvenStage !== "negativeReturn"
+            ? `${formatBreakEvenStage(breakEvenStage)} is enough for this price to clear the modeled cost.`
+            : "The live price remains below target with positive simulated value."
+        : recommendation.stoplight === "caution"
+          ? topOwnershipConflict && topOwnershipConflict.probability >= 0.05
+            ? `This price is near the model's ceiling, and the main ownership collision risk arrives in the ${titleCaseStage(topOwnershipConflict.earliestRound)}.`
+            : "The live price is nearing the model's ceiling, so upside is starting to compress."
+          : topOwnershipConflict && topOwnershipConflict.probability >= 0.05
+            ? `The price is above the model's comfort range before the ${titleCaseStage(topOwnershipConflict.earliestRound)} ownership risk is even priced in.`
+            : "The live price is above the model's comfort range for this team."
+      : null;
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
@@ -1323,22 +1335,31 @@ export function DashboardShell({
                       )}
                     >
                       <div className="decision-panel__hero-topline">
-                        <div className="decision-panel__hero-content">
-                          <div className="decision-panel__hero-pulse">
-                            <span
-                              className={cn(
-                                "pulse-dot",
-                                !nominatedAsset && "pulse-dot--muted"
-                              )}
-                            />
-                            <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
-                          </div>
+	                        <div className="decision-panel__hero-content">
+	                          <div className="decision-panel__hero-pulse">
+	                            <span
+	                              className={cn(
+	                                "pulse-dot",
+	                                !nominatedAsset && "pulse-dot--muted"
+	                              )}
+	                            />
+	                            <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
+	                            {nominatedTeamClassification ? (
+	                              <div className="decision-panel__classification">
+	                                <TeamClassificationBadge classification={nominatedTeamClassification} />
+	                              </div>
+	                            ) : null}
+	                          </div>
                           <h2
                             className={cn(
                               "decision-panel__hero-title",
                               nominatedAsset &&
-                                nominatedAsset.type !== "single_team" &&
-                                "decision-panel__hero-title--grouped",
+                                nominatedAsset.type === "seed_bundle" &&
+                                "decision-panel__hero-title--bundle",
+                              nominatedAsset &&
+                                (nominatedAsset.type === "play_in_slot" ||
+                                  nominatedAsset.label.length > 24) &&
+                                "decision-panel__hero-title--long",
                               !nominatedAsset && "decision-panel__hero-title--waiting"
                             )}
                           >
@@ -1394,18 +1415,13 @@ export function DashboardShell({
                           ) : null}
                         </p>
                       ) : null}
-                      {nominatedTeamClassification || nominatedTeamNote ? (
-                        <div className="decision-panel__annotation">
-                          {nominatedTeamClassification ? (
-                            <div className="decision-panel__classification">
-                              <TeamClassificationBadge classification={nominatedTeamClassification} />
-                            </div>
-                          ) : null}
-                          {nominatedTeamNote ? (
-                            <span className="decision-panel__note">{nominatedTeamNote}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
+	                      {nominatedTeamNote ? (
+	                        <div className="decision-panel__annotation">
+	                          {nominatedTeamNote ? (
+	                            <span className="decision-panel__note">{nominatedTeamNote}</span>
+	                          ) : null}
+	                        </div>
+	                      ) : null}
                     </div>
                   </article>
 
@@ -1424,13 +1440,9 @@ export function DashboardShell({
                                 : `Pass above ${formatCurrency(recommendation.maxBid)}`
                             : "Pick a team to set the board"}
                         </h3>
-                        <p>
-                          {recommendation
-                            ? recommendation.forcedPassConflictTeamId
-                              ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
-                              : fundingStatusLabels[recommendation.fundingStatus]
-                            : "The live room stays focused on the current nomination and bankroll position."}
-                        </p>
+	                        <p>
+	                          {callSupportText}
+	                        </p>
                         {callDetailText ? (
                           <p className="call-conflict">{callDetailText}</p>
                         ) : null}
