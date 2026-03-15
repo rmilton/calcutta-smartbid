@@ -21,11 +21,12 @@ The app uses a premium live-market interface:
 
 - centered on a live decision board and recommendation call
 - keyboard-assisted workflow for team focus, bid entry, winner selection, and save
-- workspace navigation model: `Auction`, `Analysis`, `Portfolio`, `Overrides`
+- workspace navigation model: `Auction`, `Analysis`, `Portfolio`, `Bracket`, `Overrides`
 - action controls should feel compact, direct, and operational
 - `Auction` is the fast action surface
 - `Analysis` is the deeper reasoning surface using the same selected team and recommendation payload
 - grouped teams such as play-ins and `13-16` packages should show their member schools inline, not hide behind secondary clicks
+- `Bracket` is the tournament-state surface and should feel like part of the same live room, not a separate tool
 
 ### Viewer board
 
@@ -33,6 +34,7 @@ The app uses a premium live-market interface:
 - active team should be the dominant visual signal
 - if the active team is a grouped package, the member schools should be legible immediately beneath the main label
 - current bid is intentionally hidden from viewers, even though it remains live operator state
+- viewer workspace navigation should stay minimal and currently includes `Auction` plus `Bracket`
 - viewer layout should emphasize Mothership context, sold-team flow, and compact ownership scanning
 - live-update affordances can pulse or animate, but should stay clean and readable
 

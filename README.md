@@ -6,10 +6,10 @@ The current implementation ships with:
 
 - a login-only landing page that routes by `email + shared code`
 - an admin center for sessions, users, syndicates, and data sources
-- a session-admin surface for access, payout rules, syndicates, Selection Sunday imports, and readiness checks
-- a live operator board with real-time bid support
-- an in-room analysis workspace that shares the same recommendation model as the auction view
-- a synchronized viewer mode with a read-only shared Mothership board
+- a session-admin surface for access, payout rules, syndicates, session-managed imports, and room readiness
+- a live operator board with real-time bid support and last-purchase undo
+- in-room `Analysis`, `Portfolio`, `Bracket`, and `Overrides` workspaces around the live auction view
+- a synchronized viewer mode with a read-only shared Mothership board plus bracket access
 - Monte Carlo tournament simulation and Mothership-centered bid recommendations
 - a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
 - a session-managed bracket import plus a separate session-managed analysis import
@@ -93,15 +93,16 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - platform-level setup and operations
   - manages users, tracked syndicates, data sources, and sessions
 - `Session admin`
-  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, imports, and lifecycle controls
+  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, bracket/analysis imports, readiness, and lifecycle controls
 - `Live room`
   - shared persisted Mothership session state for operator and viewer
-  - operator can update active team, bid, and purchases
+  - operator can update active team, bid, purchases, bracket winners, and undo the most recent purchase
+  - operator workspaces are `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides`
+  - viewer workspaces are `Auction` and `Bracket`
   - active team can represent:
     - a single school
     - an unresolved play-in team
     - a regional `13-16` package
-  - operator also has an `Analysis` workspace for deeper team and bid review
   - viewer is read-only
 
 ## Access model
@@ -156,9 +157,20 @@ For a Vercel deployment, production should always use:
 CALCUTTA_STORAGE_BACKEND=supabase
 ```
 
+## Session-managed imports
+
+Selection Sunday sessions can now be driven by separate bracket and analysis CSV imports.
+
+- `Bracket import` expects bracket structure fields such as `name`, `region`, and `seed`
+- `Analysis import` expects model fields such as `name`, `rating`, `offense`, `defense`, and `tempo`
+- room readiness is blocked until the imported bracket and analysis data can be merged into one session field
+- the legacy active data source remains available as a fallback combined import flow
+
+The live `Bracket` workspace requires a complete 64-team field. When the session does not have a bracket-ready field, the workspace stays visible but explains why it is unavailable.
+
 ## State model notes
 
-- completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
+- completed purchases are the authoritative auction record unless superseded by an explicit correction workflow
 - current bid and active nominated team are live operational state
 - the live room still talks about `teams` in the UI, but the internal auction model can represent:
   - a single team
@@ -171,6 +183,8 @@ CALCUTTA_STORAGE_BACKEND=supabase
 - Mothership-owned purchases are the source of truth for owned-team portfolio state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
 - `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
+- `Bracket` reflects the same session truth as the live room, including purchased-team ownership markers
+- only the most recent purchase can be undone in the current correction flow
 - session analysis settings are:
   - `targetTeamCount` default `8`
   - `maxSingleTeamPct` default `22`
