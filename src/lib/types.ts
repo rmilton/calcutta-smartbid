@@ -15,6 +15,7 @@ export type SessionRole = "admin" | "viewer";
 export type AuthScope = "platform" | "session";
 export type StorageBackend = "local" | "supabase";
 export type DataSourceKind = "csv" | "api";
+export type DataSourcePurpose = "bracket" | "analysis";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
@@ -420,6 +421,7 @@ export interface DataSource {
   id: string;
   name: string;
   kind: DataSourceKind;
+  purpose: DataSourcePurpose;
   active: boolean;
   config: CsvDataSourceConfig | ApiDataSourceConfig;
   createdAt: string;
@@ -558,7 +560,10 @@ export interface AdminSessionSummary {
   isArchived: boolean;
   archivedAt: string | null;
   projectionProvider: string;
-  activeDataSourceName: string;
+  bracketSourceName: string | null;
+  analysisSourceName: string | null;
+  importReadinessStatus: SessionImportStatus;
+  importReadinessSummary: string;
   purchaseCount: number;
   syndicateCount: number;
   overrideCount: number;
@@ -670,37 +675,42 @@ export const createSyndicateCatalogSchema = z.object({
 
 export const updateSyndicateCatalogSchema = createSyndicateCatalogSchema.partial();
 
-export const createDataSourceSchema = z.discriminatedUnion("kind", [
-  z.object({
-    name: z.string().min(2).max(80),
-    kind: z.literal("csv"),
-    active: z.boolean().default(true),
-    csvContent: z.string().min(1),
-    fileName: z.string().nullable().optional()
-  }),
-  z.object({
-    name: z.string().min(2).max(80),
-    kind: z.literal("api"),
-    active: z.boolean().default(true),
-    url: z.string().url(),
-    bearerToken: z.string().optional().default("")
-  })
-]);
+export const createDataSourceSchema = z.object({
+  name: z.string().min(2).max(80),
+  kind: z.literal("csv").default("csv"),
+  purpose: z.enum(["bracket", "analysis"]),
+  active: z.boolean().default(true),
+  csvContent: z.string().min(1),
+  fileName: z.string().nullable().optional()
+});
 
 export const updateDataSourceSchema = z
   .object({
     name: z.string().min(2).max(80).optional(),
     active: z.boolean().optional(),
     csvContent: z.string().min(1).optional(),
-    fileName: z.string().nullable().optional(),
-    url: z.string().url().optional(),
-    bearerToken: z.string().optional()
+    fileName: z.string().nullable().optional()
   })
   .refine(
     (value) =>
       Object.keys(value).length > 0,
     "At least one field is required."
   );
+
+export const sessionSourceSelectionSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("saved-source"),
+    sourceKey: z.string()
+  }),
+  z.object({
+    mode: z.literal("upload"),
+    sourceName: z.string().min(2).max(120),
+    fileName: z.string().nullable().optional(),
+    csvContent: z.string().min(1)
+  })
+]);
+
+export type SessionSourceSelection = z.infer<typeof sessionSourceSelectionSchema>;
 
 export const createSessionSchema = z.object({
   name: z.string().min(3).max(80),
@@ -725,7 +735,8 @@ export const createSessionSchema = z.object({
       targetTeamCount: 8,
       maxSingleTeamPct: 22
     }),
-  dataSourceKey: z.string().default("builtin:mock"),
+  bracketSelection: sessionSourceSelectionSchema.optional(),
+  analysisSelection: sessionSourceSelectionSchema.optional(),
   simulationIterations: z.number().int().min(1000).max(50000).default(4000)
 });
 
@@ -860,15 +871,11 @@ export const updateSessionDataSourceSchema = z.object({
 });
 
 export const importSessionBracketSchema = z.object({
-  csvContent: z.string().min(1),
-  sourceName: z.string().min(2).max(120).default("Bracket CSV"),
-  fileName: z.string().nullable().optional()
+  selection: sessionSourceSelectionSchema
 });
 
 export const importSessionAnalysisSchema = z.object({
-  csvContent: z.string().min(1),
-  sourceName: z.string().min(2).max(120).default("Analysis CSV"),
-  fileName: z.string().nullable().optional()
+  selection: sessionSourceSelectionSchema
 });
 
 export const updateSessionPayoutRulesSchema = z.object({

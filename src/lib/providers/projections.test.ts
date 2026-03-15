@@ -2,6 +2,7 @@ import {
   applyProjectionOverrides,
   loadProjectionsFromSource,
   normalizeProjectionFeed,
+  testDataSourceConnection,
   validateProjectionFieldShape
 } from "@/lib/providers/projections";
 
@@ -123,6 +124,7 @@ describe("csv source loading", () => {
           id: "ncaa-data",
           name: "NCAA DATA",
           kind: "csv",
+          purpose: "analysis",
           active: true,
           config: {
             csvContent: rows.join("\n"),
@@ -192,6 +194,7 @@ describe("csv source loading", () => {
           id: "session-csv",
           name: "Session CSV",
           kind: "csv",
+          purpose: "analysis",
           active: true,
           config: {
             csvContent: rows.join("\n"),
@@ -210,5 +213,44 @@ describe("csv source loading", () => {
     expect(importedTeam?.scouting?.rankedWins).toBe(10);
     expect(importedTeam?.scouting?.threePointPct).toBe(39.3);
     expect(importedTeam?.scouting?.quadWins?.q1).toBe(9);
+  });
+
+  it("rejects bracket sources that contain analysis-shaped CSV content", async () => {
+    await expect(
+      testDataSourceConnection({
+        id: "broken-bracket",
+        name: "Broken Bracket",
+        kind: "csv",
+        purpose: "bracket",
+        active: true,
+        config: {
+          csvContent:
+            "teamId,name,shortName,rating,offense,defense,tempo\nduke,Duke,DUKE,95,122,92,69",
+          fileName: "broken.csv"
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastTestedAt: null
+      })
+    ).rejects.toThrow("region column");
+  });
+
+  it("rejects analysis sources that contain bracket-shaped CSV content", async () => {
+    await expect(
+      testDataSourceConnection({
+        id: "broken-analysis",
+        name: "Broken Analysis",
+        kind: "csv",
+        purpose: "analysis",
+        active: true,
+        config: {
+          csvContent: "id,name,shortName,region,seed\nduke,Duke,DUKE,East,1",
+          fileName: "broken.csv"
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastTestedAt: null
+      })
+    ).rejects.toThrow("rating column");
   });
 });

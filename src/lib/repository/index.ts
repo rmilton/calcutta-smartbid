@@ -53,6 +53,7 @@ import {
   CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
+  DataSourcePurpose,
   MothershipFundingModel,
   PlatformUser,
   ProjectionOverride,
@@ -63,6 +64,7 @@ import {
   SessionImportReadiness,
   SessionRole,
   SessionBracketImport,
+  SessionSourceSelection,
   SessionSyndicateFundingInput,
   StoredAuctionSession,
   StorageBackend,
@@ -100,7 +102,8 @@ interface CreateSessionInput {
   catalogSyndicateIds: string[];
   payoutRules: PayoutRules;
   analysisSettings: AnalysisSettings;
-  dataSourceKey: string;
+  bracketSelection?: SessionSourceSelection;
+  analysisSelection?: SessionSourceSelection;
   simulationIterations: number;
 }
 
@@ -160,12 +163,11 @@ export interface SessionRepository {
   ): Promise<SyndicateCatalogEntry>;
   createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }): Promise<DataSource>;
   updateDataSource(
     sourceId: string,
@@ -174,8 +176,6 @@ export interface SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ): Promise<DataSource>;
   testDataSource(sourceId: string): Promise<void>;
@@ -214,11 +214,11 @@ export interface SessionRepository {
   ): Promise<SessionAdminConfig>;
   importSessionBracket(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ): Promise<SessionAdminConfig>;
   importSessionAnalysis(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ): Promise<SessionAdminConfig>;
   setSessionDataSource(sessionId: string, sourceKey: string): Promise<SessionAdminConfig>;
   runSessionImport(sessionId: string, sourceKey?: string): Promise<SessionAdminConfig>;
@@ -417,44 +417,29 @@ class LocalSessionRepository implements SessionRepository {
 
   async createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }) {
     const store = await this.readStore();
     const parsed = createDataSourceSchema.parse(input);
     const now = new Date().toISOString();
-    const source: DataSource =
-      parsed.kind === "csv"
-        ? {
-            id: createId("source"),
-            name: parsed.name.trim(),
-            kind: "csv",
-            active: parsed.active,
-            config: {
-              csvContent: parsed.csvContent,
-              fileName: parsed.fileName ?? null
-            },
-            createdAt: now,
-            updatedAt: now,
-            lastTestedAt: null
-          }
-        : {
-            id: createId("source"),
-            name: parsed.name.trim(),
-            kind: "api",
-            active: parsed.active,
-            config: {
-              url: parsed.url,
-              bearerToken: parsed.bearerToken ?? ""
-            },
-            createdAt: now,
-            updatedAt: now,
-            lastTestedAt: null
-          };
+    const source: DataSource = {
+      id: createId("source"),
+      name: parsed.name.trim(),
+      kind: "csv",
+      purpose: parsed.purpose,
+      active: parsed.active,
+      config: {
+        csvContent: parsed.csvContent,
+        fileName: parsed.fileName ?? null
+      },
+      createdAt: now,
+      updatedAt: now,
+      lastTestedAt: null
+    };
     store.dataSources.push(source);
     await this.writeStore(store);
     return source;
@@ -467,8 +452,6 @@ class LocalSessionRepository implements SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ) {
     const store = await this.readStore();
@@ -480,18 +463,10 @@ class LocalSessionRepository implements SessionRepository {
     if (parsed.active !== undefined) {
       source.active = parsed.active;
     }
-    if (source.kind === "csv") {
-      source.config = {
-        csvContent: parsed.csvContent ?? (source.config as { csvContent: string }).csvContent,
-        fileName: parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
-      };
-    } else {
-      source.config = {
-        url: parsed.url ?? (source.config as { url: string }).url,
-        bearerToken:
-          parsed.bearerToken ?? (source.config as { bearerToken?: string }).bearerToken ?? ""
-      };
-    }
+    source.config = {
+      csvContent: parsed.csvContent ?? (source.config as { csvContent: string }).csvContent,
+      fileName: parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
+    };
     source.updatedAt = new Date().toISOString();
     syncSessionActiveDataSource(store.sessions, source);
     await this.writeStore(store);
@@ -617,25 +592,29 @@ class LocalSessionRepository implements SessionRepository {
 
   async importSessionBracket(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     if (session.purchases.length > 0) {
       throw new Error("Cannot replace projections after purchases have been recorded.");
     }
-    session.bracketImport = parseSessionBracketImport(
-      input.csvContent,
-      input.sourceName,
-      input.fileName
+    const bracketImport = resolveSessionImportSelection(
+      input.selection,
+      "bracket",
+      store.dataSources
     );
+    if (!bracketImport) {
+      throw new Error("Bracket import payload is required.");
+    }
+    session.bracketImport = bracketImport;
 
     try {
       applySessionManagedImports(session);
       store.dataImportRuns.push(
         createImportRun(
           session.id,
-          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
           "success",
           "Bracket import completed."
         )
@@ -646,7 +625,7 @@ class LocalSessionRepository implements SessionRepository {
       store.dataImportRuns.push(
         createImportRun(
           session.id,
-          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
           "failed",
           error instanceof Error ? error.message : "Unable to import bracket."
         )
@@ -658,25 +637,29 @@ class LocalSessionRepository implements SessionRepository {
 
   async importSessionAnalysis(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     if (session.purchases.length > 0) {
       throw new Error("Cannot replace projections after purchases have been recorded.");
     }
-    session.analysisImport = parseSessionAnalysisImport(
-      input.csvContent,
-      input.sourceName,
-      input.fileName
+    const analysisImport = resolveSessionImportSelection(
+      input.selection,
+      "analysis",
+      store.dataSources
     );
+    if (!analysisImport) {
+      throw new Error("Analysis import payload is required.");
+    }
+    session.analysisImport = analysisImport;
 
     try {
       applySessionManagedImports(session);
       store.dataImportRuns.push(
         createImportRun(
           session.id,
-          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
           "success",
           "Analysis import completed."
         )
@@ -687,7 +670,7 @@ class LocalSessionRepository implements SessionRepository {
       store.dataImportRuns.push(
         createImportRun(
           session.id,
-          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
           "failed",
           error instanceof Error ? error.message : "Unable to import analysis."
         )
@@ -936,6 +919,7 @@ class SupabaseSessionRepository implements SessionRepository {
       sessionsResult,
       syndicatesResult,
       purchasesResult,
+      projectionsResult,
       overridesResult,
       membersResult,
       usersResult,
@@ -945,11 +929,12 @@ class SupabaseSessionRepository implements SessionRepository {
       client
         .from("auction_sessions")
         .select(
-          "id, name, created_at, updated_at, archived_at, projection_provider, active_data_source_name"
+          "id, name, created_at, updated_at, archived_at, projection_provider, bracket_import, analysis_import"
         )
         .order("updated_at", { ascending: false }),
       client.from("syndicates").select("session_id"),
       client.from("purchase_records").select("session_id"),
+      client.from("team_projections").select("session_id"),
       client.from("projection_overrides").select("session_id"),
       client.from("session_members").select("session_id, role, active"),
       client.from("platform_users").select("*").order("name", { ascending: true }),
@@ -960,6 +945,7 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(sessionsResult.error);
     throwOnSupabaseError(syndicatesResult.error);
     throwOnSupabaseError(purchasesResult.error);
+    throwOnSupabaseError(projectionsResult.error);
     throwOnSupabaseError(overridesResult.error);
     throwOnSupabaseError(membersResult.error);
     throwOnSupabaseError(usersResult.error);
@@ -971,6 +957,9 @@ class SupabaseSessionRepository implements SessionRepository {
     );
     const purchaseCounts = countRowsBySession(
       (purchasesResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const projectionCounts = countRowsBySession(
+      (projectionsResult.data as Array<Record<string, unknown>> | null) ?? []
     );
     const overrideCounts = countRowsBySession(
       (overridesResult.data as Array<Record<string, unknown>> | null) ?? []
@@ -987,6 +976,11 @@ class SupabaseSessionRepository implements SessionRepository {
             adminCount: 0,
             viewerCount: 0
           };
+          const readiness = buildAdminImportReadinessFromSummaryData({
+            bracketImport: row.bracket_import as SessionBracketImport | null | undefined,
+            analysisImport: row.analysis_import as SessionAnalysisImport | null | undefined,
+            projectionCount: projectionCounts.get(sessionId) ?? 0
+          });
 
           return {
             id: sessionId,
@@ -996,7 +990,16 @@ class SupabaseSessionRepository implements SessionRepository {
             isArchived: row.archived_at !== null,
             archivedAt: row.archived_at ? String(row.archived_at) : null,
             projectionProvider: String(row.projection_provider),
-            activeDataSourceName: String(row.active_data_source_name ?? "Built-in Mock Field"),
+            bracketSourceName: readiness.hasBracket
+              ? normalizeBracketImport(row.bracket_import as SessionBracketImport | null | undefined)
+                  ?.sourceName ?? null
+              : null,
+            analysisSourceName: readiness.hasAnalysis
+              ? normalizeAnalysisImport(row.analysis_import as SessionAnalysisImport | null | undefined)
+                  ?.sourceName ?? null
+              : null,
+            importReadinessStatus: readiness.status,
+            importReadinessSummary: readiness.summary,
             purchaseCount: purchaseCounts.get(sessionId) ?? 0,
             syndicateCount: syndicateCounts.get(sessionId) ?? 0,
             overrideCount: overrideCounts.get(sessionId) ?? 0,
@@ -1375,34 +1378,27 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }) {
     const parsed = createDataSourceSchema.parse(input);
     const now = new Date().toISOString();
-    const config =
-      parsed.kind === "csv"
-        ? {
-            csvContent: parsed.csvContent,
-            fileName: parsed.fileName ?? null
-          }
-        : {
-            url: parsed.url,
-            bearerToken: parsed.bearerToken ?? ""
-          };
     const client = requireSupabaseClient();
     const result = await client
       .from("data_sources")
       .insert({
         id: createId("source"),
         name: parsed.name.trim(),
-        kind: parsed.kind,
+        kind: "csv",
+        purpose: parsed.purpose,
         active: parsed.active,
-        config,
+        config: {
+          csvContent: parsed.csvContent,
+          fileName: parsed.fileName ?? null
+        },
         created_at: now,
         updated_at: now,
         last_tested_at: null
@@ -1420,8 +1416,6 @@ class SupabaseSessionRepository implements SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ) {
     const parsed = updateDataSourceSchema.parse(input);
@@ -1429,21 +1423,10 @@ class SupabaseSessionRepository implements SessionRepository {
     const currentResult = await client.from("data_sources").select("*").eq("id", sourceId).single();
     throwOnSupabaseError(currentResult.error);
     const current = mapDataSources([currentResult.data])[0];
-    const config =
-      current.kind === "csv"
-        ? {
-            csvContent:
-              parsed.csvContent ?? (current.config as { csvContent: string }).csvContent,
-            fileName:
-              parsed.fileName ?? (current.config as { fileName: string | null }).fileName ?? null
-          }
-        : {
-            url: parsed.url ?? (current.config as { url: string }).url,
-            bearerToken:
-              parsed.bearerToken ??
-              (current.config as { bearerToken?: string }).bearerToken ??
-              ""
-          };
+    const config = {
+      csvContent: parsed.csvContent ?? (current.config as { csvContent: string }).csvContent,
+      fileName: parsed.fileName ?? (current.config as { fileName: string | null }).fileName ?? null
+    };
 
     const result = await client
       .from("data_sources")
@@ -1597,17 +1580,18 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async importSessionBracket(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ) {
+    const refs = await this.readReferenceData();
     const session = await this.requireSession(sessionId);
     if (session.purchases.length > 0) {
       throw new Error("Cannot replace projections after purchases have been recorded.");
     }
-    session.bracketImport = parseSessionBracketImport(
-      input.csvContent,
-      input.sourceName,
-      input.fileName
-    );
+    const bracketImport = resolveSessionImportSelection(input.selection, "bracket", refs.dataSources);
+    if (!bracketImport) {
+      throw new Error("Bracket import payload is required.");
+    }
+    session.bracketImport = bracketImport;
 
     try {
       applySessionManagedImports(session);
@@ -1615,7 +1599,7 @@ class SupabaseSessionRepository implements SessionRepository {
       await this.insertImportRun(
         createImportRun(
           session.id,
-          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
           "success",
           "Bracket import completed."
         )
@@ -1626,7 +1610,7 @@ class SupabaseSessionRepository implements SessionRepository {
       await this.insertImportRun(
         createImportRun(
           session.id,
-          { key: "session:bracket", name: input.sourceName, kind: "csv" },
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
           "failed",
           error instanceof Error ? error.message : "Unable to import bracket."
         )
@@ -1637,17 +1621,22 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async importSessionAnalysis(
     sessionId: string,
-    input: { csvContent: string; sourceName: string; fileName?: string | null }
+    input: { selection: SessionSourceSelection }
   ) {
+    const refs = await this.readReferenceData();
     const session = await this.requireSession(sessionId);
     if (session.purchases.length > 0) {
       throw new Error("Cannot replace projections after purchases have been recorded.");
     }
-    session.analysisImport = parseSessionAnalysisImport(
-      input.csvContent,
-      input.sourceName,
-      input.fileName
+    const analysisImport = resolveSessionImportSelection(
+      input.selection,
+      "analysis",
+      refs.dataSources
     );
+    if (!analysisImport) {
+      throw new Error("Analysis import payload is required.");
+    }
+    session.analysisImport = analysisImport;
 
     try {
       applySessionManagedImports(session);
@@ -1655,7 +1644,7 @@ class SupabaseSessionRepository implements SessionRepository {
       await this.insertImportRun(
         createImportRun(
           session.id,
-          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
           "success",
           "Analysis import completed."
         )
@@ -1666,7 +1655,7 @@ class SupabaseSessionRepository implements SessionRepository {
       await this.insertImportRun(
         createImportRun(
           session.id,
-          { key: "session:analysis", name: input.sourceName, kind: "csv" },
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
           "failed",
           error instanceof Error ? error.message : "Unable to import analysis."
         )
@@ -2266,8 +2255,16 @@ class SupabaseSessionRepository implements SessionRepository {
 async function createSessionModel(input: CreateSessionInput, refs: ReferenceData) {
   const parsed = createSessionSchema.parse(input);
   const accessMembers = buildAccessMembers(parsed.accessAssignments, refs.platformUsers);
-  const dataSource = resolveDataSourceRef(parsed.dataSourceKey, refs.dataSources);
-  const projectionFeed = await loadProjectionsFromSource(dataSource, refs.dataSources);
+  const bracketImport = resolveSessionImportSelection(
+    parsed.bracketSelection,
+    "bracket",
+    refs.dataSources
+  );
+  const analysisImport = resolveSessionImportSelection(
+    parsed.analysisSelection,
+    "analysis",
+    refs.dataSources
+  );
   const timestamp = new Date().toISOString();
   const sessionId = createId("session");
   const legacyBudgetSeed = deriveLegacyBudgetSeed(
@@ -2302,24 +2299,24 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     analysisSettings: normalizeAnalysisSettings(parsed.analysisSettings),
     mothershipFunding: buildDefaultMothershipFunding(legacyBudgetSeed),
     syndicates,
-    baseProjections: projectionFeed.teams,
-    projections: projectionFeed.teams,
+    baseProjections: [],
+    projections: [],
     projectionOverrides: {},
     teamClassifications: {},
     teamNotes: {},
-    projectionProvider: projectionFeed.provider,
-    activeDataSource: dataSource,
+    projectionProvider: "Session-managed imports",
+    activeDataSource: builtinMockSource,
     finalFourPairings: getDefaultFinalFourPairings(),
-    bracketImport: null,
-    analysisImport: null,
+    bracketImport,
+    analysisImport,
     importReadiness: buildSessionImportReadiness({
-      bracketImport: null,
-      analysisImport: null,
-      baseProjections: projectionFeed.teams,
+      bracketImport,
+      analysisImport,
+      baseProjections: [],
       simulationSnapshot: null
     }),
     liveState: {
-      nominatedTeamId: projectionFeed.teams[0]?.id ?? null,
+      nominatedTeamId: null,
       currentBid: 0,
       soldTeamIds: [],
       lastUpdatedAt: timestamp
@@ -2330,8 +2327,16 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
   });
 
   setStoredSharedAccessCode(session, parsed.sharedAccessCode);
-
-  recalculateSessionState(session, parsed.simulationIterations);
+  if (session.bracketImport || session.analysisImport) {
+    applySessionManagedImports(session);
+    if (
+      session.importReadiness.status === "ready" &&
+      !session.simulationSnapshot &&
+      session.baseProjections.length > 0
+    ) {
+      recalculateSessionState(session, parsed.simulationIterations);
+    }
+  }
   return session;
 }
 
@@ -2493,6 +2498,18 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
     session.baseProjections,
     session.projectionOverrides
   );
+  if (session.projections.length === 0) {
+    session.simulationSnapshot = null;
+    session.syndicates = recalculateSyndicateValues(session);
+    session.updatedAt = new Date().toISOString();
+    session.importReadiness = buildSessionImportReadiness({
+      bracketImport: session.bracketImport,
+      analysisImport: session.analysisImport,
+      baseProjections: session.baseProjections,
+      simulationSnapshot: null
+    });
+    return;
+  }
   session.simulationSnapshot = simulateAuctionField({
     sessionId: session.id,
     projections: session.projections,
@@ -3045,6 +3062,68 @@ function resolveDataSourceRef(sourceKey: string, dataSources: DataSource[]): Ses
   };
 }
 
+function resolveManagedDataSource(
+  sourceKey: string,
+  purpose: DataSourcePurpose,
+  dataSources: DataSource[]
+) {
+  const source = dataSources.find((candidate) => `data-source:${candidate.id}` === sourceKey) ?? null;
+  if (!source) {
+    throw new Error("Selected data source was not found.");
+  }
+  if (!source.active) {
+    throw new Error("Selected data source is unavailable.");
+  }
+  if (source.kind !== "csv") {
+    throw new Error("Selected data source is not supported for session-managed imports.");
+  }
+  if (source.purpose !== purpose) {
+    throw new Error(
+      purpose === "bracket"
+        ? "Selected data source is not available for bracket imports."
+        : "Selected data source is not available for analysis imports."
+    );
+  }
+
+  return source;
+}
+
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: "bracket",
+  dataSources: DataSource[]
+): SessionBracketImport | null;
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: "analysis",
+  dataSources: DataSource[]
+): SessionAnalysisImport | null;
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: DataSourcePurpose,
+  dataSources: DataSource[]
+) {
+  if (!selection) {
+    return null;
+  }
+
+  if (selection.mode === "saved-source") {
+    const source = resolveManagedDataSource(selection.sourceKey, purpose, dataSources);
+    return parseSessionImportFromSource(source);
+  }
+
+  return purpose === "bracket"
+    ? parseSessionBracketImport(selection.csvContent, selection.sourceName, selection.fileName)
+    : parseSessionAnalysisImport(selection.csvContent, selection.sourceName, selection.fileName);
+}
+
+function parseSessionImportFromSource(source: DataSource) {
+  const config = source.config as { csvContent: string; fileName: string | null };
+  return source.purpose === "bracket"
+    ? parseSessionBracketImport(config.csvContent, source.name, config.fileName)
+    : parseSessionAnalysisImport(config.csvContent, source.name, config.fileName);
+}
+
 function createImportRun(
   sessionId: string,
   source: SessionDataSourceRef,
@@ -3072,7 +3151,10 @@ function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSu
     isArchived: Boolean(session.archivedAt),
     archivedAt: session.archivedAt,
     projectionProvider: session.projectionProvider,
-    activeDataSourceName: session.activeDataSource?.name ?? builtinMockSource.name,
+    bracketSourceName: session.bracketImport?.sourceName ?? null,
+    analysisSourceName: session.analysisImport?.sourceName ?? null,
+    importReadinessStatus: session.importReadiness.status,
+    importReadinessSummary: session.importReadiness.summary,
     purchaseCount: session.purchases.length,
     syndicateCount: session.syndicates.length,
     overrideCount: Object.keys(session.projectionOverrides).length,
@@ -3144,6 +3226,27 @@ function syncSessionActiveDataSource(
   });
 }
 
+function buildAdminImportReadinessFromSummaryData(args: {
+  bracketImport: SessionBracketImport | null | undefined;
+  analysisImport: SessionAnalysisImport | null | undefined;
+  projectionCount: number;
+}) {
+  const bracketImport = normalizeBracketImport(args.bracketImport);
+  const analysisImport = normalizeAnalysisImport(args.analysisImport);
+  const baseProjections =
+    args.projectionCount > 0 ? buildPlaceholderProjections(args.projectionCount) : [];
+
+  return buildSessionImportReadiness({
+    bracketImport,
+    analysisImport,
+    baseProjections,
+    simulationSnapshot:
+      args.projectionCount > 0
+        ? ({} as NonNullable<StoredAuctionSession["simulationSnapshot"]>)
+        : null
+  });
+}
+
 function normalizeStoreShape(store: SessionStore) {
   return {
     sessions: (store.sessions ?? []).map(normalizeSessionShape),
@@ -3152,7 +3255,10 @@ function normalizeStoreShape(store: SessionStore) {
       email: user.email.trim().toLowerCase()
     })),
     syndicateCatalog: store.syndicateCatalog ?? [],
-    dataSources: store.dataSources ?? [],
+    dataSources: (store.dataSources ?? []).map((source) => ({
+      ...source,
+      purpose: (source.purpose === "bracket" ? "bracket" : "analysis") as DataSourcePurpose
+    })),
     dataImportRuns: store.dataImportRuns ?? [],
     csvAnalysisPortfolios: (store.csvAnalysisPortfolios ?? []).map((portfolio) => ({
       sessionId: String(portfolio.sessionId),
@@ -3161,6 +3267,21 @@ function normalizeStoreShape(store: SessionStore) {
       updatedAt: String(portfolio.updatedAt ?? new Date(0).toISOString())
     }))
   };
+}
+
+function buildPlaceholderProjections(count: number): TeamProjection[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `summary-${index}`,
+    name: `Summary Team ${index + 1}`,
+    shortName: `S${index + 1}`,
+    region: "East",
+    seed: 1,
+    rating: 0,
+    offense: 0,
+    defense: 0,
+    tempo: 0,
+    source: "summary"
+  }));
 }
 
 function normalizeBracketImport(
@@ -3525,6 +3646,8 @@ function mapDataSources(rows: Array<Record<string, unknown>> | null | undefined)
     id: String(row.id),
     name: String(row.name),
     kind: String(row.kind) as DataSource["kind"],
+    purpose:
+      String(row.purpose ?? "").toLowerCase() === "bracket" ? "bracket" : "analysis",
     active: Boolean(row.active),
     config: row.config as DataSource["config"],
     createdAt: String(row.created_at),

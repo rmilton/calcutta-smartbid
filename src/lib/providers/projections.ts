@@ -1,6 +1,7 @@
 import {
   CsvDataSourceConfig,
   DataSource,
+  DataSourcePurpose,
   ProjectionOverride,
   RemoteProjectionFeed,
   SessionDataSourceRef,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/types";
 import { buildCsvProjectionFeed } from "@/lib/providers/csv-projections";
 import { getMockProjections } from "@/lib/sample-data";
+import { parseSessionAnalysisImport, parseSessionBracketImport } from "@/lib/session-imports";
 import { clamp, uniqueBy } from "@/lib/utils";
 import { z } from "zod";
 
@@ -106,11 +108,26 @@ export async function loadProjectionProvider(provider: "mock" | "remote") {
 
 export async function testDataSourceConnection(dataSource: DataSource) {
   if (dataSource.kind === "csv") {
-    await loadCsvProjectionSource(dataSource);
+    const config = dataSource.config as CsvDataSourceConfig;
+    validateCsvDataSource(dataSource.purpose, config.csvContent, dataSource.name, config.fileName);
     return;
   }
 
   await loadApiProjectionSource(dataSource);
+}
+
+export function validateCsvDataSource(
+  purpose: DataSourcePurpose,
+  csvContent: string,
+  sourceName: string,
+  fileName?: string | null
+) {
+  if (purpose === "bracket") {
+    parseSessionBracketImport(csvContent, sourceName, fileName);
+    return;
+  }
+
+  parseSessionAnalysisImport(csvContent, sourceName, fileName);
 }
 
 async function loadApiProjectionSource(dataSource: DataSource) {

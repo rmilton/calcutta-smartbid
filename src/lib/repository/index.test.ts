@@ -38,17 +38,32 @@ async function createBaselineSession() {
       targetTeamCount: 8,
       maxSingleTeamPct: 22
     },
-    dataSourceKey: "builtin:mock",
+    bracketSelection: {
+      mode: "upload",
+      sourceName: "Official Bracket",
+      fileName: "bracket.csv",
+      csvContent: buildFullBracketCsv()
+    },
+    analysisSelection: {
+      mode: "upload",
+      sourceName: "Metrics Feed",
+      fileName: "analysis.csv",
+      csvContent: buildFullAnalysisCsv()
+    },
     simulationIterations: 1000
   });
 
   return { repository, session };
 }
 
-function buildFullFieldCsv() {
-  const regions = ["South", "West", "East", "Midwest"];
+function buildRegions() {
+  return ["South", "West", "East", "Midwest"];
+}
+
+function buildFullBracketCsv() {
+  const regions = buildRegions();
   return [
-    ["id", "name", "shortName", "region", "seed", "rating", "offense", "defense", "tempo"].join(","),
+    ["id", "name", "shortName", "region", "seed", "regionSlot"].join(","),
     ...regions.flatMap((region) =>
       Array.from({ length: 16 }, (_, index) => {
         const seed = index + 1;
@@ -58,6 +73,24 @@ function buildFullFieldCsv() {
           `${region.slice(0, 2).toUpperCase()}${seed}`,
           region,
           String(seed),
+          `${region}-${seed}`
+        ].join(",");
+      })
+    )
+  ].join("\n");
+}
+
+function buildFullAnalysisCsv() {
+  const regions = buildRegions();
+  return [
+    ["teamId", "name", "shortName", "rating", "offense", "defense", "tempo"].join(","),
+    ...regions.flatMap((region) =>
+      Array.from({ length: 16 }, (_, index) => {
+        const seed = index + 1;
+        return [
+          `${region.toLowerCase()}-${seed}`,
+          `${region} Team ${seed}`,
+          `${region.slice(0, 2).toUpperCase()}${seed}`,
           String(100 - seed * 0.5),
           String(120 - seed * 0.25),
           String(92 + seed * 0.2),
@@ -115,7 +148,6 @@ describe("repository funding model", () => {
         targetTeamCount: 8,
         maxSingleTeamPct: 22
       },
-      dataSourceKey: "builtin:mock",
       simulationIterations: 1000
     });
 
@@ -193,7 +225,6 @@ describe("repository funding model", () => {
         targetTeamCount: 8,
         maxSingleTeamPct: 22
       },
-      dataSourceKey: "builtin:mock",
       simulationIterations: 1000
     });
 
@@ -209,6 +240,109 @@ describe("repository funding model", () => {
       estimatedRemainingBudget: 40000,
       estimateExceeded: false
     });
+  });
+
+  it("creates a ready session from saved bracket and analysis sources", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({ name: "Mothership" });
+    const riverboat = await repository.createSyndicateCatalogEntry({ name: "Riverboat" });
+    const bracketSource = await repository.createDataSource({
+      name: "Official Bracket Source",
+      kind: "csv",
+      purpose: "bracket",
+      csvContent: buildFullBracketCsv(),
+      fileName: "bracket.csv"
+    });
+    const analysisSource = await repository.createDataSource({
+      name: "Metrics Feed Source",
+      kind: "csv",
+      purpose: "analysis",
+      csvContent: buildFullAnalysisCsv(),
+      fileName: "analysis.csv"
+    });
+
+    const session = await repository.createSession({
+      name: "Saved Source Session",
+      sharedAccessCode: "savedsource",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
+      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      bracketSelection: { mode: "saved-source", sourceKey: `data-source:${bracketSource.id}` },
+      analysisSelection: { mode: "saved-source", sourceKey: `data-source:${analysisSource.id}` },
+      simulationIterations: 1000
+    });
+
+    expect(session.importReadiness.status).toBe("ready");
+    expect(session.bracketImport?.sourceName).toBe("Official Bracket Source");
+    expect(session.analysisImport?.sourceName).toBe("Metrics Feed Source");
+    expect(session.projections).toHaveLength(64);
+  });
+
+  it("creates a session from a mixed saved-source and upload setup", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({ name: "Mothership" });
+    const riverboat = await repository.createSyndicateCatalogEntry({ name: "Riverboat" });
+    const bracketSource = await repository.createDataSource({
+      name: "Official Bracket Source",
+      kind: "csv",
+      purpose: "bracket",
+      csvContent: buildFullBracketCsv(),
+      fileName: "bracket.csv"
+    });
+
+    const session = await repository.createSession({
+      name: "Mixed Import Session",
+      sharedAccessCode: "mixedsource",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
+      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      bracketSelection: { mode: "saved-source", sourceKey: `data-source:${bracketSource.id}` },
+      analysisSelection: {
+        mode: "upload",
+        sourceName: "Uploaded Metrics",
+        fileName: "analysis.csv",
+        csvContent: buildFullAnalysisCsv()
+      },
+      simulationIterations: 1000
+    });
+
+    expect(session.importReadiness.status).toBe("ready");
+    expect(session.analysisImport?.sourceName).toBe("Uploaded Metrics");
+  });
+
+  it("creates a session in attention state when no imports are selected", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({ name: "Mothership" });
+    const riverboat = await repository.createSyndicateCatalogEntry({ name: "Riverboat" });
+
+    const session = await repository.createSession({
+      name: "Incomplete Session",
+      sharedAccessCode: "incomplete",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
+      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      simulationIterations: 1000
+    });
+
+    expect(session.importReadiness.status).toBe("attention");
+    expect(session.importReadiness.issues).toContain("Bracket import is still missing.");
+    expect(session.importReadiness.issues).toContain("Analysis import is still missing.");
+    expect(session.projections).toHaveLength(0);
   });
 
   it("supports separate bracket and analysis imports for a session", async () => {
@@ -237,7 +371,6 @@ describe("repository funding model", () => {
         targetTeamCount: 8,
         maxSingleTeamPct: 22
       },
-      dataSourceKey: "builtin:mock",
       simulationIterations: 1000
     });
 
@@ -277,18 +410,24 @@ describe("repository funding model", () => {
     ].join("\n");
 
     const afterBracket = await repository.importSessionBracket(session.id, {
-      csvContent: bracketCsv,
-      sourceName: "Official Bracket",
-      fileName: "bracket.csv"
+      selection: {
+        mode: "upload",
+        sourceName: "Official Bracket",
+        fileName: "bracket.csv",
+        csvContent: bracketCsv
+      }
     });
     expect(afterBracket.session.importReadiness.status).toBe("attention");
     expect(afterBracket.session.importReadiness.hasBracket).toBe(true);
     expect(afterBracket.session.importReadiness.hasAnalysis).toBe(false);
 
     const afterAnalysis = await repository.importSessionAnalysis(session.id, {
-      csvContent: analysisCsv,
-      sourceName: "Metrics Feed",
-      fileName: "analysis.csv"
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        fileName: "analysis.csv",
+        csvContent: analysisCsv
+      }
     });
     expect(afterAnalysis.session.importReadiness.status).toBe("ready");
     expect(afterAnalysis.session.projectionProvider).toBe("Official Bracket + Metrics Feed");
@@ -333,12 +472,18 @@ describe("repository funding model", () => {
     ].join("\n");
 
     await repository.importSessionBracket(session.id, {
-      csvContent: bracketCsv,
-      sourceName: "Official Bracket"
+      selection: {
+        mode: "upload",
+        sourceName: "Official Bracket",
+        csvContent: bracketCsv
+      }
     });
     const ready = await repository.importSessionAnalysis(session.id, {
-      csvContent: analysisCsv,
-      sourceName: "Metrics Feed"
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        csvContent: analysisCsv
+      }
     });
     expect(ready.session.importReadiness.status).toBe("ready");
     expect(ready.session.projections).toHaveLength(64);
@@ -348,8 +493,11 @@ describe("repository funding model", () => {
       "totally-new-team,Totally New Team,TNT,East,1,East-1"
     );
     const broken = await repository.importSessionBracket(session.id, {
-      csvContent: replacementBracketCsv,
-      sourceName: "Replacement Bracket"
+      selection: {
+        mode: "upload",
+        sourceName: "Replacement Bracket",
+        csvContent: replacementBracketCsv
+      }
     });
 
     expect(broken.session.importReadiness.status).toBe("attention");
@@ -398,12 +546,18 @@ describe("repository funding model", () => {
     ].join("\n");
 
     await repository.importSessionBracket(session.id, {
-      csvContent: bracketCsv,
-      sourceName: "Official Bracket"
+      selection: {
+        mode: "upload",
+        sourceName: "Official Bracket",
+        csvContent: bracketCsv
+      }
     });
     await repository.importSessionAnalysis(session.id, {
-      csvContent: analysisCsv,
-      sourceName: "Metrics Feed"
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        csvContent: analysisCsv
+      }
     });
 
     const fallback = await repository.runSessionImport(session.id, "builtin:mock");
@@ -525,25 +679,30 @@ describe("repository team classifications", () => {
 
   it("saves, overwrites, clears, and persists team classifications", async () => {
     const { repository, session } = await createBaselineSession();
+    const teamId = session.projections[0]?.id;
 
-    await repository.saveTeamClassification(session.id, "alabama", {
+    if (!teamId) {
+      throw new Error("Expected baseline projections.");
+    }
+
+    await repository.saveTeamClassification(session.id, teamId, {
       classification: "must-have"
     });
-    await repository.saveTeamClassification(session.id, "alabama", {
+    await repository.saveTeamClassification(session.id, teamId, {
       classification: "caution"
     });
 
     let reloadedRepository = await loadRepository();
     let reloadedSession = await reloadedRepository.getSession(session.id);
 
-    expect(reloadedSession?.teamClassifications.alabama?.classification).toBe("caution");
+    expect(reloadedSession?.teamClassifications[teamId]?.classification).toBe("caution");
 
-    await reloadedRepository.clearTeamClassification(session.id, "alabama");
+    await reloadedRepository.clearTeamClassification(session.id, teamId);
 
     reloadedRepository = await loadRepository();
     reloadedSession = await reloadedRepository.getSession(session.id);
 
-    expect(reloadedSession?.teamClassifications.alabama).toBeUndefined();
+    expect(reloadedSession?.teamClassifications[teamId]).toBeUndefined();
   });
 
   it("rejects invalid classification values and unknown teams", async () => {
@@ -562,7 +721,13 @@ describe("repository team classifications", () => {
 
   it("preserves matching classifications on import and drops orphaned ones", async () => {
     const { repository, session } = await createBaselineSession();
-    await repository.saveTeamClassification(session.id, "alabama", {
+    const teamId = session.projections[0]?.id;
+
+    if (!teamId) {
+      throw new Error("Expected baseline projections.");
+    }
+
+    await repository.saveTeamClassification(session.id, teamId, {
       classification: "must-have"
     });
 
@@ -589,10 +754,16 @@ describe("repository team classifications", () => {
     await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
 
     const reloadedRepository = await loadRepository();
-    await reloadedRepository.runSessionImport(session.id);
+    await reloadedRepository.importSessionAnalysis(session.id, {
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        csvContent: buildFullAnalysisCsv()
+      }
+    });
     const importedSession = await reloadedRepository.getSession(session.id);
 
-    expect(importedSession?.teamClassifications.alabama?.classification).toBe("must-have");
+    expect(importedSession?.teamClassifications[teamId]?.classification).toBe("must-have");
     expect(importedSession?.teamClassifications.ghost).toBeUndefined();
   });
 });
@@ -619,25 +790,30 @@ describe("repository team notes", () => {
 
   it("saves, overwrites, clears, and persists team notes", async () => {
     const { repository, session } = await createBaselineSession();
+    const teamId = session.projections[0]?.id;
 
-    await repository.saveTeamNote(session.id, "alabama", {
+    if (!teamId) {
+      throw new Error("Expected baseline projections.");
+    }
+
+    await repository.saveTeamNote(session.id, teamId, {
       note: "Disciplined late-game team"
     });
-    await repository.saveTeamNote(session.id, "alabama", {
+    await repository.saveTeamNote(session.id, teamId, {
       note: "Elite guard play"
     });
 
     let reloadedRepository = await loadRepository();
     let reloadedSession = await reloadedRepository.getSession(session.id);
 
-    expect(reloadedSession?.teamNotes.alabama?.note).toBe("Elite guard play");
+    expect(reloadedSession?.teamNotes[teamId]?.note).toBe("Elite guard play");
 
-    await reloadedRepository.clearTeamNote(session.id, "alabama");
+    await reloadedRepository.clearTeamNote(session.id, teamId);
 
     reloadedRepository = await loadRepository();
     reloadedSession = await reloadedRepository.getSession(session.id);
 
-    expect(reloadedSession?.teamNotes.alabama).toBeUndefined();
+    expect(reloadedSession?.teamNotes[teamId]).toBeUndefined();
   });
 
   it("rejects invalid notes and unknown teams", async () => {
@@ -655,7 +831,13 @@ describe("repository team notes", () => {
 
   it("preserves matching notes on import and drops orphaned ones", async () => {
     const { repository, session } = await createBaselineSession();
-    await repository.saveTeamNote(session.id, "alabama", {
+    const teamId = session.projections[0]?.id;
+
+    if (!teamId) {
+      throw new Error("Expected baseline projections.");
+    }
+
+    await repository.saveTeamNote(session.id, teamId, {
       note: "Strong inside-out balance"
     });
 
@@ -682,10 +864,16 @@ describe("repository team notes", () => {
     await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
 
     const reloadedRepository = await loadRepository();
-    await reloadedRepository.runSessionImport(session.id);
+    await reloadedRepository.importSessionAnalysis(session.id, {
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed",
+        csvContent: buildFullAnalysisCsv()
+      }
+    });
     const importedSession = await reloadedRepository.getSession(session.id);
 
-    expect(importedSession?.teamNotes.alabama?.note).toBe("Strong inside-out balance");
+    expect(importedSession?.teamNotes[teamId]?.note).toBe("Strong inside-out balance");
     expect(importedSession?.teamNotes.ghost).toBeUndefined();
   });
 });
@@ -723,10 +911,18 @@ describe("repository bracket state", () => {
       name: "Riverboat"
     });
     const source = await repository.createDataSource({
-      name: "Full Field",
+      name: "Official Bracket Source",
       kind: "csv",
-      csvContent: buildFullFieldCsv(),
-      fileName: "full-field.csv"
+      purpose: "bracket",
+      csvContent: buildFullBracketCsv(),
+      fileName: "bracket.csv"
+    });
+    const analysisSource = await repository.createDataSource({
+      name: "Metrics Feed Source",
+      kind: "csv",
+      purpose: "analysis",
+      csvContent: buildFullAnalysisCsv(),
+      fileName: "analysis.csv"
     });
 
     const session = await repository.createSession({
@@ -742,7 +938,14 @@ describe("repository bracket state", () => {
         targetTeamCount: 8,
         maxSingleTeamPct: 22
       },
-      dataSourceKey: `data-source:${source.id}`,
+      bracketSelection: {
+        mode: "saved-source",
+        sourceKey: `data-source:${source.id}`
+      },
+      analysisSelection: {
+        mode: "saved-source",
+        sourceKey: `data-source:${analysisSource.id}`
+      },
       simulationIterations: 1000
     });
 

@@ -330,10 +330,22 @@ export function buildSessionImportReadiness(args: {
   const { bracketImport, analysisImport, baseProjections, simulationSnapshot } = args;
 
   if (!bracketImport && !analysisImport) {
-    const issues =
-      baseProjections.length === 0 ? ["No projections have been imported into this session yet."] : [];
-    const status: SessionImportStatus =
-      issues.length === 0 && simulationSnapshot ? "ready" : "attention";
+    if (baseProjections.length === 0) {
+      return {
+        mode: "session-imports",
+        status: "attention",
+        summary: "Session-managed imports still need attention before the room is ready.",
+        issues: ["Bracket import is still missing.", "Analysis import is still missing."],
+        warnings: [],
+        hasBracket: false,
+        hasAnalysis: false,
+        mergedProjectionCount: 0,
+        lastBracketImportAt: null,
+        lastAnalysisImportAt: null
+      };
+    }
+
+    const status: SessionImportStatus = simulationSnapshot ? "ready" : "attention";
 
     return {
       mode: "legacy",
@@ -342,7 +354,7 @@ export function buildSessionImportReadiness(args: {
         status === "ready"
           ? "Legacy projection source is loaded and simulations are ready."
           : "Legacy projection flow still needs a completed import and simulation snapshot.",
-      issues,
+      issues: status === "ready" ? [] : ["Simulations have not been rebuilt for the legacy field yet."],
       warnings: [],
       hasBracket: false,
       hasAnalysis: false,
