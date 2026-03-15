@@ -52,10 +52,7 @@ export interface CsvTeamAnalysis {
 
 export interface CsvBudgetOptions {
   bankroll: number;
-  targetTeamCount?: number;
   reservePct?: number;
-  candidatePoolMultiplier?: number;
-  maxSingleTeamPct?: number;
 }
 
 export interface CsvBudgetRow {
@@ -76,9 +73,6 @@ export interface CsvBudgetPlan {
   reservePct: number;
   reservedCash: number;
   investableCash: number;
-  targetTeamCount: number;
-  maxSingleTeamPct: number;
-  candidateCount: number;
   rows: CsvBudgetRow[];
   selected: CsvBudgetRow | null;
 }
@@ -168,28 +162,18 @@ export function buildCsvBudgetPlan(
   }
 
   const bankroll = roundCurrency(options.bankroll);
-  const targetTeamCount = clamp(Math.round(options.targetTeamCount ?? 8), 2, 24);
   const reservePct = clamp(options.reservePct ?? 0, 0, 0.7);
-  const candidatePoolMultiplier = clamp(options.candidatePoolMultiplier ?? 4, 2, 8);
-  const maxSingleTeamPct = clamp(options.maxSingleTeamPct ?? 0.22, 0.08, 0.45);
-  const candidateCount = clamp(
-    Math.round(targetTeamCount * candidatePoolMultiplier),
-    targetTeamCount,
-    analysis.intelligence.ranking.length
-  );
   const investableCash = roundCurrency(bankroll * (1 - reservePct));
   const reservedCash = roundCurrency(bankroll - investableCash);
-  const hardTeamCap = roundCurrency(bankroll * maxSingleTeamPct);
-
-  const rankedPool = analysis.intelligence.ranking.slice(0, candidateCount);
   const selectedRow =
     (selectedTeamId
       ? analysis.intelligence.ranking.find((row) => row.teamId === selectedTeamId) ?? null
       : null);
-  const poolRows =
-    selectedRow && !rankedPool.some((row) => row.teamId === selectedRow.teamId)
-      ? [...rankedPool, selectedRow]
-      : rankedPool;
+  const poolRows = selectedRow
+    ? analysis.intelligence.ranking.map((row) =>
+        row.teamId === selectedRow.teamId ? selectedRow : row
+      )
+    : analysis.intelligence.ranking;
 
   const convictionRows = poolRows.map((row) => ({
     row,
@@ -201,9 +185,8 @@ export function buildCsvBudgetPlan(
   const rows = convictionRows
     .map(({ row, conviction }) => {
       const share = convictionSum > 0 ? conviction / convictionSum : fallbackShare;
-      const rawBid = investableCash * share;
-      const targetBid = roundCurrency(Math.min(rawBid, hardTeamCap));
-      const maxBid = roundCurrency(Math.min(targetBid * 1.18, hardTeamCap));
+      const targetBid = roundCurrency(investableCash * share);
+      const maxBid = roundCurrency(targetBid * 1.18);
       const openingBid = roundCurrency(Math.max(targetBid * 0.62, 1));
 
       return {
@@ -226,9 +209,6 @@ export function buildCsvBudgetPlan(
     reservePct: roundMetric(reservePct, 4),
     reservedCash,
     investableCash,
-    targetTeamCount,
-    maxSingleTeamPct: roundMetric(maxSingleTeamPct, 4),
-    candidateCount: rows.length,
     rows,
     selected: selectedTeamId ? rows.find((row) => row.teamId === selectedTeamId) ?? null : null
   };

@@ -30,10 +30,7 @@ function buildSession(): AuctionSession {
       sharedCodeConfigured: true
     },
     payoutRules,
-    analysisSettings: {
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    },
+    analysisSettings: {},
     mothershipFunding: {
       targetSharePrice: 201,
       allowHalfShares: true,
@@ -139,7 +136,7 @@ describe("recommendations", () => {
     expect(recommendation?.valueGap).toBeDefined();
   });
 
-  it("does not show a buy signal when the team is outside the budget plan", () => {
+  it("returns bid guidance for lower-ranked available teams", () => {
     const session = {
       ...buildSession(),
       liveState: {
@@ -148,20 +145,13 @@ describe("recommendations", () => {
       }
     };
     const focus = session.syndicates[0];
-    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    const team = session.projections.at(-1) ?? null;
     const analysis = buildSessionAnalysisSnapshot(session, focus);
-    const recommendation = buildBidRecommendation(
-      session,
-      team,
-      focus,
-      {
-        ...analysis,
-        budgetRows: analysis.budgetRows.filter((row) => row.teamId !== "alabama")
-      }
-    );
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
 
     expect(recommendation).not.toBeNull();
-    expect(recommendation?.stoplight).toBe("pass");
+    expect(recommendation?.targetBid).toBeGreaterThan(0);
+    expect(recommendation?.maxBid).toBeGreaterThan(recommendation?.targetBid ?? 0);
   });
 
   it("caps the buy window at the conflict-adjusted max bid", () => {

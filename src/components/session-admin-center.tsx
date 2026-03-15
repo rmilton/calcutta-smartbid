@@ -186,9 +186,6 @@ export function SessionAdminCenter({
   const [projectedPotInput, setProjectedPotInput] = useState(
     formatDollarInput(initialConfig.session.payoutRules.projectedPot)
   );
-  const [analysisSettings, setAnalysisSettings] = useState(
-    initialConfig.session.analysisSettings
-  );
   const accessCsvInputRef = useRef<HTMLInputElement | null>(null);
   const bracketCsvInputRef = useRef<HTMLInputElement | null>(null);
   const analysisCsvInputRef = useRef<HTMLInputElement | null>(null);
@@ -291,7 +288,6 @@ export function SessionAdminCenter({
     setSyndicateFundingDrafts(buildSyndicateFundingDrafts(config.session.syndicates));
     setPayoutRules(config.session.payoutRules);
     setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
-    setAnalysisSettings(config.session.analysisSettings);
     setBracketImportDraft(buildImportDraft("Official Bracket", config.session.bracketImport));
     setAnalysisImportDraft(buildImportDraft("Team Analysis", config.session.analysisImport));
     setBracketSourceMode(getDefaultSourceMode(config.session.bracketImport, activeBracketSources));
@@ -553,26 +549,6 @@ export function SessionAdminCenter({
           submitError instanceof Error
             ? submitError.message
             : "Unable to update payout structure."
-        );
-      }
-    });
-  }
-
-  function onSaveAnalysisSettings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    startTransition(async () => {
-      try {
-        await submitJson(
-          `/api/admin/sessions/${config.session.id}/analysis`,
-          "PUT",
-          { analysisSettings },
-          "Analysis settings updated."
-        );
-      } catch (submitError) {
-        showError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Unable to update analysis settings."
         );
       }
     });
@@ -1394,52 +1370,6 @@ export function SessionAdminCenter({
             </div>
           </form>
 
-          <div className="admin-pane__section">
-            <form onSubmit={onSaveAnalysisSettings}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <h2>Analysis strategy</h2>
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save strategy
-                </button>
-              </div>
-              <div className="compact-field-grid compact-field-grid--three">
-                <label className="field-shell">
-                  <span>Target teams</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={24}
-                    step={1}
-                    value={analysisSettings.targetTeamCount}
-                    onChange={(event) =>
-                      setAnalysisSettings((current) => ({
-                        ...current,
-                        targetTeamCount: Number(event.target.value)
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label className="field-shell">
-                  <span>Max per-team %</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={45}
-                    step={1}
-                    value={analysisSettings.maxSingleTeamPct}
-                    onChange={(event) =>
-                      setAnalysisSettings((current) => ({
-                        ...current,
-                        maxSingleTeamPct: Number(event.target.value)
-                      }))
-                    }
-                    required
-                  />
-                </label>
-              </div>
-            </form>
-          </div>
         </section>
       ) : null}
 

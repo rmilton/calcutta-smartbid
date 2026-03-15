@@ -78,10 +78,7 @@ function buildSession(): StoredAuctionSession {
       champion: 1,
       projectedPot: 100000
     },
-    analysisSettings: {
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    },
+    analysisSettings: {},
     mothershipFunding: {
       targetSharePrice: 200,
       allowHalfShares: true,

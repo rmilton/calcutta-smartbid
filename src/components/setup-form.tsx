@@ -4,12 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import {
-  AnalysisSettings,
   DataSource,
   DataSourcePurpose,
   PlatformUser,
-  SyndicateCatalogEntry,
-  PayoutRules
+  PayoutRules,
+  SyndicateCatalogEntry
 } from "@/lib/types";
 import { getDefaultPayoutRules } from "@/lib/sample-data";
 import { titleCaseStage } from "@/lib/utils";
@@ -108,10 +107,6 @@ export function SetupForm({
     buildUploadDraft("Team Analysis")
   );
   const [payoutRules, setPayoutRules] = useState<PayoutRules>(defaults);
-  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
-    targetTeamCount: 8,
-    maxSingleTeamPct: 22
-  });
   const mothershipSelected =
     mothershipCatalogEntry !== null && selectedSyndicateIds.includes(mothershipCatalogEntry.id);
   const totalPayoutPercent = useMemo(
@@ -296,8 +291,7 @@ export function SetupForm({
           bracketSelection: buildSourceSelection(bracketMode, bracketSourceKey, bracketUpload),
           analysisSelection: buildSourceSelection(analysisMode, analysisSourceKey, analysisUpload),
           simulationIterations: iterations,
-          payoutRules,
-          analysisSettings
+          payoutRules
         })
       });
 
@@ -406,48 +400,6 @@ export function SetupForm({
         activeAnalysisSources,
         "Required: name, rating, offense, defense, tempo. Optional: teamId, shortName, NET Rank, KenPom Rank, Ranked Wins, 3PT%, Q1-Q4 wins."
       )}
-
-      <section className="surface-card admin-form-section">
-        <div className="admin-form-section__heading">
-          <h2>Analysis strategy</h2>
-        </div>
-        <div className="compact-field-grid compact-field-grid--three">
-          <label className="field-shell">
-            <span>Target teams</span>
-            <input
-              type="number"
-              min={2}
-              max={24}
-              step={1}
-              value={analysisSettings.targetTeamCount}
-              onChange={(event) =>
-                setAnalysisSettings((current) => ({
-                  ...current,
-                  targetTeamCount: Number(event.target.value)
-                }))
-              }
-              required
-            />
-          </label>
-          <label className="field-shell">
-            <span>Max per-team %</span>
-            <input
-              type="number"
-              min={8}
-              max={45}
-              step={1}
-              value={analysisSettings.maxSingleTeamPct}
-              onChange={(event) =>
-                setAnalysisSettings((current) => ({
-                  ...current,
-                  maxSingleTeamPct: Number(event.target.value)
-                }))
-              }
-              required
-            />
-          </label>
-        </div>
-      </section>
 
       <section className="surface-card admin-form-section">
         <div className="admin-form-section__heading">

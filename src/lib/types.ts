@@ -47,10 +47,7 @@ export interface PayoutRules {
   projectedPot: number;
 }
 
-export interface AnalysisSettings {
-  targetTeamCount: number;
-  maxSingleTeamPct: number;
-}
+export type AnalysisSettings = Record<string, never>;
 
 export interface MothershipFundingModel {
   targetSharePrice: number;
@@ -313,8 +310,6 @@ export interface SessionAnalysisSnapshot {
   investableCash: number;
   actualPaidSpend: number;
   remainingBankroll: number;
-  targetTeamCount: number;
-  maxSingleTeamPct: number;
 }
 
 export interface OwnershipExposure {
@@ -769,15 +764,7 @@ export const createSessionSchema = z.object({
     .max(40),
   catalogSyndicateIds: z.array(z.string()).max(16).default([]),
   payoutRules: payoutRulesSchema,
-  analysisSettings: z
-    .object({
-      targetTeamCount: z.number().int().min(2).max(24).default(8),
-      maxSingleTeamPct: z.number().min(8).max(45).default(22)
-    })
-    .default({
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    }),
+  analysisSettings: z.object({}).default({}),
   bracketSelection: sessionSourceSelectionSchema.optional(),
   analysisSelection: sessionSourceSelectionSchema.optional(),
   simulationIterations: z.number().int().min(1000).max(50000).default(4000)
@@ -928,10 +915,7 @@ export const updateSessionPayoutRulesSchema = z.object({
 });
 
 export const updateSessionAnalysisSettingsSchema = z.object({
-  analysisSettings: z.object({
-    targetTeamCount: z.number().int().min(2).max(24),
-    maxSingleTeamPct: z.number().min(8).max(45)
-  })
+  analysisSettings: z.object({}).default({})
 });
 
 export const updateSessionFundingSchema = z.object({

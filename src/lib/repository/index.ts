@@ -87,7 +87,7 @@ import {
   updatePlatformUserSchema,
   updateSyndicateCatalogSchema
 } from "@/lib/types";
-import { clamp, createId, roundCurrency } from "@/lib/utils";
+import { createId, roundCurrency } from "@/lib/utils";
 
 interface SessionStore {
   sessions: StoredAuctionSession[];
@@ -3708,27 +3708,14 @@ function normalizePayoutRules(
 }
 
 function defaultAnalysisSettings(): AnalysisSettings {
-  return {
-    targetTeamCount: 8,
-    maxSingleTeamPct: 22
-  };
+  return {};
 }
 
 function normalizeAnalysisSettings(
   analysisSettings: Partial<AnalysisSettings> | undefined
 ): AnalysisSettings {
-  const defaults = defaultAnalysisSettings();
-
-  return {
-    targetTeamCount:
-      typeof analysisSettings?.targetTeamCount === "number"
-        ? clamp(Math.round(analysisSettings.targetTeamCount), 2, 24)
-        : defaults.targetTeamCount,
-    maxSingleTeamPct:
-      typeof analysisSettings?.maxSingleTeamPct === "number"
-        ? clamp(analysisSettings.maxSingleTeamPct, 8, 45)
-        : defaults.maxSingleTeamPct
-  };
+  void analysisSettings;
+  return defaultAnalysisSettings();
 }
 
 function applySyndicateFundingUpdates(
