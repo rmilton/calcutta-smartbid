@@ -27,6 +27,8 @@ As of `2026-03-12`:
   - tracked syndicates
   - analysis settings
   - payout structure editing
+  - session-managed bracket and analysis imports
+  - room-readiness status for merged imports
   - active data source selection
   - import history
   - session archive and permanent delete
@@ -35,6 +37,8 @@ As of `2026-03-12`:
   - searchable single-control `Active Team for Bidding`
   - automatic board update on team selection
   - purchase recording and persistence
+  - undo for the most recent purchase
+  - in-room `Bracket` workspace with ownership markers and winner advancement
   - in-room `Analysis` workspace backed by the same recommendation payload as `Auction`
 - live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
@@ -54,11 +58,12 @@ Current product surfaces and their roles:
   - manages org users, tracked syndicates, data sources, and session list
 - `Session admin`
   - per-session configuration
-  - manages access, shared code, payout structure, tracked syndicates, and data imports
+  - manages access, shared code, payout structure, tracked syndicates, bracket/analysis imports, and room readiness
 - `Live room`
   - operator and viewer share the same persisted Mothership room state
-  - operator can update nomination, current bid, and purchases
-  - viewer is read-only
+  - operator can update nomination, current bid, purchases, and bracket winners
+  - operator can undo the most recent purchase
+  - viewer is read-only and limited to `Auction` plus `Bracket`
 
 ## Current Financial / Auction Model
 
@@ -83,6 +88,7 @@ Current product surfaces and their roles:
 - Mothership is the fixed recommendation lens for every session
 - Mothership purchases are the owned-portfolio truth for live analysis and bid planning
 - `Auction` and `Analysis` must remain consistent because they share one analysis snapshot
+- `Bracket` must reflect the same session truth as purchases and imported field structure
 
 ## Deployment Shape
 
@@ -109,9 +115,12 @@ Key files:
 - session member login
 - live board load
 - in-room analysis load
+- in-room bracket load
 - active-team selection with automatic board update
 - current bid entry
 - purchase recording
+- undo most recent purchase
+- bracket winner advancement
 - persistence across refresh
 
 ## Current Product Guarantees
@@ -120,6 +129,7 @@ Key files:
 - session users authenticate with assigned email plus shared code
 - viewer mode remains read-only
 - viewers are trusted internal teammates and see the same Mothership-centered guidance as operators
+- viewer live-room access is limited to `Auction` and `Bracket`
 - the standalone `/csv-analysis` page is legacy compatibility only and should redirect into the live room
 - validation errors should resolve to domain-language messages instead of raw schema failures where feasible
 - production-like deployment must run with `CALCUTTA_STORAGE_BACKEND=supabase`
@@ -140,6 +150,12 @@ Key files:
 - session creation is no longer exposed on the public landing page
 - session users authenticate by assigned email plus shared code
 - session creation and session manage no longer expose a configurable focus syndicate
+- session admin now supports separate bracket and analysis CSV imports with readiness gating
+- live room now includes a `Bracket` workspace backed by a session-native 64-team view model
+- operators can advance bracket winners; viewers can open the same bracket in read-only mode
+- the bracket surface shows syndicate ownership markers for purchased teams
+- the live room now supports undoing the most recent purchase, restoring that team as active with its last bid
+- feedback notices now auto-dismiss and use one shared feedback hook across admin and live surfaces
 - likely bidders were removed
 - `Nominated team` became `Active Team for Bidding`
 - the team selector is now a single searchable control
@@ -151,13 +167,14 @@ Key files:
 
 ## Known Gaps
 
-- no undo/correction workflow for mistaken purchases
+- only the most recent purchase can be undone; there is still no broader correction history or audit workflow
 - no final `actual pot locked` workflow after all teams are sold
 - recommendation math still uses a simplified bankroll/headroom assumption
 - recommendation explanations are still lighter than the target product standard
 - no full audit trail UI in admin center
 - old sessions created before the Mothership-first rule may need admin correction if Mothership is not in the room
 - lint still uses deprecated `next lint`
+- bracket view requires a complete 64-team field; incomplete session imports remain intentionally blocked
 
 ## Manual Regression Checklist
 
@@ -168,20 +185,23 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 3. Create a session or open an existing one.
 4. On session admin, save access, rotate the code, and save payout structure.
 5. Save analysis settings and confirm they persist.
-5. Log in as a session user with assigned email plus shared code.
-6. Confirm the live board loads with the right role.
-7. Change `Active Team for Bidding` and confirm the board updates immediately.
-8. Open `Analysis` and confirm the selected team matches `Auction` on target/max bid.
-9. Change current bid and confirm it persists.
-10. Record a purchase with a valid bid.
-11. Try recording a purchase with `0` and confirm the friendly validation error.
-12. Refresh and confirm persistence.
-13. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
-14. Log in as a viewer and confirm the room is synchronized but not editable.
-15. Archive a session and confirm it is hidden by default in the admin sessions list.
-16. Show archived sessions and confirm the archived session appears with archived state.
-17. Confirm permanent delete is blocked until the exact session name is entered.
-18. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
+6. Log in as a session user with assigned email plus shared code.
+7. Confirm the live board loads with the right role.
+8. Change `Active Team for Bidding` and confirm the board updates immediately.
+9. Open `Analysis` and confirm the selected team matches `Auction` on target/max bid.
+10. Open `Bracket` and confirm the field renders when the session has a complete 64-team import.
+11. As an operator, advance a bracket winner and confirm it persists after refresh.
+12. Change current bid and confirm it persists.
+13. Record a purchase with a valid bid.
+14. Use `Undo last purchase` and confirm the team is unsold again, restored as the active team, and the bid returns.
+15. Try recording a purchase with `0` and confirm the friendly validation error.
+16. Refresh and confirm persistence.
+17. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
+18. Log in as a viewer and confirm the room is synchronized, bracket is viewable, and edits remain blocked.
+19. Archive a session and confirm it is hidden by default in the admin sessions list.
+20. Show archived sessions and confirm the archived session appears with archived state.
+21. Confirm permanent delete is blocked until the exact session name is entered.
+22. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
 
 ## Operational Notes
 
