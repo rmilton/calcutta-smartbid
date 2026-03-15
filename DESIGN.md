@@ -21,10 +21,11 @@ The app uses a premium live-market interface:
 
 - centered on a live decision board and recommendation call
 - keyboard-assisted workflow for team focus, bid entry, winner selection, and save
-- workspace navigation model: `Auction`, `Analysis`, `Portfolio`, `Bracket`, `Overrides`
+- workspace navigation model: `Auction`, `Analysis`, `Bracket`, `Overrides`
 - action controls should feel compact, direct, and operational
-- `Auction` is the fast action surface
+- `Auction` is the fast action surface and now carries the key portfolio context directly in the room
 - `Analysis` is the deeper reasoning surface using the same selected team and recommendation payload
+- syndicate board, Mothership position, and decision context should support the operator without forcing tab switching
 - grouped teams such as play-ins and `13-16` packages should show their member schools inline, not hide behind secondary clicks
 - `Bracket` is the tournament-state surface and should feel like part of the same live room, not a separate tool
 

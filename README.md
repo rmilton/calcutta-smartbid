@@ -8,7 +8,8 @@ The current implementation ships with:
 - an admin center for sessions, users, syndicates, and data sources
 - a session-admin surface for access, payout rules, syndicates, session-managed imports, and room readiness
 - a live operator board with real-time bid support and last-purchase undo
-- in-room `Analysis`, `Portfolio`, `Bracket`, and `Overrides` workspaces around the live auction view
+- in-room `Analysis`, `Bracket`, and `Overrides` workspaces around the live auction view
+- a consolidated `Auction` workspace that now includes live decisioning, syndicate context, and Mothership position in one surface
 - a synchronized viewer mode with a read-only shared Mothership board plus bracket access
 - Monte Carlo tournament simulation and Mothership-centered bid recommendations
 - a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
@@ -97,7 +98,8 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
 - `Live room`
   - shared persisted Mothership session state for operator and viewer
   - operator can update active team, bid, purchases, bracket winners, and undo the most recent purchase
-  - operator workspaces are `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides`
+  - operator workspaces are `Auction`, `Analysis`, `Bracket`, and `Overrides`
+  - `Auction` now carries the old portfolio context directly in the live board through syndicate, ownership, and decision-context panels
   - viewer workspaces are `Auction` and `Bracket`
   - active team can represent:
     - a single school
@@ -180,7 +182,7 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
 - current `remainingBankroll` / headroom values are still modeled assumptions, not final room accounting
 - every live room is evaluated from the configured `MOTHERSHIP_SYNDICATE_NAME` perspective
 - selected syndicates in a session represent Mothership plus tracked room opponents
-- Mothership-owned purchases are the source of truth for owned-team portfolio state in live analysis
+- Mothership-owned purchases are the source of truth for owned-team position state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
 - `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
 - `Bracket` reflects the same session truth as the live room, including purchased-team ownership markers
@@ -269,7 +271,7 @@ The live room can now derive grouped auction teams from the imported bracket:
 - unresolved `16` play-ins fold into the regional `13-16` package
 - each region’s `13-16` seeds are sold as one auction team
 
-Recommendations, portfolio state, and sold-team displays all resolve back to the underlying teams while preserving the grouped auction behavior.
+Recommendations, owned-position state, and sold-team displays all resolve back to the underlying teams while preserving the grouped auction behavior.
 
 ## Projection providers
 

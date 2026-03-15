@@ -40,8 +40,9 @@ As of `2026-03-14`:
   - undo for the most recent purchase
   - in-room `Bracket` workspace with ownership markers and winner advancement
   - in-room `Analysis` workspace backed by the same recommendation payload as `Auction`
+  - consolidated `Auction` workspace with live decision board, syndicate board, Mothership position, and decision context
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
-  - grouped-team context in `Auction`, `Analysis`, `Portfolio`, and viewer surfaces
+  - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
 - live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
@@ -65,6 +66,7 @@ Current product surfaces and their roles:
   - operator and viewer share the same persisted Mothership room state
   - operator can update nomination, current bid, purchases, and bracket winners
   - operator can undo the most recent purchase
+  - operator portfolio context is embedded in `Auction` rather than a separate room workspace
   - viewer is read-only and limited to `Auction` plus `Bracket`
 
 ## Current Financial / Auction Model
@@ -92,7 +94,7 @@ Current product surfaces and their roles:
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
 - Mothership is the fixed recommendation lens for every session
-- Mothership purchases are the owned-portfolio truth for live analysis and bid planning
+- Mothership purchases are the owned-position truth for live analysis and bid planning
 - `Auction` and `Analysis` must remain consistent because they share one analysis snapshot
 - `Bracket` must reflect the same session truth as purchases and imported field structure
 
@@ -152,6 +154,7 @@ Key files:
 - operator local form state no longer resets while polling/realtime refresh is active
 - live dashboard now refreshes when session syndicates change
 - live-room `Analysis` now shares the same recommendation engine as `Auction`
+- the separate `Portfolio` room tab was retired and folded into the main `Auction` surface
 - Selection Sunday imports are now split into bracket structure and team analysis
 - live room now derives grouped auction teams from the imported bracket
 - `13-16` regional packages are sold as one grouped team in the live room
