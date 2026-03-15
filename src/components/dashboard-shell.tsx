@@ -322,14 +322,6 @@ export function DashboardShell({
     () => new Map(dashboard.soldTeams.map((entry) => [entry.team.id, entry])),
     [dashboard.soldTeams]
   );
-  const soldAssetCountBySyndicate = useMemo(
-    () =>
-      dashboard.soldAssets.reduce<Record<string, number>>((counts, sale) => {
-        counts[sale.buyerSyndicateId] = (counts[sale.buyerSyndicateId] ?? 0) + 1;
-        return counts;
-      }, {}),
-    [dashboard.soldAssets]
-  );
   const filteredAnalysisRows = useMemo(() => {
     const normalized = analysisSearch.trim().toLowerCase();
     if (!normalized) {
