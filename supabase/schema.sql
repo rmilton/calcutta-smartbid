@@ -221,12 +221,16 @@ create table if not exists public.data_sources (
   id text primary key,
   name text not null,
   kind text not null,
+  purpose text not null default 'analysis',
   active boolean not null default true,
   config jsonb not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_tested_at timestamptz null
 );
+
+alter table public.data_sources
+  add column if not exists purpose text not null default 'analysis';
 
 create table if not exists public.data_import_runs (
   id text primary key,

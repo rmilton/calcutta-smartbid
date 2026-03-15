@@ -21,6 +21,7 @@ import {
   parseBidInputValue
 } from "@/lib/bid-input";
 import {
+  AuctionAsset,
   AuctionDashboard,
   AuthenticatedMember,
   BidRecommendation,
@@ -29,7 +30,7 @@ import {
   MatchupConflict,
   ProjectionOverride,
   SimulationSnapshot,
-  SoldTeamSummary,
+  SoldAssetSummary,
   Stage,
   Syndicate,
   TeamClassificationValue,
@@ -92,6 +93,7 @@ function getWorkspacePath(sessionId: string, view: WorkspaceView) {
   ) as Route;
 }
 
+
 export function DashboardShell({
   sessionId,
   initialDashboard,
@@ -108,8 +110,11 @@ export function DashboardShell({
   const [activeView, setActiveView] = useState<WorkspaceView>(
     availableViews.includes(initialView) ? initialView : "auction"
   );
+  const [selectedAssetId, setSelectedAssetId] = useState(
+    dashboard.session.liveState.nominatedAssetId ?? dashboard.nominatedAsset?.id ?? ""
+  );
   const [selectedTeamId, setSelectedTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? ""
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
   );
   const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
   const [bidInputValue, setBidInputValue] = useState(
@@ -131,11 +136,13 @@ export function DashboardShell({
   const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const [analysisSearch, setAnalysisSearch] = useState("");
   const [analysisTeamId, setAnalysisTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? ""
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
+  );
+  const [overrideTeamId, setOverrideTeamId] = useState(
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
   );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
-  const winnerButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
   const pendingCommittedBidRef = useRef<number | null>(null);
@@ -157,6 +164,7 @@ export function DashboardShell({
     const liveBid = dashboard.session.liveState.currentBid;
     if (pendingCommittedBidRef.current !== null) {
       if (liveBid !== pendingCommittedBidRef.current) {
+        setSelectedAssetId(dashboard.session.liveState.nominatedAssetId ?? "");
         setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
         return;
       }
@@ -164,6 +172,7 @@ export function DashboardShell({
       pendingCommittedBidRef.current = null;
     }
 
+    setSelectedAssetId(dashboard.session.liveState.nominatedAssetId ?? "");
     setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
     setCurrentBid(liveBid);
     setBidInputValue(formatBidInputValue(liveBid));
@@ -176,6 +185,8 @@ export function DashboardShell({
   }, [buyerId, dashboard.focusSyndicate.id, dashboard.ledger]);
 
   const snapshot = dashboard.session.simulationSnapshot;
+  const selectedAsset =
+    dashboard.session.auctionAssets?.find((asset) => asset.id === selectedAssetId) ?? null;
   const selectedTeam =
     dashboard.session.projections.find((team) => team.id === selectedTeamId) ?? null;
   const liveSession = useMemo(
@@ -183,12 +194,14 @@ export function DashboardShell({
       ...dashboard.session,
       liveState: {
         ...dashboard.session.liveState,
+        nominatedAssetId: selectedAssetId || null,
         nominatedTeamId: selectedTeamId || null,
         currentBid
       }
     }),
-    [currentBid, dashboard.session, selectedTeamId]
+    [currentBid, dashboard.session, selectedAssetId, selectedTeamId]
   );
+  const nominatedAsset = selectedAsset;
   const nominatedTeam = selectedTeam;
   const recommendation = useMemo(
     () =>
@@ -196,16 +209,15 @@ export function DashboardShell({
         liveSession,
         selectedTeam,
         dashboard.focusSyndicate,
-        dashboard.analysis
+        dashboard.analysis,
+        selectedAsset
       ),
-    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedTeam]
+    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
   );
+  const overrideSelectedTeam =
+    dashboard.session.projections.find((team) => team.id === overrideTeamId) ?? null;
   const selectedOverride =
-    (selectedTeamId && dashboard.session.projectionOverrides[selectedTeamId]) || null;
-  const soldLookup = useMemo(
-    () => new Set(dashboard.soldTeams.map((item) => item.team.id)),
-    [dashboard.soldTeams]
-  );
+    (overrideTeamId && dashboard.session.projectionOverrides[overrideTeamId]) || null;
   const teamLookup = useMemo(
     () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
     [dashboard.session.projections]
@@ -228,10 +240,39 @@ export function DashboardShell({
   }, [dashboard.focusSyndicate.id, dashboard.ledger]);
   const analysisDetailTeam =
     dashboard.session.projections.find((t) => t.id === analysisTeamId) ?? null;
+  const analysisAssetLookup = useMemo(() => {
+    const lookup = new Map<string, AuctionAsset>();
+    for (const asset of dashboard.session.auctionAssets ?? []) {
+      for (const projectionId of asset.projectionIds) {
+        lookup.set(projectionId, asset);
+      }
+    }
+    return lookup;
+  }, [dashboard.session.auctionAssets]);
+  const analysisDetailAsset =
+    (analysisTeamId && analysisAssetLookup.get(analysisTeamId)) ?? null;
   const analysisRow =
     dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisBudgetRow =
     dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
+  const analysisAssetBudget = useMemo(() => {
+    if (!analysisDetailAsset) {
+      return null;
+    }
+
+    const matchingRows = dashboard.analysis.budgetRows.filter((row) =>
+      analysisDetailAsset.projectionIds.includes(row.teamId)
+    );
+    if (!matchingRows.length) {
+      return null;
+    }
+
+    return {
+      openingBid: matchingRows.reduce((total, row) => total + row.openingBid, 0),
+      targetBid: matchingRows.reduce((total, row) => total + row.targetBid, 0),
+      maxBid: matchingRows.reduce((total, row) => total + row.maxBid, 0)
+    };
+  }, [analysisDetailAsset, dashboard.analysis.budgetRows]);
   const analysisTeamClassification = analysisRow?.classification ?? null;
   const analysisTeamNote = analysisRow?.note ?? null;
   const trimmedTeamNoteInput = teamNoteInput.trim();
@@ -246,12 +287,25 @@ export function DashboardShell({
         ),
     [dashboard.focusSyndicate.id, dashboard.soldTeams]
   );
+  const focusOwnedAssets = useMemo(
+    () =>
+      dashboard.soldAssets
+        .filter((item) => item.buyerSyndicateId === dashboard.focusSyndicate.id)
+        .sort(
+          (left, right) =>
+            right.price - left.price || left.asset.label.localeCompare(right.asset.label)
+        ),
+    [dashboard.focusSyndicate.id, dashboard.soldAssets]
+  );
   const recentSales = useMemo(
-    () => [...dashboard.soldTeams].slice(-4).reverse(),
-    [dashboard.soldTeams]
+    () => [...dashboard.soldAssets].slice(-4).reverse(),
+    [dashboard.soldAssets]
   );
   const lastPurchaseTeam = dashboard.lastPurchase
-    ? teamLookup.get(dashboard.lastPurchase.teamId) ?? null
+    ? teamLookup.get(
+        dashboard.lastPurchase.projectionIds?.find((teamId) => teamLookup.has(teamId)) ??
+          dashboard.lastPurchase.teamId
+      ) ?? null
     : null;
   const lastPurchaseBuyer = dashboard.lastPurchase
     ? syndicateLookup.get(dashboard.lastPurchase.buyerSyndicateId) ?? null
@@ -268,10 +322,11 @@ export function DashboardShell({
 
     return dashboard.analysis.budgetRows.filter((row) => {
       const analysisItem = dashboard.analysis.ranking.find((candidate) => candidate.teamId === row.teamId);
-      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""}`.toLowerCase();
+      const auctionTeam = analysisAssetLookup.get(row.teamId);
+      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""} ${auctionTeam?.label ?? ""}`.toLowerCase();
       return haystack.includes(normalized);
     });
-  }, [analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
+  }, [analysisAssetLookup, analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
   const filteredRationale = useMemo(
     () =>
       recommendation?.rationale.filter(
@@ -315,8 +370,7 @@ export function DashboardShell({
     ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
   const nominatedMatchup = useMemo(
-    () =>
-      nominatedTeam ? getFirstRoundMatchup(dashboard.bracket, nominatedTeam.id) : null,
+    () => (nominatedTeam ? getFirstRoundMatchup(dashboard.bracket, nominatedTeam.id) : null),
     [dashboard.bracket, nominatedTeam]
   );
   const likelyRound2Matchup = useMemo(
@@ -332,7 +386,11 @@ export function DashboardShell({
   );
 
   useEffect(() => {
-    if (!selectedTeam) {
+    setOverrideTeamId(dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? "");
+  }, [dashboard.nominatedTeam?.id, dashboard.session.liveState.nominatedTeamId]);
+
+  useEffect(() => {
+    if (!overrideSelectedTeam) {
       setOverrideForm({
         rating: "",
         offense: "",
@@ -343,19 +401,19 @@ export function DashboardShell({
     }
 
     setOverrideForm({
-      rating: selectedOverride?.rating?.toString() ?? selectedTeam.rating.toString(),
-      offense: selectedOverride?.offense?.toString() ?? selectedTeam.offense.toString(),
-      defense: selectedOverride?.defense?.toString() ?? selectedTeam.defense.toString(),
-      tempo: selectedOverride?.tempo?.toString() ?? selectedTeam.tempo.toString()
+      rating: selectedOverride?.rating?.toString() ?? overrideSelectedTeam.rating.toString(),
+      offense: selectedOverride?.offense?.toString() ?? overrideSelectedTeam.offense.toString(),
+      defense: selectedOverride?.defense?.toString() ?? overrideSelectedTeam.defense.toString(),
+      tempo: selectedOverride?.tempo?.toString() ?? overrideSelectedTeam.tempo.toString()
     });
-  }, [selectedOverride, selectedTeam]);
+  }, [overrideSelectedTeam, selectedOverride]);
 
   useEffect(() => {
     setTeamNoteInput(analysisTeamNote ?? "");
   }, [analysisTeamId, analysisTeamNote]);
 
-  const saveActiveTeam = useCallback(async (nextTeamId: string) => {
-    pendingActiveTeamIdRef.current = nextTeamId;
+  const saveActiveAsset = useCallback(async (nextAssetId: string) => {
+    pendingActiveTeamIdRef.current = nextAssetId;
 
     if (activeTeamSaveInFlightRef.current) {
       return;
@@ -364,7 +422,7 @@ export function DashboardShell({
     activeTeamSaveInFlightRef.current = true;
 
     while (pendingActiveTeamIdRef.current !== null) {
-      const teamIdToPersist = pendingActiveTeamIdRef.current;
+      const assetIdToPersist = pendingActiveTeamIdRef.current;
       pendingActiveTeamIdRef.current = null;
 
       clearFeedback();
@@ -375,7 +433,7 @@ export function DashboardShell({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          nominatedTeamId: teamIdToPersist || null
+          nominatedAssetId: assetIdToPersist || null
         })
       });
 
@@ -413,7 +471,7 @@ export function DashboardShell({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          nominatedTeamId: selectedTeamId || null,
+          nominatedAssetId: selectedAssetId || null,
           currentBid: nextBid
         })
       });
@@ -436,7 +494,15 @@ export function DashboardShell({
     } finally {
       setIsSavingLiveState(false);
     }
-  }, [broadcastRefresh, clearFeedback, parsedBidInputValue, refresh, selectedTeamId, sessionId, showError]);
+  }, [
+    broadcastRefresh,
+    clearFeedback,
+    parsedBidInputValue,
+    refresh,
+    selectedAssetId,
+    sessionId,
+    showError
+  ]);
 
   const handleBidBlur = useCallback(
     (event: React.FocusEvent<HTMLInputElement>) => {
@@ -476,6 +542,7 @@ export function DashboardShell({
 
     const target = event.target as HTMLElement | null;
     const tagName = target?.tagName ?? "";
+    const isButtonTarget = target?.closest("button") !== null;
     const isEditable =
       target !== null &&
       (tagName === "INPUT" ||
@@ -502,23 +569,16 @@ export function DashboardShell({
       return;
     }
 
-    if (event.key.toLowerCase() === "w" && !isEditable) {
-      event.preventDefault();
-      const focusTarget =
-        winnerButtonRefs.current[buyerId] ?? winnerButtonRefs.current[dashboard.ledger[0]?.id ?? ""];
-      focusTarget?.focus();
-      return;
-    }
-
     if (
       event.key === "Enter" &&
       activeView === "auction" &&
+      !isButtonTarget &&
       (tagName === "INPUT" || !isEditable)
     ) {
       event.preventDefault();
       void saveLiveState();
     }
-  }, [activeView, buyerId, dashboard.ledger, saveLiveState]);
+  }, [activeView, saveLiveState]);
 
   useEffect(() => {
     if (viewerMode) {
@@ -538,7 +598,7 @@ export function DashboardShell({
       return;
     }
 
-    if (!selectedTeamId) {
+    if (!selectedAssetId) {
       showError("Choose a nominated team before recording a purchase.");
       return;
     }
@@ -549,7 +609,7 @@ export function DashboardShell({
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        teamId: selectedTeamId || undefined,
+        assetId: selectedAssetId || undefined,
         buyerSyndicateId: buyerId,
         price: nextBid
       })
@@ -571,7 +631,7 @@ export function DashboardShell({
     buyerId,
     parsedBidInputValue,
     replaceDashboard,
-    selectedTeamId,
+    selectedAssetId,
     sessionId,
     showError,
     showNotice
@@ -617,7 +677,7 @@ export function DashboardShell({
     broadcastRefresh,
     clearFeedback,
     dashboard.lastPurchase,
-    lastPurchaseTeam?.name,
+    lastPurchaseTeam,
     replaceDashboard,
     sessionId,
     showError,
@@ -625,14 +685,14 @@ export function DashboardShell({
   ]);
 
   async function saveProjectionOverride() {
-    if (!selectedTeamId) {
+    if (!overrideTeamId) {
       showError("Choose a team before saving an override.");
       return;
     }
 
     clearFeedback();
     const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
+      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
         method: "PUT",
         headers: {
@@ -660,14 +720,14 @@ export function DashboardShell({
   }
 
   async function clearProjectionOverride() {
-    if (!selectedTeamId) {
+    if (!overrideTeamId) {
       showError("Choose a team before clearing an override.");
       return;
     }
 
     clearFeedback();
     const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
+      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
         method: "DELETE"
       }
@@ -889,465 +949,530 @@ export function DashboardShell({
     />
   );
 
-  let workspaceContent: React.ReactNode;
-  if (viewerMode) {
-    workspaceContent =
-      activeView === "bracket" ? (
-        bracketWorkspace
+  return (
+    <main className={cn("dashboard-page", activeView === "bracket" && "dashboard-page--bracket")}>
+      <header className="surface-card session-hero session-hero--slim">
+        <div className="session-hero__copy">
+          <p className="eyebrow">mothership smartbid™</p>
+          <h1>{dashboard.session.name}</h1>
+        </div>
+        <div className="session-hero__meta">
+          <ThemeToggle />
+          <div className="status-pill">
+            {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
+          </div>
+          <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+          <div className="status-pill">
+            {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
+          </div>
+          {currentMember.scope === "platform" ? (
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => router.push("/admin")}
+            >
+              Admin center
+            </button>
+          ) : null}
+          <button type="button" className="button button-ghost" onClick={() => void logout()}>
+            Log out
+          </button>
+        </div>
+      </header>
+
+      {availableViews.length > 1 ? (
+        <nav className="workspace-tabs" aria-label="Workspace views">
+          {availableViews.map((view) => (
+            <button
+              key={view}
+              type="button"
+              className={cn("workspace-tab", activeView === view && "workspace-tab--active")}
+              onClick={() => switchWorkspace(view)}
+            >
+              {viewLabels[view]}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
+      {viewerMode ? (
+        activeView === "bracket" ? (
+          bracketWorkspace
+        ) : (
+          <ViewerBoard dashboard={dashboard} recommendation={recommendation} />
+        )
       ) : (
-        <ViewerBoard dashboard={dashboard} recommendation={recommendation} />
-      );
-  } else {
-    switch (activeView) {
-      case "auction":
-        workspaceContent = (
-          <section className="auction-layout">
-            <article className="surface-card control-panel auction-controls">
-              <div className="section-headline auction-controls__headline">
-                <div>
-                  <p className="eyebrow">Live Controls</p>
+        <>
+          {activeView === "auction" ? (
+            <section className="auction-layout">
+              <article className="surface-card control-panel auction-controls">
+                <div className="section-headline auction-controls__headline">
+                  <div>
+                    <p className="eyebrow">Live Controls</p>
+                  </div>
+                  <div className="shortcut-legend">
+                    <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
+                    <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
+                    <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
+                  </div>
                 </div>
-                <div className="shortcut-legend">
-                  <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
-                  <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
-                  <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
-                  <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
-                </div>
-              </div>
 
-              <div className="auction-controls__bar">
-                <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
-                  <span>Active team</span>
-                  <TeamCombobox
-                    teams={dashboard.session.projections}
-                    soldLookup={soldLookup}
-                    value={selectedTeamId}
-                    inputRef={teamSelectRef}
-                    onChange={(nextTeamId) => {
-                      const nextBid = 0;
-                      setSelectedTeamId(nextTeamId);
-                      setCurrentBid(nextBid);
-                      setBidInputValue(formatBidInputValue(nextBid));
-                      void saveActiveTeam(nextTeamId);
-                    }}
-                  />
-                </label>
-
-                <label className="field-shell auction-controls__field auction-controls__field--bid">
-                  <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
-                  <div className="live-bid-field">
-                    <input
-                      ref={bidInputRef}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={bidInputValue}
-                      onChange={(event) =>
-                        setBidInputValue(formatBidInputText(event.target.value))
-                      }
-                      onBlur={handleBidBlur}
-                      onKeyDown={handleBidKeyDown}
-                      onFocus={(event) => event.target.select()}
-                      onClick={(event) => event.currentTarget.select()}
+                <div className="auction-controls__bar">
+                  <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
+                    <span>Active team</span>
+                    <AssetCombobox
+                      assets={dashboard.availableAssets}
+                      soldAssets={dashboard.soldAssets}
+                      value={selectedAssetId}
+                      inputRef={teamSelectRef}
+                      onChange={(nextAssetId) => {
+                        const nextAsset =
+                          dashboard.session.auctionAssets?.find(
+                            (asset) => asset.id === nextAssetId
+                          ) ?? null;
+                        const nextBid = 0;
+                        setSelectedAssetId(nextAssetId);
+                        setSelectedTeamId(nextAsset?.projectionIds[0] ?? "");
+                        setCurrentBid(nextBid);
+                        setBidInputValue(formatBidInputValue(nextBid));
+                        void saveActiveAsset(nextAssetId);
+                      }}
                     />
-                  </div>
-                </label>
+                    {selectedAsset && selectedAsset.type !== "single_team" ? (
+                      <span className="decision-panel__note">
+                        {formatAssetMembersCompact(selectedAsset)}
+                      </span>
+                    ) : null}
+                  </label>
 
-                <div className="auction-controls__field auction-controls__field--winner">
-                  <span className="auction-controls__label">Winner</span>
-                  <div className="auction-controls__winner-list" role="group" aria-label="Winner">
-                    {dashboard.ledger.map((syndicate) => {
-                      const isSelected = buyerId === syndicate.id;
-                      return (
-                        <button
-                          key={syndicate.id}
-                          ref={(node) => {
-                            winnerButtonRefs.current[syndicate.id] = node;
-                          }}
-                          type="button"
-                          className={cn(
-                            "button button-secondary auction-controls__winner-button",
-                            isSelected && "auction-controls__winner-button--selected"
-                          )}
-                          aria-pressed={isSelected}
-                          onClick={() => setBuyerId(syndicate.id)}
-                        >
-                          {syndicate.name}
-                        </button>
-                      );
-                    })}
+                  <label className="field-shell auction-controls__field auction-controls__field--bid">
+                    <span>Current bid</span>
+                    <div className="live-bid-field">
+                      <input
+                        ref={bidInputRef}
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={bidInputValue}
+                        onChange={(event) =>
+                          setBidInputValue(formatBidInputText(event.target.value))
+                        }
+                        onBlur={handleBidBlur}
+                        onKeyDown={handleBidKeyDown}
+                        onFocus={(event) => event.target.select()}
+                        onClick={(event) => event.currentTarget.select()}
+                      />
+                    </div>
+                  </label>
+
+                  <div className="auction-controls__field auction-controls__field--winner">
+                    <span className="auction-controls__label">Winner</span>
+                    <div className="auction-controls__winner-list" role="group" aria-label="Winner">
+                      {dashboard.ledger.map((syndicate) => {
+                        const isSelected = buyerId === syndicate.id;
+                        return (
+                          <button
+                            key={syndicate.id}
+                            type="button"
+                            className={cn(
+                              "button button-secondary auction-controls__winner-button",
+                              isSelected && "auction-controls__winner-button--selected"
+                            )}
+                            aria-pressed={isSelected}
+                            onClick={() => setBuyerId(syndicate.id)}
+                          >
+                            {syndicate.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="auction-controls__footer">
-                <div className="auction-controls__history">
-                  {dashboard.lastPurchase ? (
-                    <p>
-                      Last sale:{" "}
-                      <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong>{" "}
-                      to{" "}
-                      <strong>
-                        {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
-                      </strong>{" "}
-                      for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
-                    </p>
-                  ) : (
-                    <p>No purchases recorded yet.</p>
-                  )}
+                <div className="auction-controls__footer">
+                  <div className="auction-controls__history">
+                    {dashboard.lastPurchase ? (
+                      <p>
+                        Last sale:{" "}
+                        <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong> to{" "}
+                        <strong>
+                          {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
+                        </strong>{" "}
+                        for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
+                      </p>
+                    ) : (
+                      <p>No purchases recorded yet.</p>
+                    )}
+                    <button
+                      type="button"
+                      className="button button-secondary button--small auction-controls__undo"
+                      data-live-bid-blur-ignore="true"
+                      disabled={!dashboard.lastPurchase || isUndoingPurchase}
+                      onClick={() => void undoPurchase()}
+                    >
+                      {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    className="button button-secondary button--small auction-controls__undo"
+                    className="button button-accent auction-controls__purchase"
                     data-live-bid-blur-ignore="true"
-                    disabled={!dashboard.lastPurchase || isUndoingPurchase}
-                    onClick={() => void undoPurchase()}
+                    disabled={parsedBidInputValue <= 0 || !selectedAssetId}
+                    onClick={() => void recordPurchase()}
                   >
-                    {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                    Record purchase
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  className="button button-accent auction-controls__purchase"
-                  data-live-bid-blur-ignore="true"
-                  disabled={parsedBidInputValue <= 0 || !selectedTeamId}
-                  onClick={() => void recordPurchase()}
-                >
-                  Record purchase
-                </button>
-              </div>
+                {notice ? <p className="notice-text">{notice}</p> : null}
+                {error ? <p className="error-text">{error}</p> : null}
+              </article>
 
-              {notice ? <p className="notice-text">{notice}</p> : null}
-              {error ? <p className="error-text">{error}</p> : null}
-            </article>
-
-            <section className="decision-grid">
-              <article className="surface-card decision-panel decision-panel--combined">
-                <div className="decision-panel__header">
-                  <div>
-                    <p className="eyebrow">Live Decision Board</p>
-                    <h2>{nominatedTeam ? nominatedTeam.name : "Waiting for nomination"}</h2>
-                    <p className="decision-panel__subcopy">
-                      {nominatedTeam
-                        ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
-                        : "Set an active team to unlock bid guidance."}
-                    </p>
-                    {nominatedMatchup ? (
-                      <p className="decision-panel__matchup">
-                        Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                        {nominatedMatchup.opponent.name}
+              <section className="decision-grid">
+                <article className="surface-card decision-panel decision-panel--combined">
+                  <div className="decision-panel__header">
+                    <div>
+                      <p className="eyebrow">Live Decision Board</p>
+                      <h2>{nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}</h2>
+                      <p className="decision-panel__subcopy">
+                        {nominatedAsset
+                          ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
+                          : "Set an active team to unlock bid guidance."}
                       </p>
-                    ) : null}
-                    {likelyRound2Matchup ? (
-                      <p className="decision-panel__path">
-                        Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                        {likelyRound2Matchup.opponent.name} (
-                        {formatPercent(likelyRound2Matchup.probability)})
-                      </p>
-                    ) : null}
-                    {nominatedTeamClassification || nominatedTeamNote ? (
-                      <div className="decision-panel__annotation">
-                        {nominatedTeamClassification ? (
-                          <div className="decision-panel__classification">
-                            <TeamClassificationBadge
-                              classification={nominatedTeamClassification}
-                            />
-                          </div>
-                        ) : null}
-                        {nominatedTeamNote ? (
-                          <span className="decision-panel__note">{nominatedTeamNote}</span>
-                        ) : null}
+                      {nominatedMatchup ? (
+                        <p className="decision-panel__matchup">
+                          Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
+                          {nominatedMatchup.opponent.name}
+                        </p>
+                      ) : null}
+                      {likelyRound2Matchup ? (
+                        <p className="decision-panel__path">
+                          Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
+                          {likelyRound2Matchup.opponent.name} (
+                          {formatPercent(likelyRound2Matchup.probability)})
+                        </p>
+                      ) : null}
+                      {nominatedAsset && nominatedAsset.type !== "single_team" ? (
+                        <p className="decision-panel__note">
+                          {formatAssetMembersCompact(nominatedAsset)}
+                        </p>
+                      ) : null}
+                      {nominatedTeamClassification || nominatedTeamNote ? (
+                        <div className="decision-panel__annotation">
+                          {nominatedTeamClassification ? (
+                            <div className="decision-panel__classification">
+                              <TeamClassificationBadge
+                                classification={nominatedTeamClassification}
+                              />
+                            </div>
+                          ) : null}
+                          {nominatedTeamNote ? (
+                            <span className="decision-panel__note">{nominatedTeamNote}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    {recommendation ? (
+                      <div
+                        className={cn(
+                          "signal-pill",
+                          `signal-pill--${recommendation.stoplight}`
+                        )}
+                      >
+                        {stoplightLabels[recommendation.stoplight]}
                       </div>
                     ) : null}
                   </div>
-                  {recommendation ? (
-                    <div
-                      className={cn(
-                        "signal-pill",
-                        `signal-pill--${recommendation.stoplight}`
-                      )}
-                    >
-                      {stoplightLabels[recommendation.stoplight]}
+
+                  <div className="decision-panel__callout">
+                    <p className="eyebrow">Call</p>
+                    <h3>
+                      {recommendation
+                        ? recommendation.stoplight === "buy"
+                          ? `Bid through ${formatCurrency(recommendation.targetBid)}`
+                          : recommendation.stoplight === "caution"
+                            ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
+                            : `Pass above ${formatCurrency(recommendation.maxBid)}`
+                        : "Pick a team to set the board"}
+                    </h3>
+                    <p>
+                      {recommendation
+                        ? fundingStatusLabels[recommendation.fundingStatus]
+                        : "The live room stays focused on the current nomination and bankroll position."}
+                    </p>
+                    {recommendation?.rationale[2] ? (
+                      <p className="call-conflict">{recommendation.rationale[2]}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="decision-strip">
+                    <div className="decision-stat decision-stat--active">
+                      <span className="insight-label">
+                        Current bid
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Current bid explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The live price currently on the board for this team. Break-even,
+                            funding status, and recommendation context all update against this
+                            number.
+                          </span>
+                        </button>
+                      </span>
+                      <strong>{formatCurrency(currentBid)}</strong>
                     </div>
-                  ) : null}
-                </div>
-
-                <div className="decision-panel__callout">
-                  <p className="eyebrow">Call</p>
-                  <h3>
-                    {recommendation
-                      ? recommendation.stoplight === "buy"
-                        ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-                        : recommendation.stoplight === "caution"
-                          ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-                          : `Pass above ${formatCurrency(recommendation.maxBid)}`
-                      : "Pick a team to set the board"}
-                  </h3>
-                  <p>
-                    {recommendation
-                      ? fundingStatusLabels[recommendation.fundingStatus]
-                      : "The live room stays focused on the current nomination and bankroll position."}
-                  </p>
-                  {recommendation?.rationale[2] ? (
-                    <p className="call-conflict">{recommendation.rationale[2]}</p>
-                  ) : null}
-                </div>
-
-                <div className="decision-strip">
-                  <div className="decision-stat decision-stat--active">
-                    <span className="insight-label">
-                      Current bid
-                      <button
-                        type="button"
-                        className="tooltip-hint"
-                        aria-label="Current bid explanation"
-                      >
-                        ?
-                        <span className="tooltip-content">
-                          The live price currently on the board for this team. Break-even,
-                          funding status, and recommendation context all update against this
-                          number.
-                        </span>
-                      </button>
-                    </span>
-                    <strong>{formatCurrency(currentBid)}</strong>
+                    <div className="decision-stat">
+                      <span className="insight-label">
+                        Target bid
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Target bid explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The model&apos;s normal buy price for this team based on conviction and
+                            Mothership&apos;s remaining base-plan buying room.
+                          </span>
+                        </button>
+                      </span>
+                      <strong>
+                        {recommendation ? formatCurrency(recommendation.targetBid) : "--"}
+                      </strong>
+                    </div>
+                    <div className="decision-stat">
+                      <span className="insight-label">
+                        Max bid
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Max bid explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The highest bid the model can justify after stretch funding room and
+                            portfolio overlap penalties are applied.
+                          </span>
+                        </button>
+                      </span>
+                      <strong>
+                        {recommendation ? formatCurrency(recommendation.maxBid) : "--"}
+                      </strong>
+                    </div>
+                    <div className="decision-stat">
+                      <span className="insight-label">
+                        Base room after buy
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Base room after buy explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            How much room would remain inside Mothership&apos;s base funding plan
+                            after buying this team at the current bid.
+                          </span>
+                        </button>
+                      </span>
+                      <strong>{formatCurrency(projectedBaseRoom)}</strong>
+                    </div>
                   </div>
-                  <div className="decision-stat">
-                    <span className="insight-label">
-                      Target bid
-                      <button
-                        type="button"
-                        className="tooltip-hint"
-                        aria-label="Target bid explanation"
-                      >
-                        ?
-                        <span className="tooltip-content">
-                          The model&apos;s normal buy price for this team based on conviction and
-                          Mothership&apos;s remaining base-plan buying room.
-                        </span>
-                      </button>
-                    </span>
-                    <strong>
-                      {recommendation ? formatCurrency(recommendation.targetBid) : "--"}
-                    </strong>
-                  </div>
-                  <div className="decision-stat">
-                    <span className="insight-label">
-                      Max bid
-                      <button
-                        type="button"
-                        className="tooltip-hint"
-                        aria-label="Max bid explanation"
-                      >
-                        ?
-                        <span className="tooltip-content">
-                          The highest bid the model can justify after stretch funding room and
-                          portfolio overlap penalties are applied.
-                        </span>
-                      </button>
-                    </span>
-                    <strong>
-                      {recommendation ? formatCurrency(recommendation.maxBid) : "--"}
-                    </strong>
-                  </div>
-                  <div className="decision-stat">
-                    <span className="insight-label">
-                      Base room after buy
-                      <button
-                        type="button"
-                        className="tooltip-hint"
-                        aria-label="Base room after buy explanation"
-                      >
-                        ?
-                        <span className="tooltip-content">
-                          How much room would remain inside Mothership&apos;s base funding plan after
-                          buying this team at the current bid.
-                        </span>
-                      </button>
-                    </span>
-                    <strong>{formatCurrency(projectedBaseRoom)}</strong>
-                  </div>
-                </div>
-              </article>
+                </article>
 
-              <SyndicateBoardCard
-                syndicates={orderedSyndicateBoard}
-                focusSyndicateId={dashboard.focusSyndicate.id}
-                focusFunding={focusFunding}
-              />
-            </section>
+                <SyndicateBoardCard
+                  syndicates={orderedSyndicateBoard}
+                  focusSyndicateId={dashboard.focusSyndicate.id}
+                  focusFunding={focusFunding}
+                />
+              </section>
 
-            <section className="detail-grid detail-grid--balanced">
+              <section className="detail-grid detail-grid--balanced">
+                <article className="surface-card">
+                  <div className="section-headline">
+                    <div>
+                      <p className="eyebrow">Mothership Position</p>
+                      <h3>Owned teams</h3>
+                    </div>
+                  </div>
+
+                  <div className="owned-team-list">
+                    <div className="owned-team-list__header">
+                      <p className="eyebrow">Owned Teams</p>
+                      <span className="status-pill status-pill--muted">
+                        Sorted by purchase price
+                      </span>
+                    </div>
+                    {focusOwnedAssets.length ? (
+                      focusOwnedAssets.map((item) => {
+                        const representativeTeam =
+                          teamLookup.get(item.asset.projectionIds[0]) ?? null;
+                        const modeledValue = item.asset.projectionIds.reduce(
+                          (total, projectionId) =>
+                            total +
+                            (snapshot?.teamResults[projectionId]?.expectedGrossPayout ?? 0),
+                          0
+                        );
+                        const valueDelta = modeledValue - item.price;
+                        const analysisTargetTeamId = item.asset.projectionIds[0] ?? null;
+
+                        return (
+                          <button
+                            key={item.asset.id}
+                            type="button"
+                            className="owned-team-button"
+                            disabled={!analysisTargetTeamId}
+                            onClick={() => {
+                              if (analysisTargetTeamId) {
+                                openAnalysisView(analysisTargetTeamId);
+                              }
+                            }}
+                          >
+                            <div className="owned-team-button__header">
+                              <div>
+                                <strong>{item.asset.label}</strong>
+                                <span>
+                                  {formatAssetSubtitle(item.asset, representativeTeam) ||
+                                    formatAssetMembers(item.asset)}
+                                </span>
+                              </div>
+                              <span className="status-pill">Open in Analysis</span>
+                            </div>
+                            <div className="owned-team-button__metrics">
+                              <MetricCard
+                                label="Purchase price"
+                                value={formatCurrency(item.price)}
+                                compact
+                              />
+                              <MetricCard
+                                label="Modeled value"
+                                value={formatCurrency(modeledValue)}
+                                compact
+                              />
+                              <MetricCard
+                                label="Delta"
+                                value={formatCurrency(valueDelta)}
+                                compact
+                              />
+                            </div>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="empty-copy">
+                        No purchased teams yet for {dashboard.focusSyndicate.name}.
+                      </p>
+                    )}
+                  </div>
+                </article>
+
+                <article className="surface-card decision-context">
+                  <div className="section-headline">
+                    <div>
+                      <p className="eyebrow">Decision Context</p>
+                      <h3>Why the model is leaning this way</h3>
+                    </div>
+                  </div>
+
+                  <div className="mini-grid decision-context__summary">
+                    <MetricCard
+                      label="Break-even round"
+                      value={formatBreakEvenStage(breakEvenStage)}
+                      compact
+                    />
+                    <MetricCard
+                      label="Simulated net"
+                      value={
+                        recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
+                      }
+                      compact
+                    />
+                    <MetricCard
+                      label="Title odds"
+                      value={formatPercent(titleOdds)}
+                      compact
+                    />
+                  </div>
+
+                  <section className="decision-context__section">
+                    <div className="section-headline section-headline--compact">
+                      <div>
+                        <p className="eyebrow">Rationale</p>
+                      </div>
+                    </div>
+                    {filteredRationale.length ? (
+                      <div className="list-stack">
+                        {filteredRationale.map((line) => (
+                          <div key={line} className="list-line">
+                            {line}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="empty-copy">
+                        Choose a team to unlock simulation-backed rationale.
+                      </p>
+                    )}
+                  </section>
+
+                  <section className="decision-context__section">
+                    <div className="section-headline section-headline--compact">
+                      <div>
+                        <p className="eyebrow">Ownership Conflicts</p>
+                      </div>
+                    </div>
+                    {nominatedTeam &&
+                    snapshot?.teamResults[nominatedTeam.id]?.likelyConflicts.length ? (
+                      <div className="list-stack">
+                        {snapshot.teamResults[nominatedTeam.id].likelyConflicts
+                          .slice(0, 4)
+                          .map((conflict) => (
+                            <ConflictRow
+                              key={conflict.opponentId}
+                              conflict={conflict}
+                              teamLookup={teamLookup}
+                            />
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="empty-copy">No immediate portfolio collision flags.</p>
+                    )}
+                  </section>
+                </article>
+              </section>
+
               <article className="surface-card">
                 <div className="section-headline">
                   <div>
-                    <p className="eyebrow">Mothership Position</p>
-                    <h3>Owned teams</h3>
+                    <p className="eyebrow">Recent Sales</p>
+                    <h3>Latest auction activity</h3>
                   </div>
                 </div>
-
-                <div className="owned-team-list">
-                  <div className="owned-team-list__header">
-                    <p className="eyebrow">Owned Teams</p>
-                    <span className="status-pill status-pill--muted">
-                      Sorted by purchase price
-                    </span>
+                {recentSales.length ? (
+                  <div className="list-stack">
+                    {recentSales.map((sale) => (
+                      <AssetSaleRow
+                        key={`${sale.asset.id}-${sale.price}`}
+                        sale={sale}
+                        syndicateLookup={syndicateLookup}
+                      />
+                    ))}
                   </div>
-                  {focusOwnedTeams.length ? (
-                    focusOwnedTeams.map((item) => {
-                      const modeledValue =
-                        snapshot?.teamResults[item.team.id]?.expectedGrossPayout ?? 0;
-                      const valueDelta = modeledValue - item.price;
-
-                      return (
-                        <button
-                          key={item.team.id}
-                          type="button"
-                          className="owned-team-button"
-                          onClick={() => openAnalysisView(item.team.id)}
-                        >
-                          <div className="owned-team-button__header">
-                            <div>
-                              <strong>{item.team.name}</strong>
-                              <span>
-                                {item.team.seed}-seed, {item.team.region} region
-                              </span>
-                            </div>
-                            <span className="status-pill">Open in Analysis</span>
-                          </div>
-                          <div className="owned-team-button__metrics">
-                            <MetricCard
-                              label="Purchase price"
-                              value={formatCurrency(item.price)}
-                              compact
-                            />
-                            <MetricCard
-                              label="Modeled value"
-                              value={formatCurrency(modeledValue)}
-                              compact
-                            />
-                            <MetricCard
-                              label="Delta"
-                              value={formatCurrency(valueDelta)}
-                              compact
-                            />
-                          </div>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="empty-copy">
-                      No purchased teams yet for {dashboard.focusSyndicate.name}.
-                    </p>
-                  )}
-                </div>
+                ) : (
+                  <p className="empty-copy">No sales have been recorded yet.</p>
+                )}
               </article>
 
-              <article className="surface-card decision-context">
+              <article className="surface-card">
                 <div className="section-headline">
                   <div>
-                    <p className="eyebrow">Decision Context</p>
-                    <h3>Why the model is leaning this way</h3>
+                    <p className="eyebrow">Model Drivers</p>
+                    <h3>Visible metrics that justify the bid call</h3>
                   </div>
                 </div>
-
-                <div className="mini-grid decision-context__summary">
-                  <MetricCard
-                    label="Break-even round"
-                    value={formatBreakEvenStage(breakEvenStage)}
-                    compact
-                  />
-                  <MetricCard
-                    label="Simulated net"
-                    value={
-                      recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"
-                    }
-                    compact
-                  />
-                  <MetricCard
-                    label="Title odds"
-                    value={formatPercent(titleOdds)}
-                    compact
-                  />
-                </div>
-
-                <section className="decision-context__section">
-                  <div className="section-headline section-headline--compact">
-                    <div>
-                      <p className="eyebrow">Rationale</p>
-                    </div>
-                  </div>
-                  {filteredRationale.length ? (
-                    <div className="list-stack">
-                      {filteredRationale.map((line) => (
-                        <div key={line} className="list-line">
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="empty-copy">
-                      Choose a team to unlock simulation-backed rationale.
-                    </p>
-                  )}
-                </section>
-
-                <section className="decision-context__section">
-                  <div className="section-headline section-headline--compact">
-                    <div>
-                      <p className="eyebrow">Ownership Conflicts</p>
-                    </div>
-                  </div>
-                  {nominatedTeam &&
-                  snapshot?.teamResults[nominatedTeam.id]?.likelyConflicts.length ? (
-                    <div className="list-stack">
-                      {snapshot.teamResults[nominatedTeam.id].likelyConflicts
-                        .slice(0, 4)
-                        .map((conflict) => (
-                          <ConflictRow
-                            key={conflict.opponentId}
-                            conflict={conflict}
-                            teamLookup={teamLookup}
-                          />
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="empty-copy">No immediate portfolio collision flags.</p>
-                  )}
-                </section>
-              </article>
-            </section>
-
-            <article className="surface-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Recent Sales</p>
-                  <h3>Latest auction activity</h3>
-                </div>
-              </div>
-              {recentSales.length ? (
-                <div className="list-stack">
-                  {recentSales.map((sale) => (
-                    <SaleRow
-                      key={`${sale.team.id}-${sale.price}`}
-                      sale={sale}
-                      syndicateLookup={syndicateLookup}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-copy">No sales have been recorded yet.</p>
-              )}
-            </article>
-
-            <article className="surface-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Model Drivers</p>
-                  <h3>Visible metrics that justify the bid call</h3>
-                </div>
-              </div>
-              <div>
                 <div className="metric-grid">
                   <MetricCard
                     label="Expected gross"
@@ -1432,377 +1557,406 @@ export function DashboardShell({
                     tooltip="The simulated chance this team wins the tournament."
                   />
                 </div>
-              </div>
-            </article>
-          </section>
-        );
-        break;
-      case "analysis":
-        workspaceContent = (
-          <section className="detail-grid">
-            <article className="surface-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Analysis</p>
-                  <h2>Session ranking and budget plan</h2>
-                </div>
-                <div className="button-row">
-                  <span className="status-pill">
-                    {dashboard.analysis.targetTeamCount} target teams
-                  </span>
-                  <span className="status-pill">
-                    {dashboard.analysis.maxSingleTeamPct}% max cap
-                  </span>
-                </div>
-              </div>
+              </article>
+            </section>
+          ) : null}
 
-              <div className="form-grid analysis-search-row">
-                <label className="field-shell">
-                  <span>Search</span>
-                  <input
-                    type="search"
-                    value={analysisSearch}
-                    onChange={(event) => setAnalysisSearch(event.target.value)}
-                    placeholder="Type team or abbreviation"
+          {activeView === "analysis" ? (
+            <section className="detail-grid">
+              <article className="surface-card">
+                <div className="section-headline">
+                  <div>
+                    <p className="eyebrow">Analysis</p>
+                    <h2>Session ranking and budget plan</h2>
+                  </div>
+                  <div className="button-row">
+                    <span className="status-pill">
+                      {dashboard.analysis.targetTeamCount} target teams
+                    </span>
+                    <span className="status-pill">
+                      {dashboard.analysis.maxSingleTeamPct}% max cap
+                    </span>
+                  </div>
+                </div>
+
+                <div className="form-grid analysis-search-row">
+                  <label className="field-shell">
+                    <span>Search</span>
+                    <input
+                      type="search"
+                      value={analysisSearch}
+                      onChange={(event) => setAnalysisSearch(event.target.value)}
+                      placeholder="Type team, package, or abbreviation"
+                    />
+                  </label>
+                </div>
+
+                <div className="mini-grid analysis-summary-grid analysis-summary-row">
+                  <MetricCard
+                    label="Base room"
+                    value={formatCurrency(dashboard.analysis.investableCash)}
+                    compact
                   />
-                </label>
-              </div>
+                  <MetricCard
+                    label="Actual paid"
+                    value={formatCurrency(dashboard.analysis.actualPaidSpend)}
+                    compact
+                  />
+                  <MetricCard
+                    label="Stretch room"
+                    value={formatCurrency(Math.max(0, dashboard.analysis.funding.stretchBidRoom))}
+                    compact
+                  />
+                  <MetricCard
+                    label="Effective share price"
+                    value={
+                      dashboard.analysis.funding.impliedSharePrice === null
+                        ? "--"
+                        : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
+                    }
+                    compact
+                  />
+                </div>
 
-              <div className="mini-grid analysis-summary-grid analysis-summary-row">
-                <MetricCard
-                  label="Base room"
-                  value={formatCurrency(dashboard.analysis.investableCash)}
-                  compact
-                />
-                <MetricCard
-                  label="Actual paid"
-                  value={formatCurrency(dashboard.analysis.actualPaidSpend)}
-                  compact
-                />
-                <MetricCard
-                  label="Stretch room"
-                  value={formatCurrency(Math.max(0, dashboard.analysis.funding.stretchBidRoom))}
-                  compact
-                />
-                <MetricCard
-                  label="Effective share price"
-                  value={
-                    dashboard.analysis.funding.impliedSharePrice === null
-                      ? "--"
-                      : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
-                  }
-                  compact
-                />
-              </div>
-
-              <div className="table-wrap admin-table-wrap">
-                <table className="admin-table admin-table--dense">
-                  <thead>
-                    <tr>
-                      <th>Rank</th>
-                      <th>Team</th>
-                      <th>Signal</th>
-                      <th>Score</th>
-                      <th>Target</th>
-                      <th>Max</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAnalysisRows.map((row) => (
-                      <tr
-                        key={row.teamId}
-                        className={cn(analysisTeamId === row.teamId && "table-row--focus")}
-                        onClick={() => setAnalysisTeamId(row.teamId)}
-                      >
-                        <td>#{row.rank}</td>
-                        <td>
-                          <strong>{row.teamName}</strong>
-                        </td>
-                        <td>
-                          {row.classification ? (
-                            <TeamClassificationBadge classification={row.classification} compact />
-                          ) : (
-                            <span className="team-classification-empty">--</span>
-                          )}
-                        </td>
-                        <td>
-                          {dashboard.analysis.ranking
-                            .find((candidate) => candidate.teamId === row.teamId)
-                            ?.compositeScore.toFixed(3) ?? "--"}
-                        </td>
-                        <td>{formatCurrency(row.targetBid)}</td>
-                        <td>{formatCurrency(row.maxBid)}</td>
-                        <td>{ownedTeamLookup.has(row.teamId) ? "Owned" : "Available"}</td>
+                <div className="table-wrap admin-table-wrap">
+                  <table className="admin-table admin-table--dense">
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Auction team</th>
+                        <th>Signal</th>
+                        <th>Score</th>
+                        <th>Target</th>
+                        <th>Max</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </article>
+                    </thead>
+                    <tbody>
+                      {filteredAnalysisRows.map((row) => (
+                        <tr
+                          key={row.teamId}
+                          className={cn(analysisTeamId === row.teamId && "table-row--focus")}
+                          onClick={() => setAnalysisTeamId(row.teamId)}
+                        >
+                          <td>#{row.rank}</td>
+                          <td>
+                            <strong>{row.teamName}</strong>
+                          </td>
+                          <td>
+                            {(() => {
+                              const auctionTeam = analysisAssetLookup.get(row.teamId);
+                              if (!auctionTeam || auctionTeam.type === "single_team") {
+                                return <span className="team-classification-empty">Single team</span>;
+                              }
 
-            <article className="surface-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Selected Team</p>
-                  <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
-                </div>
-              </div>
-
-              {analysisDetailTeam && analysisRow ? (
-                <div className="stack-layout">
-                  <article className="surface-card">
-                    <div className="section-headline">
-                      <div>
-                        <p className="eyebrow">Classification</p>
-                      </div>
-                      {analysisTeamClassification ? (
-                        <TeamClassificationBadge classification={analysisTeamClassification} />
-                      ) : (
-                        <span className="status-pill status-pill--muted">Unclassified</span>
-                      )}
-                    </div>
-                    <div
-                      className="classification-picker"
-                      role="radiogroup"
-                      aria-label="Team classification"
-                    >
-                      {TEAM_CLASSIFICATION_ORDER.map((classification) => {
-                        const meta = getTeamClassificationMeta(classification);
-                        const isSelected = analysisTeamClassification === classification;
-
-                        return (
-                          <button
-                            key={classification}
-                            type="button"
-                            className={cn(
-                              "classification-option",
-                              meta && `classification-option--${meta.tone}`,
-                              isSelected && "classification-option--selected"
-                            )}
-                            onClick={() => void saveTeamClassification(classification)}
-                            disabled={isSavingClassification}
-                            aria-pressed={isSelected}
-                          >
-                            <span className="classification-option__icon" aria-hidden="true">
-                              {meta ? (
+                              return (
                                 <>
-                                  <Image
-                                    className="classification-option__icon-image"
-                                    src={meta.iconSrc}
-                                    alt=""
-                                    width={20}
-                                    height={20}
-                                    unoptimized
-                                    onError={(event) => {
-                                      event.currentTarget.style.display = "none";
-                                      event.currentTarget.nextElementSibling?.removeAttribute("hidden");
-                                    }}
-                                  />
-                                  <span className="classification-option__icon-fallback" hidden>
-                                    {meta.iconLabel}
-                                  </span>
+                                  <strong>{auctionTeam.label}</strong>
+                                  <div className="decision-panel__note">
+                                    {formatAssetMembersCompact(auctionTeam)}
+                                  </div>
                                 </>
-                              ) : null}
-                            </span>
-                            <span>{meta?.label ?? classification}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="button-row analysis-annotation-actions">
-                      <button
-                        type="button"
-                        className="button button-ghost button--small"
-                        onClick={() => void clearTeamClassification()}
-                        disabled={!analysisTeamClassification || isSavingClassification}
-                      >
-                        Clear classification
-                      </button>
-                    </div>
-                  </article>
+                              );
+                            })()}
+                          </td>
+                          <td>
+                            {row.classification ? (
+                              <TeamClassificationBadge
+                                classification={row.classification}
+                                compact
+                              />
+                            ) : (
+                              <span className="team-classification-empty">--</span>
+                            )}
+                          </td>
+                          <td>
+                            {dashboard.analysis.ranking
+                              .find((candidate) => candidate.teamId === row.teamId)
+                              ?.compositeScore.toFixed(3) ?? "--"}
+                          </td>
+                          <td>{formatCurrency(row.targetBid)}</td>
+                          <td>{formatCurrency(row.maxBid)}</td>
+                          <td>{ownedTeamLookup.has(row.teamId) ? "Owned" : "Available"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
 
-                  <article className="surface-card">
-                    <div className="section-headline">
-                      <div>
-                        <p className="eyebrow">Team Note</p>
-                      </div>
-                      {teamNoteInput.length > 0 ? (
-                        <span className="status-pill status-pill--muted">
-                          {teamNoteInput.length}/80
-                        </span>
-                      ) : null}
-                    </div>
-                    <label className="field-shell">
-                      <span>Short note</span>
-                      <input
-                        type="text"
-                        value={teamNoteInput}
-                        onChange={(event) => setTeamNoteInput(event.target.value)}
-                        maxLength={80}
-                        placeholder="Quick thought on this team"
-                      />
-                    </label>
-                    <div className="button-row analysis-annotation-actions">
-                      <button
-                        type="button"
-                        className="button button-primary button--small"
-                        onClick={() => void saveTeamNote()}
-                        disabled={
-                          isSavingTeamNote ||
-                          trimmedTeamNoteInput.length === 0 ||
-                          !teamNoteIsDirty
-                        }
-                      >
-                        Save note
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-ghost button--small"
-                        onClick={() => void clearTeamNote()}
-                        disabled={!analysisTeamNote || isSavingTeamNote}
-                      >
-                        Clear note
-                      </button>
-                    </div>
-                  </article>
-
-                  <div className="metric-grid">
-                    <MetricCard
-                      label="Rank / percentile"
-                      value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === analysisDetailTeam.id) + 1} / ${analysisRow.percentile}th`}
-                    />
-                    <MetricCard
-                      label="Composite score"
-                      value={analysisRow.compositeScore.toFixed(3)}
-                    />
-                    <MetricCard
-                      label="Model rating"
-                      value={analysisDetailTeam.rating.toFixed(3)}
-                    />
-                    <MetricCard
-                      label="Target / max"
-                      value={
-                        analysisBudgetRow
-                          ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
-                          : "Sold / unavailable"
-                      }
-                      longValue={Boolean(analysisBudgetRow)}
-                    />
-                  </div>
-
-                  <div className="metric-grid">
-                    <MetricCard
-                      label="Off / Def / Tempo"
-                      value={`${analysisDetailTeam.offense.toFixed(1)} / ${analysisDetailTeam.defense.toFixed(1)} / ${analysisDetailTeam.tempo.toFixed(1)}`}
-                    />
-                    <MetricCard
-                      label="Q1 wins"
-                      value={displayNullableNumber(analysisRow.q1Wins)}
-                    />
-                    <MetricCard
-                      label="Ranked wins"
-                      value={displayNullableNumber(analysisRow.rankedWins)}
-                    />
-                    <MetricCard
-                      label="3PT / KenPom"
-                      value={`${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
-                    />
-                  </div>
-
-                  <div className="detail-grid">
-                    <article className="surface-card">
-                      <div className="section-headline">
-                        <div>
-                          <p className="eyebrow">Strengths</p>
-                          <h3>Why it scores well</h3>
-                        </div>
-                      </div>
-                      {analysisRow.strengths.length ? (
-                        <div className="list-stack">
-                          {analysisRow.strengths.map((strength) => (
-                            <div key={strength} className="list-line">
-                              {strength}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="empty-copy">
-                          No standout strengths from available scouting data.
-                        </p>
-                      )}
-                    </article>
-
-                    <article className="surface-card">
-                      <div className="section-headline">
-                        <div>
-                          <p className="eyebrow">Risks</p>
-                          <h3>What can suppress conviction</h3>
-                        </div>
-                      </div>
-                      {analysisRow.risks.length ? (
-                        <div className="list-stack">
-                          {analysisRow.risks.map((risk) => (
-                            <div key={risk} className="list-line">
-                              {risk}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="empty-copy">
-                          No material risk flags from available scouting data.
-                        </p>
-                      )}
-                    </article>
-                  </div>
-
-                  <div className="metric-grid">
-                    <MetricCard
-                      label="Sim expected gross"
-                      value={
-                        selectedSimulation
-                          ? formatCurrency(selectedSimulation.expectedGrossPayout)
-                          : "--"
-                      }
-                    />
-                    <MetricCard
-                      label="Sim confidence"
-                      value={
-                        selectedSimulation
-                          ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
-                          : "--"
-                      }
-                      longValue={Boolean(selectedSimulation)}
-                    />
-                    <MetricCard
-                      label="Conviction share"
-                      value={
-                        analysisBudgetRow
-                          ? formatPercent(analysisBudgetRow.investableShare)
-                          : "--"
-                      }
-                    />
-                    <MetricCard
-                      label="Opening bid"
-                      value={
-                        analysisBudgetRow ? formatCurrency(analysisBudgetRow.openingBid) : "--"
-                      }
-                    />
+              <article className="surface-card">
+                <div className="section-headline">
+                  <div>
+                    <p className="eyebrow">Selected Team</p>
+                    <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
                   </div>
                 </div>
-              ) : (
-                <p className="empty-copy">Select a team to inspect deeper analysis.</p>
-              )}
-            </article>
-          </section>
-        );
-        break;
-      case "bracket":
-        workspaceContent = bracketWorkspace;
-        break;
-      case "overrides":
-        workspaceContent = (
-          <section className="detail-grid">
+
+                {analysisDetailTeam && analysisRow ? (
+                  <div className="stack-layout">
+                    {analysisDetailAsset && analysisDetailAsset.type !== "single_team" ? (
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Auction Team</p>
+                            <h3>{analysisDetailAsset.label}</h3>
+                          </div>
+                          {analysisAssetBudget ? (
+                            <span className="status-pill">
+                              {formatCurrency(analysisAssetBudget.targetBid)} / {formatCurrency(analysisAssetBudget.maxBid)}
+                            </span>
+                          ) : (
+                            <span className="status-pill status-pill--muted">Sold / unavailable</span>
+                          )}
+                        </div>
+                        <p className="decision-panel__note">
+                          {formatAssetMembersCompact(analysisDetailAsset)}
+                        </p>
+                      </article>
+                    ) : null}
+
+                    <article className="surface-card">
+                      <div className="section-headline">
+                        <div>
+                          <p className="eyebrow">Classification</p>
+                        </div>
+                        {analysisTeamClassification ? (
+                          <TeamClassificationBadge classification={analysisTeamClassification} />
+                        ) : (
+                          <span className="status-pill status-pill--muted">Unclassified</span>
+                        )}
+                      </div>
+                      <div className="classification-picker" role="radiogroup" aria-label="Team classification">
+                        {TEAM_CLASSIFICATION_ORDER.map((classification) => {
+                          const meta = getTeamClassificationMeta(classification);
+                          const isSelected = analysisTeamClassification === classification;
+
+                          return (
+                            <button
+                              key={classification}
+                              type="button"
+                              className={cn(
+                                "classification-option",
+                                meta && `classification-option--${meta.tone}`,
+                                isSelected && "classification-option--selected"
+                              )}
+                              onClick={() => void saveTeamClassification(classification)}
+                              disabled={isSavingClassification}
+                              aria-pressed={isSelected}
+                            >
+                              <span className="classification-option__icon" aria-hidden="true">
+                                {meta ? (
+                                  <>
+                                    <Image
+                                      className="classification-option__icon-image"
+                                      src={meta.iconSrc}
+                                      alt=""
+                                      width={20}
+                                      height={20}
+                                      unoptimized
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                        event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                                      }}
+                                    />
+                                    <span className="classification-option__icon-fallback" hidden>
+                                      {meta.iconLabel}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </span>
+                              <span>{meta?.label ?? classification}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="button-row analysis-annotation-actions">
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamClassification()}
+                          disabled={!analysisTeamClassification || isSavingClassification}
+                        >
+                          Clear classification
+                        </button>
+                      </div>
+                    </article>
+
+                    <article className="surface-card">
+                      <div className="section-headline">
+                        <div>
+                          <p className="eyebrow">Team Note</p>
+                        </div>
+                        {teamNoteInput.length > 0 ? (
+                          <span className="status-pill status-pill--muted">
+                            {teamNoteInput.length}/80
+                          </span>
+                        ) : null}
+                      </div>
+                      <label className="field-shell">
+                        <span>Short note</span>
+                        <input
+                          type="text"
+                          value={teamNoteInput}
+                          onChange={(event) => setTeamNoteInput(event.target.value)}
+                          maxLength={80}
+                          placeholder="Quick thought on this team"
+                        />
+                      </label>
+                      <div className="button-row analysis-annotation-actions">
+                        <button
+                          type="button"
+                          className="button button-primary button--small"
+                          onClick={() => void saveTeamNote()}
+                          disabled={
+                            isSavingTeamNote ||
+                            trimmedTeamNoteInput.length === 0 ||
+                            !teamNoteIsDirty
+                          }
+                        >
+                          Save note
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamNote()}
+                          disabled={!analysisTeamNote || isSavingTeamNote}
+                        >
+                          Clear note
+                        </button>
+                      </div>
+                    </article>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Rank / percentile"
+                        value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === analysisDetailTeam.id) + 1} / ${analysisRow.percentile}th`}
+                      />
+                      <MetricCard
+                        label="Composite score"
+                        value={analysisRow.compositeScore.toFixed(3)}
+                      />
+                      <MetricCard
+                        label="Model rating"
+                        value={analysisDetailTeam.rating.toFixed(3)}
+                      />
+                      <MetricCard
+                        label="Target / max"
+                        value={
+                          analysisBudgetRow
+                            ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
+                            : "Sold / unavailable"
+                        }
+                        longValue={Boolean(analysisBudgetRow)}
+                      />
+                    </div>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Off / Def / Tempo"
+                        value={`${analysisDetailTeam.offense.toFixed(1)} / ${analysisDetailTeam.defense.toFixed(1)} / ${analysisDetailTeam.tempo.toFixed(1)}`}
+                      />
+                      <MetricCard
+                        label="Q1 wins"
+                        value={displayNullableNumber(analysisRow.q1Wins)}
+                      />
+                      <MetricCard
+                        label="Ranked wins"
+                        value={displayNullableNumber(analysisRow.rankedWins)}
+                      />
+                      <MetricCard
+                        label="3PT / KenPom"
+                        value={`${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
+                      />
+                    </div>
+
+                    <div className="detail-grid">
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Strengths</p>
+                            <h3>Why it scores well</h3>
+                          </div>
+                        </div>
+                        {analysisRow.strengths.length ? (
+                          <div className="list-stack">
+                            {analysisRow.strengths.map((strength) => (
+                              <div key={strength} className="list-line">
+                                {strength}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">No standout strengths from available scouting data.</p>
+                        )}
+                      </article>
+
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Risks</p>
+                            <h3>What can suppress conviction</h3>
+                          </div>
+                        </div>
+                        {analysisRow.risks.length ? (
+                          <div className="list-stack">
+                            {analysisRow.risks.map((risk) => (
+                              <div key={risk} className="list-line">
+                                {risk}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">No material risk flags from available scouting data.</p>
+                        )}
+                      </article>
+                    </div>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="Sim expected gross"
+                        value={
+                          selectedSimulation
+                            ? formatCurrency(selectedSimulation.expectedGrossPayout)
+                            : "--"
+                        }
+                      />
+                      <MetricCard
+                        label="Sim confidence"
+                        value={
+                          selectedSimulation
+                            ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
+                            : "--"
+                        }
+                        longValue={Boolean(selectedSimulation)}
+                      />
+                      <MetricCard
+                        label="Conviction share"
+                        value={
+                          analysisBudgetRow
+                            ? formatPercent(analysisBudgetRow.investableShare)
+                            : "--"
+                        }
+                      />
+                      <MetricCard
+                        label="Opening bid"
+                        value={
+                          analysisBudgetRow
+                            ? formatCurrency(analysisBudgetRow.openingBid)
+                            : "--"
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="empty-copy">Select a team to inspect deeper analysis.</p>
+                )}
+              </article>
+            </section>
+          ) : null}
+
+          {activeView === "overrides" ? (
             <section className="detail-grid">
               <article className="surface-card">
                 <div className="section-headline">
@@ -1816,8 +1970,8 @@ export function DashboardShell({
                   <label className="field-shell">
                     <span>Team</span>
                     <select
-                      value={selectedTeamId}
-                      onChange={(event) => setSelectedTeamId(event.target.value)}
+                      value={overrideTeamId}
+                      onChange={(event) => setOverrideTeamId(event.target.value)}
                     >
                       <option value="">Select a team</option>
                       {dashboard.session.projections.map((team) => (
@@ -1827,12 +1981,12 @@ export function DashboardShell({
                       ))}
                     </select>
                   </label>
-                  {selectedTeam ? (
+                  {overrideSelectedTeam ? (
                     <>
                       <div className="override-summary">
-                        <strong>{selectedTeam.name}</strong>
+                        <strong>{overrideSelectedTeam.name}</strong>
                         <span>
-                          Source {selectedTeam.source}
+                          Source {overrideSelectedTeam.source}
                           {selectedOverride ? " with override applied" : ""}
                         </span>
                       </div>
@@ -1902,7 +2056,7 @@ export function DashboardShell({
                   )}
                 </div>
 
-                {selectedTeam ? (
+                {overrideSelectedTeam ? (
                   <div className="button-row">
                     <button
                       type="button"
@@ -1955,101 +2109,13 @@ export function DashboardShell({
                 )}
               </article>
             </section>
-          </section>
-        );
-        break;
-    }
-  }
+          ) : null}
 
-  return (
-    <main className={cn("dashboard-page", activeView === "bracket" && "dashboard-page--bracket")}>
-      <SessionHeader
-        sessionName={dashboard.session.name}
-        currentMember={currentMember}
-        ownedTeamCount={focusOwnedTeams.length}
-        totalSpend={dashboard.focusSyndicate.spend}
-        onAdminCenter={() => router.push("/admin")}
-        onLogout={() => void logout()}
-      />
+          {activeView === "bracket" ? bracketWorkspace : null}
 
-      {availableViews.length > 1 ? (
-        <WorkspaceTabs
-          availableViews={availableViews}
-          activeView={activeView}
-          onChange={switchWorkspace}
-        />
-      ) : null}
-
-      {workspaceContent}
+        </>
+      )}
     </main>
-  );
-}
-
-function SessionHeader({
-  sessionName,
-  currentMember,
-  ownedTeamCount,
-  totalSpend,
-  onAdminCenter,
-  onLogout
-}: {
-  sessionName: string;
-  currentMember: AuthenticatedMember;
-  ownedTeamCount: number;
-  totalSpend: number;
-  onAdminCenter: () => void;
-  onLogout: () => void;
-}) {
-  return (
-    <header className="surface-card session-hero session-hero--slim">
-      <div className="session-hero__copy">
-        <p className="eyebrow">mothership smartbid™</p>
-        <h1>{sessionName}</h1>
-      </div>
-      <div className="session-hero__meta">
-        <ThemeToggle />
-        <div className="status-pill">
-          {ownedTeamCount} {ownedTeamCount === 1 ? "owned team" : "owned teams"}
-        </div>
-        <div className="status-pill">Spend · {formatCurrency(totalSpend)}</div>
-        <div className="status-pill">
-          {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
-        </div>
-        {currentMember.scope === "platform" ? (
-          <button type="button" className="button button-ghost" onClick={onAdminCenter}>
-            Admin center
-          </button>
-        ) : null}
-        <button type="button" className="button button-ghost" onClick={onLogout}>
-          Log out
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function WorkspaceTabs({
-  availableViews,
-  activeView,
-  onChange
-}: {
-  availableViews: WorkspaceView[];
-  activeView: WorkspaceView;
-  onChange: (view: WorkspaceView) => void;
-}) {
-  return (
-    <nav className="workspace-tabs" aria-label="Workspace views">
-      {availableViews.map((view) => (
-        <button
-          key={view}
-          type="button"
-          className={cn("workspace-tab", activeView === view && "workspace-tab--active")}
-          onClick={() => onChange(view)}
-        >
-          {viewLabels[view]}
-        </button>
-      ))}
-    </nav>
   );
 }
 
@@ -2060,6 +2126,7 @@ function ViewerBoard({
   dashboard: AuctionDashboard;
   recommendation: BidRecommendation | null;
 }) {
+  const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
@@ -2079,18 +2146,20 @@ function ViewerBoard({
     [dashboard.bracket, dashboard.session.simulationSnapshot, nominatedTeam]
   );
   const [ownershipSearch, setOwnershipSearch] = useState("");
-  const soldFeed = useMemo(() => [...dashboard.soldTeams].reverse(), [dashboard.soldTeams]);
+  const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
   const ownershipGroups = useMemo(() => {
     const normalized = ownershipSearch.trim().toLowerCase();
     const hasActiveSearch = normalized.length > 0;
-    const matchesSearch = (sale: SoldTeamSummary) =>
-      !normalized || sale.team.name.toLowerCase().includes(normalized);
+    const matchesSearch = (sale: SoldAssetSummary) =>
+      !normalized ||
+      sale.asset.label.toLowerCase().includes(normalized) ||
+      sale.asset.members.some((member) => member.label.toLowerCase().includes(normalized));
 
     return [
       ...[
         {
           syndicate: dashboard.focusSyndicate,
-          sales: dashboard.soldTeams.filter(
+          sales: dashboard.soldAssets.filter(
             (sale) =>
               sale.buyerSyndicateId === dashboard.focusSyndicate.id && matchesSearch(sale)
           ),
@@ -2101,14 +2170,14 @@ function ViewerBoard({
         .filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
         .map((syndicate) => ({
           syndicate,
-          sales: dashboard.soldTeams.filter(
+          sales: dashboard.soldAssets.filter(
             (sale) => sale.buyerSyndicateId === syndicate.id && matchesSearch(sale)
           ),
           highlight: false
         }))
         .filter((group) => group.sales.length > 0 || !hasActiveSearch)
       ];
-  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldTeams, ownershipSearch]);
+  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldAssets, ownershipSearch]);
   return (
     <section className="viewer-layout">
       <section className="decision-grid">
@@ -2117,16 +2186,14 @@ function ViewerBoard({
           <div className="viewer-bid-hero viewer-bid-hero--team">
             <div className="viewer-bid-hero__pulse">
               <span className="pulse-dot" />
-              <span>{nominatedTeam ? "Active team" : "Awaiting nomination"}</span>
+              <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
             </div>
-            <strong
-              className={cn(!nominatedTeam && "viewer-bid-hero__title--waiting")}
-            >
-              {nominatedTeam ? nominatedTeam.name : "Waiting for next team"}
+            <strong className={cn(!nominatedAsset && "viewer-bid-hero__title--waiting")}>
+              {nominatedAsset ? nominatedAsset.label : "Waiting for next team"}
             </strong>
             <p className="viewer-board__subcopy">
-              {nominatedTeam
-                ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
+              {nominatedAsset
+                ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
                 : "The next active team will take over this board as soon as the operator makes a nomination."}
             </p>
             {nominatedMatchup ? (
@@ -2142,6 +2209,7 @@ function ViewerBoard({
                 {formatPercent(likelyRound2Matchup.probability)})
               </p>
             ) : null}
+            {nominatedAsset ? <p className="viewer-note">{formatAssetMembers(nominatedAsset)}</p> : null}
             {nominatedTeam &&
             dashboard.session.teamClassifications[nominatedTeam.id]?.classification ? (
               <div className="viewer-bid-hero__classification">
@@ -2208,13 +2276,18 @@ function ViewerBoard({
                   : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
               }
             />
-            <MetricCard label="Teams remaining" value={`${dashboard.availableTeams.length}`} />
+            <MetricCard label="Teams remaining to sell" value={`${dashboard.availableAssets.length}`} />
+            <MetricCard
+              label="Underlying teams remaining"
+              value={`${dashboard.availableTeams.length}`}
+            />
             <MetricCard
               label="Mothership total spent"
               value={formatCurrency(dashboard.focusSyndicate.spend)}
             />
           </div>
         </article>
+
         <SyndicateBoardCard
           syndicates={[
             dashboard.focusSyndicate,
@@ -2258,48 +2331,48 @@ function ViewerBoard({
         </article>
 
         <aside className="viewer-layout__side">
-        {recommendation ? (
-          <article className="surface-card viewer-guidance-card">
+          {recommendation ? (
+            <article className="surface-card viewer-guidance-card">
+              <div className="section-headline">
+                <div>
+                  <p className="eyebrow">Live Guidance</p>
+                  <h3>What Mothership should keep in view</h3>
+                </div>
+              </div>
+              <div className="list-stack">
+                {recommendation.rationale.slice(0, 3).map((line) => (
+                  <div key={line} className="list-line">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
+
+          <article className="surface-card">
             <div className="section-headline">
               <div>
-                <p className="eyebrow">Live Guidance</p>
-                <h3>What Mothership should keep in view</h3>
+                <p className="eyebrow">Sold Teams</p>
+                <h3>Most recent sales first</h3>
               </div>
             </div>
-            <div className="list-stack">
-              {recommendation.rationale.slice(0, 3).map((line) => (
-                <div key={line} className="list-line">
-                  {line}
-                </div>
-              ))}
-            </div>
+            {soldFeed.length ? (
+              <div className="list-stack">
+                {soldFeed.map((sale) => (
+                  <ViewerSoldAssetRow
+                    key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
+                    sale={sale}
+                    buyerName={
+                      dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
+                        ?.name ?? sale.buyerSyndicateId
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="empty-copy">No teams have sold yet.</p>
+            )}
           </article>
-        ) : null}
-
-        <article className="surface-card">
-          <div className="section-headline">
-            <div>
-              <p className="eyebrow">Sold Teams</p>
-              <h3>Most recent sales first</h3>
-            </div>
-          </div>
-          {soldFeed.length ? (
-            <div className="list-stack">
-              {soldFeed.map((sale) => (
-                <ViewerSoldTeamRow
-                  key={`${sale.team.id}-${sale.price}-${sale.buyerSyndicateId}`}
-                  sale={sale}
-                  buyerName={
-                    dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
-                      ?.name ?? sale.buyerSyndicateId
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="empty-copy">No teams have sold yet.</p>
-          )}
-        </article>
         </aside>
       </section>
     </section>
@@ -2337,10 +2410,7 @@ function SyndicateBoardCard({
                 )}
               >
                 <div className="syndicate-row__title">
-                  <span
-                    className="syndicate-dot"
-                    style={{ backgroundColor: syndicate.color }}
-                  />
+                  <span className="syndicate-dot" style={{ backgroundColor: syndicate.color }} />
                   <div>
                     <strong>{syndicate.name}</strong>
                     <span>{syndicate.ownedTeamIds.length} teams owned</span>
@@ -2385,69 +2455,23 @@ function SyndicateBoardCard({
   );
 }
 
-function ViewerSoldTeamRow({
+function ViewerSoldAssetRow({
   sale,
   buyerName
 }: {
-  sale: SoldTeamSummary;
+  sale: SoldAssetSummary;
   buyerName: string;
 }) {
   return (
     <div className="list-row">
       <div>
-        <strong>{sale.team.name}</strong>
+        <strong>{sale.asset.label}</strong>
+        <span>{formatAssetMembers(sale.asset)}</span>
         <span>To {buyerName}</span>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
     </div>
   );
-}
-
-function MetricCard({
-  label,
-  value,
-  tooltip,
-  compact = false,
-  longValue = false
-}: {
-  label: string;
-  value: string;
-  tooltip?: string;
-  compact?: boolean;
-  longValue?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "metric-card",
-        compact && "metric-card--compact",
-        longValue && "metric-card--long-value"
-      )}
-    >
-      <span className={tooltip ? "insight-label" : undefined}>
-        {label}
-        {tooltip ? (
-          <button type="button" className="tooltip-hint" aria-label={`${label} explanation`}>
-            ?
-            <span className="tooltip-content">{tooltip}</span>
-          </button>
-        ) : null}
-      </span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
-  if (stage === null) {
-    return "--";
-  }
-
-  if (stage === "negativeReturn") {
-    return "Negative return";
-  }
-
-  return titleCaseStage(stage);
 }
 
 function getFirstRoundMatchup(bracket: BracketViewModel, teamId: string) {
@@ -2533,6 +2557,53 @@ function getLikelyRound2Matchup(
   return null;
 }
 
+function MetricCard({
+  label,
+  value,
+  tooltip,
+  compact = false,
+  longValue = false
+}: {
+  label: string;
+  value: string;
+  tooltip?: string;
+  compact?: boolean;
+  longValue?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "metric-card",
+        compact && "metric-card--compact",
+        longValue && "metric-card--long-value"
+      )}
+    >
+      <span className={tooltip ? "insight-label" : undefined}>
+        {label}
+        {tooltip ? (
+          <button type="button" className="tooltip-hint" aria-label={`${label} explanation`}>
+            ?
+            <span className="tooltip-content">{tooltip}</span>
+          </button>
+        ) : null}
+      </span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
+  if (stage === null) {
+    return "--";
+  }
+
+  if (stage === "negativeReturn") {
+    return "Negative return";
+  }
+
+  return titleCaseStage(stage);
+}
+
 function ConflictRow({
   conflict,
   teamLookup
@@ -2553,11 +2624,11 @@ function ConflictRow({
   );
 }
 
-function SaleRow({
+function AssetSaleRow({
   sale,
   syndicateLookup
 }: {
-  sale: SoldTeamSummary;
+  sale: SoldAssetSummary;
   syndicateLookup: Map<string, Syndicate>;
 }) {
   const buyer = syndicateLookup.get(sale.buyerSyndicateId);
@@ -2565,7 +2636,7 @@ function SaleRow({
   return (
     <div className="list-row">
       <div>
-        <strong>{sale.team.name}</strong>
+        <strong>{sale.asset.label}</strong>
         <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
@@ -2578,7 +2649,7 @@ function ViewerOwnershipLedgerGroup({
   isMothership,
   hasActiveSearch
 }: {
-  group: { syndicate: Syndicate; sales: SoldTeamSummary[] };
+  group: { syndicate: Syndicate; sales: SoldAssetSummary[] };
   isMothership: boolean;
   hasActiveSearch: boolean;
 }) {
@@ -2606,12 +2677,11 @@ function ViewerOwnershipLedgerGroup({
       {group.sales.length ? (
         <div className="viewer-ledger-group__rows">
           {group.sales.map((sale) => (
-            <div key={`${group.syndicate.id}-${sale.team.id}-${sale.price}`} className="viewer-ledger-row">
+            <div key={`${group.syndicate.id}-${sale.asset.id}-${sale.price}`} className="viewer-ledger-row">
               <div className="viewer-ledger-row__team">
-                <strong>{sale.team.name}</strong>
-                <span>
-                  {sale.team.seed}-seed, {sale.team.region} region
-                </span>
+                <strong>{sale.asset.label}</strong>
+                <span>{formatAssetSubtitle(sale.asset, null)}</span>
+                <span>{formatAssetMembers(sale.asset)}</span>
               </div>
               <div className="viewer-ledger-row__price">
                 <strong>{formatCurrency(sale.price)}</strong>
@@ -2630,41 +2700,55 @@ function ViewerOwnershipLedgerGroup({
   );
 }
 
-function TeamCombobox({
-  teams,
-  soldLookup,
+function AssetCombobox({
+  assets,
+  soldAssets,
   value,
   inputRef,
   onChange
 }: {
-  teams: TeamProjection[];
-  soldLookup: Set<string>;
+  assets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
   value: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onChange: (teamId: string) => void;
+  onChange: (assetId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedTeam = useMemo(() => teams.find((t) => t.id === value) ?? null, [teams, value]);
+  const soldLookup = useMemo(
+    () => new Set(soldAssets.map((sale) => sale.asset.id)),
+    [soldAssets]
+  );
+  const selectedAsset = useMemo(
+    () => assets.find((asset) => asset.id === value) ?? null,
+    [assets, value]
+  );
 
   const sorted = useMemo(() => {
-    const available = teams.filter((t) => !soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
-    const sold = teams.filter((t) => soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
+    const compareAssets = (left: AuctionAsset, right: AuctionAsset) => {
+      if (left.region === right.region) {
+        return (left.seedRange?.[0] ?? left.seed ?? 99) - (right.seedRange?.[0] ?? right.seed ?? 99);
+      }
+      return left.region.localeCompare(right.region);
+    };
+    const available = assets.filter((asset) => !soldLookup.has(asset.id)).sort(compareAssets);
+    const sold = assets.filter((asset) => soldLookup.has(asset.id)).sort(compareAssets);
     return [...available, ...sold];
-  }, [teams, soldLookup]);
+  }, [assets, soldLookup]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return sorted;
     const lower = search.toLowerCase();
     return sorted.filter(
-      (t) =>
-        t.name.toLowerCase().includes(lower) ||
-        t.shortName.toLowerCase().includes(lower) ||
-        t.region.toLowerCase().includes(lower) ||
-        String(t.seed) === lower
+      (asset) =>
+        asset.label.toLowerCase().includes(lower) ||
+        asset.region.toLowerCase().includes(lower) ||
+        asset.members.some((member) => member.label.toLowerCase().includes(lower)) ||
+        asset.members.some((member) => String(member.seed) === lower) ||
+        (asset.seed !== null && String(asset.seed) === lower)
     );
   }, [sorted, search]);
 
@@ -2695,9 +2779,9 @@ function TeamCombobox({
       setHighlightIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const team = filtered[highlightIndex];
-      if (team && !soldLookup.has(team.id)) {
-        onChange(team.id);
+      const asset = filtered[highlightIndex];
+      if (asset && !soldLookup.has(asset.id)) {
+        onChange(asset.id);
         setOpen(false);
         setSearch("");
       }
@@ -2707,7 +2791,7 @@ function TeamCombobox({
     }
   }
 
-  const displayValue = open ? search : selectedTeam ? `${selectedTeam.seed}. ${selectedTeam.name}` : "";
+  const displayValue = open ? search : selectedAsset ? selectedAsset.label : "";
 
   return (
     <div className="combobox" ref={containerRef}>
@@ -2731,11 +2815,11 @@ function TeamCombobox({
           {filtered.length === 0 ? (
             <li className="combobox__empty">No teams found</li>
           ) : (
-            filtered.map((team, index) => {
-              const sold = soldLookup.has(team.id);
+            filtered.map((asset, index) => {
+              const sold = soldLookup.has(asset.id);
               return (
                 <li
-                  key={team.id}
+                  key={asset.id}
                   className={cn(
                     "combobox__item",
                     index === highlightIndex && "combobox__item--highlighted",
@@ -2744,16 +2828,16 @@ function TeamCombobox({
                   onMouseDown={(e) => {
                     e.preventDefault();
                     if (!sold) {
-                      onChange(team.id);
+                      onChange(asset.id);
                       setOpen(false);
                       setSearch("");
                     }
                   }}
                   onMouseEnter={() => setHighlightIndex(index)}
                 >
-                  <span className="combobox__seed">{team.seed}</span>
-                  <span className="combobox__name">{team.name}</span>
-                  <span className="combobox__region">{team.region}</span>
+                  <span className="combobox__seed">{formatAssetSeed(asset)}</span>
+                  <span className="combobox__name">{asset.label}</span>
+                  <span className="combobox__region">{asset.region}</span>
                   {sold ? <span className="combobox__sold-badge">sold</span> : null}
                 </li>
               );
@@ -2763,6 +2847,65 @@ function TeamCombobox({
       )}
     </div>
   );
+}
+
+function formatAssetSeed(asset: AuctionAsset) {
+  if (asset.seedRange) {
+    return `${asset.seedRange[0]}-${asset.seedRange[1]}`;
+  }
+
+  if (asset.seed !== null) {
+    return `${asset.seed}`;
+  }
+
+  return "--";
+}
+
+function formatAssetSubtitle(asset: AuctionAsset, nominatedTeam: TeamProjection | null) {
+  if (asset.type === "single_team") {
+    if (nominatedTeam) {
+      return `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`;
+    }
+
+    return `${formatAssetSeed(asset)}-seed, ${asset.region} region`;
+  }
+
+  if (asset.type === "play_in_slot") {
+    const matchup = asset.members.map((member) => member.label).join(" / ");
+    return `${formatAssetSeed(asset)}-seed play-in slot in the ${asset.region} region: ${matchup}`;
+  }
+
+  if (asset.type === "seed_bundle" && asset.seedRange) {
+    return "";
+  }
+
+  return `${asset.region} auction team`;
+}
+
+function formatAssetMembers(asset: AuctionAsset) {
+  if (asset.type === "single_team") {
+    return asset.members[0]?.label ?? asset.label;
+  }
+
+  if (asset.type === "play_in_slot") {
+    return `Includes ${asset.members.map((member) => member.label).join(" and ")}`;
+  }
+
+  return `Includes ${asset.members.map((member) => member.label).join(", ")}`;
+}
+
+function formatAssetMembersCompact(asset: AuctionAsset) {
+  if (asset.type === "single_team") {
+    return asset.members[0]?.label ?? asset.label;
+  }
+
+  if (asset.type === "play_in_slot") {
+    return `(${asset.members.map((member) => member.label).join(" / ")})`;
+  }
+
+  return `(${asset.members
+    .map((member) => `${member.seed} ${member.label}`)
+    .join(" • ")})`;
 }
 
 function displayNullableNumber(value: number | null) {

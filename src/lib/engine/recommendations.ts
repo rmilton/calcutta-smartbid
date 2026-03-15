@@ -1,5 +1,6 @@
 import { deriveBudgetHeadroom, deriveFundingStatus } from "@/lib/funding";
 import {
+  AuctionAsset,
   AuctionSession,
   BidRecommendation,
   OwnershipExposure,
@@ -14,24 +15,30 @@ export function buildBidRecommendation(
   session: AuctionSession,
   team: TeamProjection | null,
   focusSyndicate: Syndicate,
-  analysis: SessionAnalysisSnapshot
+  analysis: SessionAnalysisSnapshot,
+  asset?: AuctionAsset | null
 ): BidRecommendation | null {
-  if (!team || !session.simulationSnapshot) {
+  const projectionIds = asset?.projectionIds?.length ? asset.projectionIds : team ? [team.id] : [];
+  if (projectionIds.length === 0 || !session.simulationSnapshot) {
     return null;
   }
 
-  const teamResult = session.simulationSnapshot.teamResults[team.id];
-  if (!teamResult) {
+  const teamResults = projectionIds
+    .map((projectionId) => session.simulationSnapshot!.teamResults[projectionId])
+    .filter((result): result is NonNullable<typeof result> => Boolean(result));
+  if (teamResults.length === 0) {
     return null;
   }
 
-  const ownershipExposure = computeOwnershipExposure(session, team.id, focusSyndicate);
-  const budgetRow = analysis.budgetRows.find((row) => row.teamId === team.id) ?? null;
+  const ownershipExposure = computeOwnershipExposure(session, projectionIds, focusSyndicate);
+  const budgetRows = analysis.budgetRows.filter((row) => projectionIds.includes(row.teamId));
   const currentBid = session.liveState.currentBid;
-  const expectedGrossPayout = teamResult.expectedGrossPayout;
-  const openingBid = budgetRow?.openingBid ?? 0;
-  const targetBid = budgetRow?.targetBid ?? 0;
-  const baseMaxBid = budgetRow?.maxBid ?? 0;
+  const expectedGrossPayout = roundCurrency(
+    teamResults.reduce((total, result) => total + result.expectedGrossPayout, 0)
+  );
+  const openingBid = roundCurrency(budgetRows.reduce((total, row) => total + row.openingBid, 0));
+  const targetBid = roundCurrency(budgetRows.reduce((total, row) => total + row.targetBid, 0));
+  const baseMaxBid = roundCurrency(budgetRows.reduce((total, row) => total + row.maxBid, 0));
   const baseBudgetHeadroom = deriveBudgetHeadroom(
     session.mothershipFunding.budgetBase,
     focusSyndicate.spend,
@@ -69,11 +76,32 @@ export function buildBidRecommendation(
     stoplight = "caution";
   }
 
+  const subjectLabel = asset?.label ?? team?.name ?? "This team";
+  const convictionScore =
+    budgetRows.length > 0
+      ? budgetRows.reduce((total, row) => total + row.convictionScore, 0) / budgetRows.length
+      : 0;
+  const investableShare = budgetRows.reduce((total, row) => total + row.investableShare, 0);
+
   const rationale = [
-    `${team.name} carries a ${budgetRow ? budgetRow.convictionScore.toFixed(3) : "0.000"} conviction score with ${budgetRow ? Math.round(budgetRow.investableShare * 100) : 0}% of the current investable budget.`,
+    `${subjectLabel} carries a ${convictionScore.toFixed(3)} conviction score with ${Math.round(investableShare * 100)}% of the current investable budget.`,
     `Portfolio overlap penalty is ${ownershipExposure.overlapScore.toFixed(2)} with ${ownershipExposure.likelyConflicts.length} live conflict signals.`,
     `${focusSyndicate.name} sits ${fundingStatus === "safe" ? "within base funding" : fundingStatus === "stretch" ? "inside stretch funding" : "above the current funding plan"} with ${roundCurrency(baseBudgetHeadroom)} base room and ${roundCurrency(stretchBudgetHeadroom)} stretch room after this bid.`
   ];
+
+  if (asset?.type === "seed_bundle") {
+    rationale.unshift(
+      `${subjectLabel} bundles ${asset.members
+        .map((member) => `${member.seed} ${member.label}`)
+        .join(", ")} into one auction team.`
+    );
+  } else if (asset?.type === "play_in_slot") {
+    rationale.unshift(
+      `${subjectLabel} is an unresolved play-in team made up of ${asset.members
+        .map((member) => member.label)
+        .join(" and ")}.`
+    );
+  }
 
   if (ownershipExposure.likelyConflicts[0]) {
     const topConflict = ownershipExposure.likelyConflicts[0];
@@ -111,7 +139,8 @@ export function buildBidRecommendation(
   ] as const;
 
   return {
-    teamId: team.id,
+    teamId: team?.id ?? projectionIds[0],
+    assetId: asset?.id,
     currentBid,
     openingBid,
     targetBid,
@@ -119,7 +148,10 @@ export function buildBidRecommendation(
     expectedGrossPayout,
     expectedNetValue,
     valueGap,
-    confidenceBand: teamResult.confidenceBand,
+    confidenceBand: [
+      roundCurrency(teamResults.reduce((total, result) => total + result.confidenceBand[0], 0)),
+      roundCurrency(teamResults.reduce((total, result) => total + result.confidenceBand[1], 0))
+    ],
     stoplight,
     ownershipPenalty: roundCurrency(ownershipExposure.overlapScore * 850),
     bankrollHeadroom: roundCurrency(Math.max(0, analysis.remainingBankroll)),
@@ -134,7 +166,7 @@ export function buildBidRecommendation(
 
 export function computeOwnershipExposure(
   session: AuctionSession,
-  nominatedTeamId: string,
+  nominatedProjectionIds: string[],
   focusSyndicate: Syndicate
 ): OwnershipExposure {
   const snapshot = session.simulationSnapshot;
@@ -146,21 +178,43 @@ export function computeOwnershipExposure(
     };
   }
 
-  const conflicts = focusSyndicate.ownedTeamIds
-    .map((ownedTeamId) => {
+  const conflictsByOpponent = new Map<string, OwnershipExposure["likelyConflicts"][number]>();
+  for (const nominatedTeamId of nominatedProjectionIds) {
+    for (const ownedTeamId of focusSyndicate.ownedTeamIds) {
       const probability = snapshot.matchupMatrix[nominatedTeamId]?.[ownedTeamId] ?? 0;
       const likelyConflict =
-        snapshot.teamResults[nominatedTeamId]?.likelyConflicts.find((conflict) => conflict.opponentId === ownedTeamId) ??
+        snapshot.teamResults[nominatedTeamId]?.likelyConflicts.find(
+          (conflict) => conflict.opponentId === ownedTeamId
+        ) ??
         ({
           opponentId: ownedTeamId,
           probability,
           earliestRound: "sweet16" as Stage
         });
-      return likelyConflict;
-    })
-    .filter((conflict) => conflict.probability > 0)
-    .sort((left, right) => right.probability - left.probability);
 
+      if (likelyConflict.probability <= 0) {
+        continue;
+      }
+
+      const existing = conflictsByOpponent.get(ownedTeamId);
+      if (!existing) {
+        conflictsByOpponent.set(ownedTeamId, likelyConflict);
+        continue;
+      }
+
+      conflictsByOpponent.set(ownedTeamId, {
+        opponentId: ownedTeamId,
+        probability: Math.max(existing.probability, likelyConflict.probability),
+        earliestRound: stageRank(existing.earliestRound) <= stageRank(likelyConflict.earliestRound)
+          ? existing.earliestRound
+          : likelyConflict.earliestRound
+      });
+    }
+  }
+
+  const conflicts = [...conflictsByOpponent.values()].sort(
+    (left, right) => right.probability - left.probability
+  );
   const overlapScore = conflicts.reduce((total, conflict) => total + conflict.probability, 0);
   const concentrationScore = focusSyndicate.ownedTeamIds.length / Math.max(session.projections.length, 1);
 
@@ -169,4 +223,15 @@ export function computeOwnershipExposure(
     concentrationScore,
     likelyConflicts: conflicts.slice(0, 5)
   };
+}
+
+function stageRank(stage: Stage) {
+  return {
+    roundOf64: 0,
+    roundOf32: 1,
+    sweet16: 2,
+    elite8: 3,
+    finalFour: 4,
+    champion: 5
+  }[stage];
 }

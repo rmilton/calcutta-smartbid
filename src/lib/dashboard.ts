@@ -1,5 +1,6 @@
-import { buildBracketView } from "@/lib/bracket";
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
+import { buildAuctionAssets } from "@/lib/auction-assets";
+import { buildBracketView, normalizeBracketState } from "@/lib/bracket";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
 import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
@@ -38,6 +39,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     archivedByName: session.archivedByName,
     archivedByEmail: null,
     focusSyndicateId: mothership.id,
+    bracketState: normalizeBracketState(session.bracketState),
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
     analysisSettings: session.analysisSettings,
@@ -67,8 +69,13 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
         lastBracketImportAt: null,
         lastAnalysisImportAt: null
       },
+    auctionAssets:
+      session.auctionAssets ??
+      buildAuctionAssets({
+        baseProjections: session.baseProjections,
+        bracketImport: session.bracketImport
+      }),
     liveState: session.liveState,
-    bracketState: session.bracketState,
     purchases: session.purchases,
     simulationSnapshot: session.simulationSnapshot
   };
@@ -82,22 +89,50 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
   ) {
     throw new Error(publicSession.importReadiness.summary);
   }
-  const nominatedTeam = publicSession.projections.find((projection) => projection.id === publicSession.liveState.nominatedTeamId) ?? null;
-  const soldLookup = new Map(publicSession.purchases.map((purchase) => [purchase.teamId, purchase]));
-  const availableTeams = publicSession.projections.filter((projection) => !soldLookup.has(projection.id));
-  const soldTeams = publicSession.purchases
+  const auctionAssets = publicSession.auctionAssets ?? [];
+  const nominatedAsset =
+    auctionAssets.find((asset) => asset.id === publicSession.liveState.nominatedAssetId) ?? null;
+  const nominatedTeam =
+    publicSession.projections.find(
+      (projection) => projection.id === (nominatedAsset?.projectionIds[0] ?? publicSession.liveState.nominatedTeamId)
+    ) ?? null;
+  const soldAssetLookup = new Map(
+    publicSession.purchases.map((purchase) => [purchase.assetId ?? purchase.teamId, purchase])
+  );
+  const availableAssets = auctionAssets.filter((asset) => !soldAssetLookup.has(asset.id));
+  const soldAssets = publicSession.purchases
     .map((purchase) => {
-      const team = publicSession.projections.find((projection) => projection.id === purchase.teamId);
-      if (!team) {
+      const asset = auctionAssets.find((candidate) => candidate.id === (purchase.assetId ?? purchase.teamId));
+      if (!asset) {
         return null;
       }
       return {
-        team,
+        asset,
         price: purchase.price,
         buyerSyndicateId: purchase.buyerSyndicateId
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
+  const soldProjectionIds = new Set(
+    publicSession.purchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
+  );
+  const availableTeams = publicSession.projections.filter((projection) => !soldProjectionIds.has(projection.id));
+  const soldTeams = publicSession.purchases.flatMap((purchase) => {
+    const projectionIds = purchase.projectionIds ?? [purchase.teamId];
+    return projectionIds
+      .map((projectionId) => {
+        const team = publicSession.projections.find((projection) => projection.id === projectionId);
+        if (!team) {
+          return null;
+        }
+        return {
+          team,
+          price: purchase.price,
+          buyerSyndicateId: purchase.buyerSyndicateId
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  });
 
   const focusSyndicate = requireMothershipPerspective(publicSession);
   const analysis = buildSessionAnalysisSnapshot(publicSession, focusSyndicate);
@@ -105,13 +140,22 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
   return {
     session: publicSession,
     focusSyndicate,
+    nominatedAsset,
     nominatedTeam,
+    availableAssets,
+    soldAssets,
     availableTeams,
     soldTeams,
     ledger: publicSession.syndicates,
     analysis,
     bracket: buildBracketView(publicSession),
-    recommendation: buildBidRecommendation(publicSession, nominatedTeam, focusSyndicate, analysis),
+    recommendation: buildBidRecommendation(
+      publicSession,
+      nominatedTeam,
+      focusSyndicate,
+      analysis,
+      nominatedAsset
+    ),
     lastPurchase: publicSession.purchases[publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(publicSession.projectionOverrides).length,
     storageBackend

@@ -15,6 +15,7 @@ export type SessionRole = "admin" | "viewer";
 export type AuthScope = "platform" | "session";
 export type StorageBackend = "local" | "supabase";
 export type DataSourceKind = "csv" | "api";
+export type DataSourcePurpose = "bracket" | "analysis";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
@@ -33,6 +34,8 @@ export type TeamClassificationValue =
   | "love-at-right-price"
   | "caution"
   | "nuclear-disaster";
+export type AuctionAssetType = "single_team" | "play_in_slot" | "seed_bundle";
+export type AuctionAssetMemberType = "team" | "play_in_slot";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -151,6 +154,31 @@ export interface SessionImportReadiness {
   mergedProjectionCount: number;
   lastBracketImportAt: string | null;
   lastAnalysisImportAt: string | null;
+}
+
+export interface AuctionAssetMember {
+  id: string;
+  type: AuctionAssetMemberType;
+  label: string;
+  region: string;
+  seed: number;
+  regionSlot: string | null;
+  teamIds: string[];
+  projectionIds: string[];
+  unresolved: boolean;
+}
+
+export interface AuctionAsset {
+  id: string;
+  label: string;
+  type: AuctionAssetType;
+  region: string;
+  seed: number | null;
+  seedRange: [number, number] | null;
+  memberTeamIds: string[];
+  projectionIds: string[];
+  members: AuctionAssetMember[];
+  unresolved: boolean;
 }
 
 export interface TeamQuadWins {
@@ -314,7 +342,9 @@ export interface SimulationSnapshot {
 }
 
 export interface TeamMarketState {
+  nominatedAssetId?: string | null;
   nominatedTeamId: string | null;
+  soldAssetIds?: string[];
   currentBid: number;
   soldTeamIds: string[];
   lastUpdatedAt: string;
@@ -369,6 +399,9 @@ export interface PurchaseRecord {
   id: string;
   sessionId: string;
   teamId: string;
+  assetId?: string;
+  assetLabel?: string;
+  projectionIds?: string[];
   buyerSyndicateId: string;
   price: number;
   createdAt: string;
@@ -420,6 +453,7 @@ export interface DataSource {
   id: string;
   name: string;
   kind: DataSourceKind;
+  purpose: DataSourcePurpose;
   active: boolean;
   config: CsvDataSourceConfig | ApiDataSourceConfig;
   createdAt: string;
@@ -483,6 +517,7 @@ export interface AuctionSession {
   bracketImport: SessionBracketImport | null;
   analysisImport: SessionAnalysisImport | null;
   importReadiness: SessionImportReadiness;
+  auctionAssets?: AuctionAsset[];
   liveState: TeamMarketState;
   bracketState: BracketState;
   purchases: PurchaseRecord[];
@@ -505,6 +540,7 @@ export interface RecommendationDriver {
 
 export interface BidRecommendation {
   teamId: string;
+  assetId?: string;
   currentBid: number;
   openingBid: number;
   targetBid: number;
@@ -530,10 +566,19 @@ export interface SoldTeamSummary {
   buyerSyndicateId: string;
 }
 
+export interface SoldAssetSummary {
+  asset: AuctionAsset;
+  price: number;
+  buyerSyndicateId: string;
+}
+
 export interface AuctionDashboard {
   session: AuctionSession;
   focusSyndicate: Syndicate;
+  nominatedAsset: AuctionAsset | null;
   nominatedTeam: TeamProjection | null;
+  availableAssets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
   availableTeams: TeamProjection[];
   soldTeams: SoldTeamSummary[];
   ledger: Syndicate[];
@@ -558,7 +603,10 @@ export interface AdminSessionSummary {
   isArchived: boolean;
   archivedAt: string | null;
   projectionProvider: string;
-  activeDataSourceName: string;
+  bracketSourceName: string | null;
+  analysisSourceName: string | null;
+  importReadinessStatus: SessionImportStatus;
+  importReadinessSummary: string;
   purchaseCount: number;
   syndicateCount: number;
   overrideCount: number;
@@ -670,37 +718,42 @@ export const createSyndicateCatalogSchema = z.object({
 
 export const updateSyndicateCatalogSchema = createSyndicateCatalogSchema.partial();
 
-export const createDataSourceSchema = z.discriminatedUnion("kind", [
-  z.object({
-    name: z.string().min(2).max(80),
-    kind: z.literal("csv"),
-    active: z.boolean().default(true),
-    csvContent: z.string().min(1),
-    fileName: z.string().nullable().optional()
-  }),
-  z.object({
-    name: z.string().min(2).max(80),
-    kind: z.literal("api"),
-    active: z.boolean().default(true),
-    url: z.string().url(),
-    bearerToken: z.string().optional().default("")
-  })
-]);
+export const createDataSourceSchema = z.object({
+  name: z.string().min(2).max(80),
+  kind: z.literal("csv").default("csv"),
+  purpose: z.enum(["bracket", "analysis"]),
+  active: z.boolean().default(true),
+  csvContent: z.string().min(1),
+  fileName: z.string().nullable().optional()
+});
 
 export const updateDataSourceSchema = z
   .object({
     name: z.string().min(2).max(80).optional(),
     active: z.boolean().optional(),
     csvContent: z.string().min(1).optional(),
-    fileName: z.string().nullable().optional(),
-    url: z.string().url().optional(),
-    bearerToken: z.string().optional()
+    fileName: z.string().nullable().optional()
   })
   .refine(
     (value) =>
       Object.keys(value).length > 0,
     "At least one field is required."
   );
+
+export const sessionSourceSelectionSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("saved-source"),
+    sourceKey: z.string()
+  }),
+  z.object({
+    mode: z.literal("upload"),
+    sourceName: z.string().min(2).max(120),
+    fileName: z.string().nullable().optional(),
+    csvContent: z.string().min(1)
+  })
+]);
+
+export type SessionSourceSelection = z.infer<typeof sessionSourceSelectionSchema>;
 
 export const createSessionSchema = z.object({
   name: z.string().min(3).max(80),
@@ -725,7 +778,8 @@ export const createSessionSchema = z.object({
       targetTeamCount: 8,
       maxSingleTeamPct: 22
     }),
-  dataSourceKey: z.string().default("builtin:mock"),
+  bracketSelection: sessionSourceSelectionSchema.optional(),
+  analysisSelection: sessionSourceSelectionSchema.optional(),
   simulationIterations: z.number().int().min(1000).max(50000).default(4000)
 });
 
@@ -742,6 +796,7 @@ export const rebuildSimulationSchema = z.object({
 });
 
 export const updateLiveStateSchema = z.object({
+  nominatedAssetId: z.string().nullable().optional(),
   nominatedTeamId: z.string().nullable().optional(),
   currentBid: z.number().nonnegative().optional()
 });
@@ -751,6 +806,7 @@ export const updateBracketGameSchema = z.object({
 });
 
 export const createPurchaseSchema = z.object({
+  assetId: z.string().optional(),
   teamId: z.string().optional(),
   buyerSyndicateId: z.string(),
   price: z.number().positive()
@@ -860,15 +916,11 @@ export const updateSessionDataSourceSchema = z.object({
 });
 
 export const importSessionBracketSchema = z.object({
-  csvContent: z.string().min(1),
-  sourceName: z.string().min(2).max(120).default("Bracket CSV"),
-  fileName: z.string().nullable().optional()
+  selection: sessionSourceSelectionSchema
 });
 
 export const importSessionAnalysisSchema = z.object({
-  csvContent: z.string().min(1),
-  sourceName: z.string().min(2).max(120).default("Analysis CSV"),
-  fileName: z.string().nullable().optional()
+  selection: sessionSourceSelectionSchema
 });
 
 export const updateSessionPayoutRulesSchema = z.object({

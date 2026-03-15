@@ -4,8 +4,14 @@ import Link from "next/link";
 import { FormEvent, Fragment, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  AdminCenterData,
+  DataSource,
+  DataSourcePurpose,
+  PlatformUser,
+  SyndicateCatalogEntry
+} from "@/lib/types";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
-import { AdminCenterData, DataSource, PlatformUser, SyndicateCatalogEntry } from "@/lib/types";
 
 type AdminTab = "sessions" | "users" | "syndicates" | "data";
 type StatusFilter = "all" | "active" | "inactive";
@@ -28,11 +34,9 @@ interface SyndicateDraft {
 
 interface SourceDraft {
   name: string;
-  kind: "csv" | "api";
+  purpose: DataSourcePurpose;
   csvContent: string;
   fileName: string;
-  url: string;
-  bearerToken: string;
   active: boolean;
 }
 
@@ -52,13 +56,11 @@ const emptySyndicateDraft = (): SyndicateDraft => ({
   active: true
 });
 
-const emptySourceDraft = (): SourceDraft => ({
+const emptySourceDraft = (purpose: DataSourcePurpose = "bracket"): SourceDraft => ({
   name: "",
-  kind: "csv",
+  purpose,
   csvContent: "",
   fileName: "",
-  url: "",
-  bearerToken: "",
   active: true
 });
 
@@ -96,27 +98,12 @@ function applyStatusFilter<T extends { active: boolean }>(items: T[], filter: St
 }
 
 function sourceToDraft(source: DataSource): SourceDraft {
-  if (source.kind === "csv") {
-    const config = source.config as { csvContent: string; fileName: string | null };
-    return {
-      name: source.name,
-      kind: "csv",
-      csvContent: config.csvContent,
-      fileName: config.fileName ?? "",
-      url: "",
-      bearerToken: "",
-      active: source.active
-    };
-  }
-
-  const config = source.config as { url: string; bearerToken?: string };
+  const config = source.config as { csvContent: string; fileName: string | null };
   return {
     name: source.name,
-    kind: "api",
-    csvContent: "",
-    fileName: "",
-    url: config.url,
-    bearerToken: config.bearerToken ?? "",
+    purpose: source.purpose,
+    csvContent: config.csvContent,
+    fileName: config.fileName ?? "",
     active: source.active
   };
 }
@@ -141,18 +128,18 @@ export function AdminCenter({
 
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddSyndicate, setShowAddSyndicate] = useState(false);
-  const [showAddSource, setShowAddSource] = useState(false);
+  const [showAddSourcePurpose, setShowAddSourcePurpose] = useState<DataSourcePurpose | null>(null);
 
   const [newUser, setNewUser] = useState<UserDraft>(emptyUserDraft);
   const [newSyndicate, setNewSyndicate] = useState<SyndicateDraft>(emptySyndicateDraft);
-  const [newSource, setNewSource] = useState<SourceDraft>(emptySourceDraft);
+  const [newSource, setNewSource] = useState<SourceDraft>(emptySourceDraft());
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<UserDraft>(emptyUserDraft);
   const [editingSyndicateId, setEditingSyndicateId] = useState<string | null>(null);
   const [editingSyndicate, setEditingSyndicate] = useState<SyndicateDraft>(emptySyndicateDraft);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [editingSource, setEditingSource] = useState<SourceDraft>(emptySourceDraft);
+  const [editingSource, setEditingSource] = useState<SourceDraft>(emptySourceDraft());
   const [deleteTarget, setDeleteTarget] = useState<SessionDeleteState | null>(null);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
 
@@ -166,7 +153,13 @@ export function AdminCenter({
     }
 
     return scopedSessions.filter((session) =>
-      [session.name, session.activeDataSourceName, session.projectionProvider]
+      [
+        session.name,
+        session.bracketSourceName ?? "",
+        session.analysisSourceName ?? "",
+        session.importReadinessStatus,
+        session.importReadinessSummary
+      ]
         .join(" ")
         .toLowerCase()
         .includes(query)
@@ -203,10 +196,18 @@ export function AdminCenter({
     }
 
     return scoped.filter((source) =>
-      [source.name, source.kind].join(" ").toLowerCase().includes(query)
+      [source.name, source.kind, source.purpose].join(" ").toLowerCase().includes(query)
     );
   }, [data.dataSources, sourceFilter, sourceSearch]);
 
+  const filteredBracketSources = useMemo(
+    () => filteredSources.filter((source) => source.purpose === "bracket"),
+    [filteredSources]
+  );
+  const filteredAnalysisSources = useMemo(
+    () => filteredSources.filter((source) => source.purpose === "analysis"),
+    [filteredSources]
+  );
   async function refreshData() {
     const response = await fetch("/api/admin/center", { cache: "no-store" });
     if (!response.ok) {
@@ -321,6 +322,7 @@ export function AdminCenter({
   function startEditSource(source: DataSource) {
     setEditingSourceId(source.id);
     setEditingSource(sourceToDraft(source));
+    setShowAddSourcePurpose(null);
   }
 
   function onCreateUser(event: FormEvent<HTMLFormElement>) {
@@ -390,37 +392,23 @@ export function AdminCenter({
   }
 
   function getSourcePayload(draft: SourceDraft) {
-    return draft.kind === "csv"
-      ? {
-          name: draft.name,
-          kind: "csv" as const,
-          active: draft.active,
-          csvContent: draft.csvContent,
-          fileName: draft.fileName || null
-        }
-      : {
-          name: draft.name,
-          kind: "api" as const,
-          active: draft.active,
-          url: draft.url,
-          bearerToken: draft.bearerToken
-        };
+    return {
+      name: draft.name,
+      kind: "csv" as const,
+      purpose: draft.purpose,
+      active: draft.active,
+      csvContent: draft.csvContent,
+      fileName: draft.fileName || null
+    };
   }
 
   function getSourceUpdatePayload(draft: SourceDraft) {
-    return draft.kind === "csv"
-      ? {
-          name: draft.name,
-          active: draft.active,
-          csvContent: draft.csvContent,
-          fileName: draft.fileName || null
-        }
-      : {
-          name: draft.name,
-          active: draft.active,
-          url: draft.url,
-          bearerToken: draft.bearerToken
-        };
+    return {
+      name: draft.name,
+      active: draft.active,
+      csvContent: draft.csvContent,
+      fileName: draft.fileName || null
+    };
   }
 
   function onCreateSource(event: FormEvent<HTMLFormElement>) {
@@ -433,8 +421,8 @@ export function AdminCenter({
           getSourcePayload(newSource),
           "Data source created."
         );
-        setNewSource(emptySourceDraft());
-        setShowAddSource(false);
+        setNewSource(emptySourceDraft(newSource.purpose));
+        setShowAddSourcePurpose(null);
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "Unable to create data source."
@@ -483,6 +471,273 @@ export function AdminCenter({
         );
       }
     });
+  }
+
+  function renderDataSourceSection(
+    purpose: DataSourcePurpose,
+    title: string,
+    sources: DataSource[]
+  ) {
+    const showAdd = showAddSourcePurpose === purpose;
+
+    return (
+      <div className="admin-pane__section">
+        <div className="admin-pane__header admin-pane__section-header">
+          <div>
+            <p className="eyebrow admin-pane__section-kicker">{title}</p>
+            <h3>{sources.length} reusable source{sources.length === 1 ? "" : "s"}</h3>
+          </div>
+          <button
+            type="button"
+            className="button button--small"
+            onClick={() => {
+              setEditingSourceId(null);
+              if (showAdd) {
+                setShowAddSourcePurpose(null);
+                setNewSource(emptySourceDraft(purpose));
+                return;
+              }
+              setShowAddSourcePurpose(purpose);
+              setNewSource(emptySourceDraft(purpose));
+            }}
+          >
+            {showAdd ? "Close" : `Add ${title.toLowerCase()} source`}
+          </button>
+        </div>
+
+        <div className="table-wrap admin-table-wrap">
+          <table className="admin-table admin-table--dense">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Last tested</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {showAdd ? (
+                <tr className="admin-edit-row">
+                  <td colSpan={4}>
+                    <form className="admin-inline-editor" onSubmit={onCreateSource}>
+                      <div className="admin-inline-grid admin-inline-grid--source">
+                        <label className="field-shell">
+                          <span>Name</span>
+                          <input
+                            value={newSource.name}
+                            onChange={(event) =>
+                              setNewSource((current) => ({
+                                ...current,
+                                name: event.target.value
+                              }))
+                            }
+                            required
+                          />
+                        </label>
+                        <label className="field-shell admin-inline-flag">
+                          <span>Status</span>
+                          <select
+                            value={newSource.active ? "active" : "inactive"}
+                            onChange={(event) =>
+                              setNewSource((current) => ({
+                                ...current,
+                                active: event.target.value === "active"
+                              }))
+                            }
+                          >
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </label>
+                        <label className="field-shell">
+                          <span>CSV file</span>
+                          <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={(event) =>
+                              onCsvFileSelect(event.target.files?.[0] ?? null, setNewSource)
+                            }
+                          />
+                        </label>
+                        <label className="field-shell admin-inline-span">
+                          <span>CSV content</span>
+                          <textarea
+                            rows={6}
+                            value={newSource.csvContent}
+                            onChange={(event) =>
+                              setNewSource((current) => ({
+                                ...current,
+                                csvContent: event.target.value
+                              }))
+                            }
+                            required
+                          />
+                        </label>
+                      </div>
+                      <div className="admin-inline-actions">
+                        <button type="submit" className="button button--small" disabled={isPending}>
+                          Save source
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => {
+                            setShowAddSourcePurpose(null);
+                            setNewSource(emptySourceDraft(purpose));
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              ) : null}
+              {sources.map((source) => (
+                <Fragment key={source.id}>
+                  <tr>
+                    <td>
+                      <strong>{source.name}</strong>
+                    </td>
+                    <td>
+                      <span className={getStatusClass(source.active)}>
+                        {source.active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>{formatDate(source.lastTestedAt)}</td>
+                    <td>
+                      <div className="admin-table-actions">
+                        <button
+                          type="button"
+                          className="button button-secondary button--small"
+                          disabled={isPending}
+                          onClick={() => startEditSource(source)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-secondary button--small"
+                          disabled={isPending}
+                          onClick={() => onTestSource(source.id)}
+                        >
+                          Test
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          disabled={isPending}
+                          onClick={() =>
+                            startTransition(async () => {
+                              try {
+                                await submitJson(
+                                  `/api/admin/data-sources/${source.id}`,
+                                  "PATCH",
+                                  { active: !source.active },
+                                  source.active ? "Data source disabled." : "Data source enabled."
+                                );
+                              } catch (submitError) {
+                                showError(
+                                  submitError instanceof Error
+                                    ? submitError.message
+                                    : "Unable to update data source."
+                                );
+                              }
+                            })
+                          }
+                        >
+                          {source.active ? "Disable" : "Enable"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {editingSourceId === source.id ? (
+                    <tr className="admin-edit-row">
+                      <td colSpan={4}>
+                        <form
+                          className="admin-inline-editor"
+                          onSubmit={(event) => onUpdateSource(event, source.id)}
+                        >
+                          <div className="admin-inline-grid admin-inline-grid--source">
+                            <label className="field-shell">
+                              <span>Name</span>
+                              <input
+                                value={editingSource.name}
+                                onChange={(event) =>
+                                  setEditingSource((current) => ({
+                                    ...current,
+                                    name: event.target.value
+                                  }))
+                                }
+                                required
+                              />
+                            </label>
+                            <label className="field-shell admin-inline-flag">
+                              <span>Status</span>
+                              <select
+                                value={editingSource.active ? "active" : "inactive"}
+                                onChange={(event) =>
+                                  setEditingSource((current) => ({
+                                    ...current,
+                                    active: event.target.value === "active"
+                                  }))
+                                }
+                              >
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                              </select>
+                            </label>
+                            <label className="field-shell">
+                              <span>CSV file</span>
+                              <input
+                                type="file"
+                                accept=".csv,text/csv"
+                                onChange={(event) =>
+                                  onCsvFileSelect(event.target.files?.[0] ?? null, setEditingSource)
+                                }
+                              />
+                            </label>
+                            <label className="field-shell admin-inline-span">
+                              <span>CSV content</span>
+                              <textarea
+                                rows={6}
+                                value={editingSource.csvContent}
+                                onChange={(event) =>
+                                  setEditingSource((current) => ({
+                                    ...current,
+                                    csvContent: event.target.value
+                                  }))
+                                }
+                                required
+                              />
+                            </label>
+                          </div>
+                          <div className="admin-inline-actions">
+                            <button type="submit" className="button button--small" disabled={isPending}>
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-ghost button--small"
+                              onClick={() => {
+                                setEditingSourceId(null);
+                                setEditingSource(emptySourceDraft());
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -558,7 +813,7 @@ export function AdminCenter({
                   <tr>
                     <th>Session</th>
                     <th>Updated</th>
-                    <th>Source</th>
+                    <th>Imports</th>
                     <th>Purchases</th>
                     <th>Syndicates</th>
                     <th>Access</th>
@@ -579,7 +834,15 @@ export function AdminCenter({
                         ) : null}
                       </td>
                       <td>{formatDate(session.updatedAt)}</td>
-                      <td>{session.activeDataSourceName}</td>
+                      <td>
+                        <div className="support-copy">
+                          Bracket: {session.bracketSourceName ?? "Not set"}
+                        </div>
+                        <div className="support-copy">
+                          Analysis: {session.analysisSourceName ?? "Not set"}
+                        </div>
+                        <div className="support-copy">{session.importReadinessStatus}</div>
+                      </td>
                       <td>{session.purchaseCount}</td>
                       <td>{session.syndicateCount}</td>
                       <td>{formatSessionAccess(session.adminCount, session.viewerCount)}</td>
@@ -1123,7 +1386,7 @@ export function AdminCenter({
             <div className="admin-pane__header">
               <div>
                 <h2>Data Sources</h2>
-                <p>{filteredSources.length + 1} available</p>
+                <p>{filteredSources.length} reusable sources</p>
               </div>
               <div className="admin-pane__toolbar">
                 <input
@@ -1141,358 +1404,10 @@ export function AdminCenter({
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-                <button
-                  type="button"
-                  className="button button--small"
-                  onClick={() => {
-                    setShowAddSource((current) => !current);
-                    setEditingSourceId(null);
-                    setNewSource(emptySourceDraft());
-                  }}
-                >
-                  {showAddSource ? "Close" : "Add source"}
-                </button>
               </div>
             </div>
-
-            <div className="table-wrap admin-table-wrap">
-              <table className="admin-table admin-table--dense">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Kind</th>
-                    <th>Status</th>
-                    <th>Last tested</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {showAddSource ? (
-                    <tr className="admin-edit-row">
-                      <td colSpan={5}>
-                        <form className="admin-inline-editor" onSubmit={onCreateSource}>
-                          <div className="admin-inline-grid admin-inline-grid--source">
-                            <label className="field-shell">
-                              <span>Name</span>
-                              <input
-                                value={newSource.name}
-                                onChange={(event) =>
-                                  setNewSource((current) => ({
-                                    ...current,
-                                    name: event.target.value
-                                  }))
-                                }
-                                required
-                              />
-                            </label>
-                            <label className="field-shell admin-inline-flag">
-                              <span>Kind</span>
-                              <select
-                                value={newSource.kind}
-                                onChange={(event) =>
-                                  setNewSource((current) => ({
-                                    ...current,
-                                    kind: event.target.value as "csv" | "api"
-                                  }))
-                                }
-                              >
-                                <option value="csv">CSV</option>
-                                <option value="api">API</option>
-                              </select>
-                            </label>
-                            <label className="field-shell admin-inline-flag">
-                              <span>Status</span>
-                              <select
-                                value={newSource.active ? "active" : "inactive"}
-                                onChange={(event) =>
-                                  setNewSource((current) => ({
-                                    ...current,
-                                    active: event.target.value === "active"
-                                  }))
-                                }
-                              >
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                              </select>
-                            </label>
-                            {newSource.kind === "csv" ? (
-                              <>
-                                <label className="field-shell">
-                                  <span>CSV file</span>
-                                  <input
-                                    type="file"
-                                    accept=".csv,text/csv"
-                                    onChange={(event) =>
-                                      onCsvFileSelect(event.target.files?.[0] ?? null, setNewSource)
-                                    }
-                                  />
-                                </label>
-                                <label className="field-shell admin-inline-span">
-                                  <span>CSV content</span>
-                                  <textarea
-                                    rows={6}
-                                    value={newSource.csvContent}
-                                    onChange={(event) =>
-                                      setNewSource((current) => ({
-                                        ...current,
-                                        csvContent: event.target.value
-                                      }))
-                                    }
-                                    required
-                                  />
-                                </label>
-                              </>
-                            ) : (
-                              <>
-                                <label className="field-shell">
-                                  <span>Provider URL</span>
-                                  <input
-                                    type="url"
-                                    value={newSource.url}
-                                    onChange={(event) =>
-                                      setNewSource((current) => ({
-                                        ...current,
-                                        url: event.target.value
-                                      }))
-                                    }
-                                    required
-                                  />
-                                </label>
-                                <label className="field-shell">
-                                  <span>Bearer token</span>
-                                  <input
-                                    value={newSource.bearerToken}
-                                    onChange={(event) =>
-                                      setNewSource((current) => ({
-                                        ...current,
-                                        bearerToken: event.target.value
-                                      }))
-                                    }
-                                  />
-                                </label>
-                              </>
-                            )}
-                          </div>
-                          <div className="admin-inline-actions">
-                            <button type="submit" className="button button--small" disabled={isPending}>
-                              Save source
-                            </button>
-                            <button
-                              type="button"
-                              className="button button-ghost button--small"
-                              onClick={() => {
-                                setShowAddSource(false);
-                                setNewSource(emptySourceDraft());
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </td>
-                    </tr>
-                  ) : null}
-                  <tr>
-                    <td>
-                      <strong>Built-in Mock Field</strong>
-                    </td>
-                    <td>BUILTIN</td>
-                    <td>
-                      <span className="status-pill status-pill--positive">Active</span>
-                    </td>
-                    <td>--</td>
-                    <td>Always available</td>
-                  </tr>
-                  {filteredSources.map((source) => (
-                    <Fragment key={source.id}>
-                      <tr>
-                        <td>
-                          <strong>{source.name}</strong>
-                        </td>
-                        <td>{source.kind.toUpperCase()}</td>
-                        <td>
-                          <span className={getStatusClass(source.active)}>
-                            {source.active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        <td>{formatDate(source.lastTestedAt)}</td>
-                        <td>
-                          <div className="admin-table-actions">
-                            <button
-                              type="button"
-                              className="button button-secondary button--small"
-                              disabled={isPending}
-                              onClick={() => startEditSource(source)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="button button-secondary button--small"
-                              disabled={isPending}
-                              onClick={() => onTestSource(source.id)}
-                            >
-                              Test
-                            </button>
-                            <button
-                              type="button"
-                              className="button button-ghost button--small"
-                              disabled={isPending}
-                              onClick={() =>
-                                startTransition(async () => {
-                                  try {
-                                    await submitJson(
-                                      `/api/admin/data-sources/${source.id}`,
-                                      "PATCH",
-                                      { active: !source.active },
-                                      source.active
-                                        ? "Data source disabled."
-                                        : "Data source enabled."
-                                    );
-                                  } catch (submitError) {
-                                    showError(
-                                      submitError instanceof Error
-                                        ? submitError.message
-                                        : "Unable to update data source."
-                                    );
-                                  }
-                                })
-                              }
-                            >
-                              {source.active ? "Disable" : "Enable"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {editingSourceId === source.id ? (
-                        <tr className="admin-edit-row">
-                          <td colSpan={5}>
-                            <form
-                              className="admin-inline-editor"
-                              onSubmit={(event) => onUpdateSource(event, source.id)}
-                            >
-                              <div className="admin-inline-grid admin-inline-grid--source">
-                                <label className="field-shell">
-                                  <span>Name</span>
-                                  <input
-                                    value={editingSource.name}
-                                    onChange={(event) =>
-                                      setEditingSource((current) => ({
-                                        ...current,
-                                        name: event.target.value
-                                      }))
-                                    }
-                                    required
-                                  />
-                                </label>
-                                <label className="field-shell admin-inline-flag">
-                                  <span>Kind</span>
-                                  <input value={editingSource.kind.toUpperCase()} readOnly />
-                                </label>
-                                <label className="field-shell admin-inline-flag">
-                                  <span>Status</span>
-                                  <select
-                                    value={editingSource.active ? "active" : "inactive"}
-                                    onChange={(event) =>
-                                      setEditingSource((current) => ({
-                                        ...current,
-                                        active: event.target.value === "active"
-                                      }))
-                                    }
-                                  >
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                  </select>
-                                </label>
-                                {editingSource.kind === "csv" ? (
-                                  <>
-                                    <label className="field-shell">
-                                      <span>CSV file</span>
-                                      <input
-                                        type="file"
-                                        accept=".csv,text/csv"
-                                        onChange={(event) =>
-                                          onCsvFileSelect(
-                                            event.target.files?.[0] ?? null,
-                                            setEditingSource
-                                          )
-                                        }
-                                      />
-                                    </label>
-                                    <label className="field-shell admin-inline-span">
-                                      <span>CSV content</span>
-                                      <textarea
-                                        rows={6}
-                                        value={editingSource.csvContent}
-                                        onChange={(event) =>
-                                          setEditingSource((current) => ({
-                                            ...current,
-                                            csvContent: event.target.value
-                                          }))
-                                        }
-                                        required
-                                      />
-                                    </label>
-                                  </>
-                                ) : (
-                                  <>
-                                    <label className="field-shell">
-                                      <span>Provider URL</span>
-                                      <input
-                                        type="url"
-                                        value={editingSource.url}
-                                        onChange={(event) =>
-                                          setEditingSource((current) => ({
-                                            ...current,
-                                            url: event.target.value
-                                          }))
-                                        }
-                                        required
-                                      />
-                                    </label>
-                                    <label className="field-shell">
-                                      <span>Bearer token</span>
-                                      <input
-                                        value={editingSource.bearerToken}
-                                        onChange={(event) =>
-                                          setEditingSource((current) => ({
-                                            ...current,
-                                            bearerToken: event.target.value
-                                          }))
-                                        }
-                                      />
-                                    </label>
-                                  </>
-                                )}
-                              </div>
-                              <div className="admin-inline-actions">
-                                <button
-                                  type="submit"
-                                  className="button button--small"
-                                  disabled={isPending}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button-ghost button--small"
-                                  onClick={() => {
-                                    setEditingSourceId(null);
-                                    setEditingSource(emptySourceDraft());
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </form>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {renderDataSourceSection("bracket", "Bracket", filteredBracketSources)}
+            {renderDataSourceSection("analysis", "Analysis", filteredAnalysisSources)}
           </section>
         ) : null}
 

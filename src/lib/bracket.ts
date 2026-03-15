@@ -92,16 +92,17 @@ function buildUnsupportedBracket(reason: string): BracketBuildResult {
 function buildPurchaseLookup(purchases: PurchaseRecord[], syndicates: Syndicate[]) {
   const syndicateLookup = new Map(syndicates.map((syndicate) => [syndicate.id, syndicate]));
   return new Map(
-    purchases.map((purchase) => {
+    purchases.flatMap((purchase) => {
       const syndicate = syndicateLookup.get(purchase.buyerSyndicateId);
-      return [
-        purchase.teamId,
-        {
-          buyerSyndicateId: purchase.buyerSyndicateId,
-          buyerSyndicateName: syndicate?.name ?? null,
-          buyerColor: syndicate?.color ?? null
-        } satisfies PurchaseLookupRow
-      ];
+      const lookupRow = {
+        buyerSyndicateId: purchase.buyerSyndicateId,
+        buyerSyndicateName: syndicate?.name ?? null,
+        buyerColor: syndicate?.color ?? null
+      } satisfies PurchaseLookupRow;
+      return (purchase.projectionIds ?? [purchase.teamId]).map((projectionId) => [
+        projectionId,
+        lookupRow
+      ] as const);
     })
   );
 }
@@ -465,6 +466,7 @@ export function normalizeBracketState(
 }
 
 export function buildBracketView(session: AuctionSession): BracketViewModel {
+  session.bracketState = normalizeBracketState(session.bracketState);
   return buildBracket(session).view;
 }
 

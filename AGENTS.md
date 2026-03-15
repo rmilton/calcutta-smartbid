@@ -25,6 +25,7 @@ Calcutta SmartBid now has two major surfaces:
   - in-room workspaces for `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides`
 
 The admin center is the control plane. The live room is the shared Mothership execution surface. `Auction` and `Analysis` are now two views over the same session-native recommendation model, not two separate tools.
+Selection Sunday prep is now session-managed: bracket structure and team analysis are imported separately, then merged into the live room.
 
 ## Current Stack
 
@@ -102,6 +103,7 @@ The admin center is the control plane. The live room is the shared Mothership ex
   - role-aware live room
   - `Auction`, `Analysis`, `Portfolio`, `Bracket`, and `Overrides` workspaces
   - single searchable `Active Team for Bidding` control
+  - live nomination can represent one school, a play-in team, or a grouped `13-16` package
   - auto-save on team selection
   - undo for the most recent purchase
   - shared selected-team state between `Auction` and `Analysis`
@@ -126,6 +128,7 @@ The admin center is the control plane. The live room is the shared Mothership ex
 - [src/lib/session-analysis.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/session-analysis.ts)
   - session-native ranking and bid-planning model
   - builds the shared analysis snapshot consumed by `Auction` and `Analysis`
+  - still team-level, but now surfaces grouped auction-team context
 - [src/lib/bracket.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/bracket.ts)
   - builds the session-native 64-team bracket view
   - validates bracket readiness and winner advancement
@@ -137,6 +140,7 @@ The admin center is the control plane. The live room is the shared Mothership ex
   - session creation
   - admin-center CRUD
   - session admin mutations
+  - session-managed Selection Sunday imports
   - purchase undo and bracket winner persistence
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
   - auction sessions
@@ -145,6 +149,7 @@ The admin center is the control plane. The live room is the shared Mothership ex
   - syndicate catalog
   - data sources
   - data import runs
+  - session-level bracket and analysis import storage
   - undo purchase transaction support
 
 ### Auction intelligence
@@ -171,6 +176,8 @@ The admin center is the control plane. The live room is the shared Mothership ex
 - Session purchases are the owned-portfolio truth for live recommendation math.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - `Auction` and `Analysis` must stay consistent for the same selected team because they read from the same analysis payload.
+- The UI still says `team`, but the live nomination model can represent grouped auction teams such as play-ins and regional `13-16` packages.
+- Bracket structure and team analysis are separate session inputs and should not be collapsed back into one import flow.
 - `Bracket` must stay consistent with session purchases and imported field structure.
 - The active-team control must stay fast and low-friction under live auction use.
 - The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
@@ -212,16 +219,18 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 5. Log in as a session member with assigned email plus shared code.
 6. Confirm the live board loads in the expected role.
 7. Change `Active Team for Bidding` and confirm the board updates automatically.
-8. Open `Bracket` and confirm the full field renders for a bracket-ready session.
-9. Change current bid and confirm it persists.
-10. Open `Analysis` and confirm the selected team shows the same `target bid` and `max bid` as `Auction`.
-11. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
-12. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
-13. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
-14. Advance a bracket winner and confirm the change persists after refresh.
-15. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
-16. Archive a session and confirm it is hidden until archived sessions are shown.
-17. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
+8. If a grouped `13-16` or play-in team is nominated, confirm the member schools are visible on the board.
+9. Open `Bracket` and confirm the full field renders for a bracket-ready session.
+10. Change current bid and confirm it persists.
+11. Open `Analysis` and confirm the selected team shows the same `target bid` and `max bid` as `Auction`.
+12. Confirm grouped teams show their package context in `Analysis`.
+13. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
+14. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
+15. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
+16. Advance a bracket winner and confirm the change persists after refresh.
+17. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
+18. Archive a session and confirm it is hidden until archived sessions are shown.
+19. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
 
 ## Test Commands
 
@@ -269,4 +278,6 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - Bracket view requires a complete 64-team field; incomplete imports intentionally render a bracket-unavailable state.
 - Purchase correction currently only supports undoing the most recent purchase.
 - `/csv-analysis` is now a compatibility redirect. The maintained workflow is the in-room `Analysis` tab.
+- the Selection Sunday path now depends on session-managed bracket and analysis imports rather than a single projection source
+- unresolved play-ins and regional `13-16` packages are supported as grouped auction teams, but deeper simulation/modeling should still be treated carefully when that logic changes
 - Session lifecycle now supports archive plus permanent delete. Permanent delete is intentionally gated behind archive plus typed confirmation.

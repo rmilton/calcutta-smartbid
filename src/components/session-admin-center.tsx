@@ -17,6 +17,7 @@ import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import {
   BudgetConfidence,
+  DataSource,
   MothershipFundingModel,
   PayoutRules,
   SessionAdminConfig,
@@ -48,6 +49,8 @@ interface ImportDraft {
   csvContent: string;
 }
 
+type SourceSetupMode = "saved-source" | "upload";
+
 const confidenceOptions: BudgetConfidence[] = ["low", "medium", "high"];
 
 function buildImportDraft(
@@ -59,6 +62,28 @@ function buildImportDraft(
     fileName: imported?.fileName ?? "",
     csvContent: ""
   };
+}
+
+function getDefaultSourceMode(
+  imported: { sourceName: string } | null | undefined,
+  sources: DataSource[]
+): SourceSetupMode {
+  if (imported?.sourceName && !sources.some((source) => source.name === imported.sourceName)) {
+    return "upload";
+  }
+
+  return sources.length > 0 ? "saved-source" : "upload";
+}
+
+function getSourceKeyForImport(
+  imported: { sourceName: string } | null | undefined,
+  sources: DataSource[]
+) {
+  const matchedSource = imported
+    ? sources.find((source) => source.name === imported.sourceName) ?? null
+    : null;
+  const selectedSource = matchedSource ?? sources[0] ?? null;
+  return selectedSource ? `data-source:${selectedSource.id}` : "";
 }
 
 function formatDollarInput(value: number) {
@@ -157,7 +182,6 @@ export function SessionAdminCenter({
   const [syndicateFundingDrafts, setSyndicateFundingDrafts] = useState<
     Record<string, SyndicateFundingDraft>
   >(buildSyndicateFundingDrafts(initialConfig.session.syndicates));
-  const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
   const [projectedPotInput, setProjectedPotInput] = useState(
     formatDollarInput(initialConfig.session.payoutRules.projectedPot)
@@ -192,6 +216,26 @@ export function SessionAdminCenter({
   const activeSyndicates = useMemo(
     () => config.syndicateCatalog.filter((entry) => entry.active),
     [config.syndicateCatalog]
+  );
+  const activeBracketSources = useMemo(
+    () => config.dataSources.filter((source) => source.active && source.purpose === "bracket"),
+    [config.dataSources]
+  );
+  const activeAnalysisSources = useMemo(
+    () => config.dataSources.filter((source) => source.active && source.purpose === "analysis"),
+    [config.dataSources]
+  );
+  const [bracketSourceMode, setBracketSourceMode] = useState<SourceSetupMode>(
+    getDefaultSourceMode(initialConfig.session.bracketImport, activeBracketSources)
+  );
+  const [analysisSourceMode, setAnalysisSourceMode] = useState<SourceSetupMode>(
+    getDefaultSourceMode(initialConfig.session.analysisImport, activeAnalysisSources)
+  );
+  const [bracketSourceKey, setBracketSourceKey] = useState(
+    getSourceKeyForImport(initialConfig.session.bracketImport, activeBracketSources)
+  );
+  const [analysisSourceKey, setAnalysisSourceKey] = useState(
+    getSourceKeyForImport(initialConfig.session.analysisImport, activeAnalysisSources)
   );
   const mothershipCatalogEntry = useMemo(
     () =>
@@ -245,13 +289,16 @@ export function SessionAdminCenter({
     );
     setMothershipFunding(config.session.mothershipFunding);
     setSyndicateFundingDrafts(buildSyndicateFundingDrafts(config.session.syndicates));
-    setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
     setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
     setAnalysisSettings(config.session.analysisSettings);
     setBracketImportDraft(buildImportDraft("Official Bracket", config.session.bracketImport));
     setAnalysisImportDraft(buildImportDraft("Team Analysis", config.session.analysisImport));
-  }, [config]);
+    setBracketSourceMode(getDefaultSourceMode(config.session.bracketImport, activeBracketSources));
+    setAnalysisSourceMode(getDefaultSourceMode(config.session.analysisImport, activeAnalysisSources));
+    setBracketSourceKey(getSourceKeyForImport(config.session.bracketImport, activeBracketSources));
+    setAnalysisSourceKey(getSourceKeyForImport(config.session.analysisImport, activeAnalysisSources));
+  }, [activeAnalysisSources, activeBracketSources, config]);
 
   async function refreshConfig() {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
@@ -491,24 +538,6 @@ export function SessionAdminCenter({
     });
   }
 
-  function onSaveDataSource(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    startTransition(async () => {
-      try {
-        await submitJson(
-          `/api/admin/sessions/${config.session.id}/data`,
-          "PUT",
-          { sourceKey },
-          "Active data source updated."
-        );
-      } catch (submitError) {
-        showError(
-          submitError instanceof Error ? submitError.message : "Unable to update data source."
-        );
-      }
-    });
-  }
-
   function onSavePayoutRules(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     startTransition(async () => {
@@ -549,19 +578,24 @@ export function SessionAdminCenter({
     });
   }
 
-  function onRunImport() {
-    startTransition(async () => {
-      try {
-        await submitJson(
-          `/api/admin/sessions/${config.session.id}/data/import`,
-          "POST",
-          { sourceKey },
-          "Projection import completed."
-        );
-      } catch (submitError) {
-        showError(submitError instanceof Error ? submitError.message : "Unable to run import.");
-      }
-    });
+  function buildImportSelection(
+    mode: SourceSetupMode,
+    sourceKey: string,
+    draft: ImportDraft
+  ) {
+    if (mode === "saved-source") {
+      return {
+        mode: "saved-source" as const,
+        sourceKey
+      };
+    }
+
+    return {
+      mode: "upload" as const,
+      sourceName: draft.sourceName,
+      fileName: draft.fileName || null,
+      csvContent: draft.csvContent
+    };
   }
 
   function onImportBracket(event: FormEvent<HTMLFormElement>) {
@@ -571,11 +605,7 @@ export function SessionAdminCenter({
         await submitJson(
           `/api/admin/sessions/${config.session.id}/bracket/import`,
           "POST",
-          {
-            sourceName: bracketImportDraft.sourceName,
-            fileName: bracketImportDraft.fileName || null,
-            csvContent: bracketImportDraft.csvContent
-          },
+          { selection: buildImportSelection(bracketSourceMode, bracketSourceKey, bracketImportDraft) },
           "Bracket import updated."
         );
       } catch (submitError) {
@@ -594,9 +624,11 @@ export function SessionAdminCenter({
           `/api/admin/sessions/${config.session.id}/analysis/import`,
           "POST",
           {
-            sourceName: analysisImportDraft.sourceName,
-            fileName: analysisImportDraft.fileName || null,
-            csvContent: analysisImportDraft.csvContent
+            selection: buildImportSelection(
+              analysisSourceMode,
+              analysisSourceKey,
+              analysisImportDraft
+            )
           },
           "Analysis import updated."
         );
@@ -606,6 +638,105 @@ export function SessionAdminCenter({
         );
       }
     });
+  }
+
+  function renderImportModeSection(
+    title: string,
+    mode: SourceSetupMode,
+    setMode: Dispatch<SetStateAction<SourceSetupMode>>,
+    sourceKey: string,
+    setSourceKey: Dispatch<SetStateAction<string>>,
+    sources: DataSource[],
+    draft: ImportDraft,
+    setDraft: Dispatch<SetStateAction<ImportDraft>>,
+    fileInputRef: React.RefObject<HTMLInputElement | null>,
+    submitLabel: string,
+    onSubmit: (event: FormEvent<HTMLFormElement>) => void,
+    placeholder: string
+  ) {
+    return (
+      <div className="admin-pane__section">
+        <p className="eyebrow admin-pane__section-kicker">{title}</p>
+        <form onSubmit={onSubmit}>
+          <div className="compact-field-grid compact-field-grid--three">
+            <label className="field-shell">
+              <span>Mode</span>
+              <select value={mode} onChange={(event) => setMode(event.target.value as SourceSetupMode)}>
+                <option value="saved-source">Saved source</option>
+                <option value="upload">Upload new file</option>
+              </select>
+            </label>
+            {mode === "saved-source" ? (
+              <label className="field-shell">
+                <span>{title} source</span>
+                <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
+                  <option value="">Select a source</option>
+                  {sources.map((source) => (
+                    <option key={source.id} value={`data-source:${source.id}`}>
+                      {source.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <>
+                <label className="field-shell">
+                  <span>Source label</span>
+                  <input
+                    value={draft.sourceName}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        sourceName: event.target.value
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label className="field-shell">
+                  <span>CSV file</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) =>
+                      onImportCsvFile(event.target.files?.[0] ?? null, setDraft)
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <div className="button-row" style={{ alignItems: "end" }}>
+              <button type="submit" className="button button--small" disabled={isPending}>
+                {submitLabel}
+              </button>
+            </div>
+          </div>
+          {mode === "upload" ? (
+            <label className="field-shell" style={{ marginTop: "1rem" }}>
+              <span>CSV content</span>
+              <textarea
+                rows={8}
+                value={draft.csvContent}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    csvContent: event.target.value
+                  }))
+                }
+                placeholder={placeholder}
+                required
+              />
+            </label>
+          ) : null}
+          {mode === "saved-source" && sources.length === 0 ? (
+            <p className="support-copy" style={{ marginTop: "1rem" }}>
+              No active saved sources are available for this section yet.
+            </p>
+          ) : null}
+        </form>
+      </div>
+    );
   }
 
   function updateSyndicateFundingDraft(
@@ -1332,6 +1463,9 @@ export function SessionAdminCenter({
               <span className="status-pill">
                 {config.session.importReadiness.mergedProjectionCount} merged teams
               </span>
+              <span className="status-pill">
+                {(config.session.auctionAssets ?? []).length} auction teams
+              </span>
             </div>
           </div>
 
@@ -1365,10 +1499,10 @@ export function SessionAdminCenter({
                 </p>
               </div>
               <div className="surface-card" style={{ padding: "1rem" }}>
-                <strong>Fallback source</strong>
-                <p>{config.session.activeDataSource.name}</p>
+                <strong>Readiness</strong>
+                <p>{config.session.importReadiness.status === "ready" ? "Ready" : "Needs attention"}</p>
                 <p className="support-copy">
-                  Use legacy source imports only if you want the old combined projection flow.
+                  Saved sources and one-off uploads both feed the same session-managed import flow.
                 </p>
               </div>
             </div>
@@ -1394,146 +1528,35 @@ export function SessionAdminCenter({
             ) : null}
           </div>
 
-          <div className="admin-pane__section">
-            <p className="eyebrow admin-pane__section-kicker">Bracket import</p>
-            <form onSubmit={onImportBracket}>
-              <div className="compact-field-grid compact-field-grid--three">
-                <label className="field-shell">
-                  <span>Source label</span>
-                  <input
-                    value={bracketImportDraft.sourceName}
-                    onChange={(event) =>
-                      setBracketImportDraft((current) => ({
-                        ...current,
-                        sourceName: event.target.value
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label className="field-shell">
-                  <span>CSV file</span>
-                  <input
-                    ref={bracketCsvInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={(event) =>
-                      onImportCsvFile(event.target.files?.[0] ?? null, setBracketImportDraft)
-                    }
-                  />
-                </label>
-                <div className="button-row" style={{ alignItems: "end" }}>
-                  <button type="submit" className="button button--small" disabled={isPending}>
-                    Import bracket
-                  </button>
-                </div>
-              </div>
-              <label className="field-shell" style={{ marginTop: "1rem" }}>
-                <span>CSV content</span>
-                <textarea
-                  rows={8}
-                  value={bracketImportDraft.csvContent}
-                  onChange={(event) =>
-                    setBracketImportDraft((current) => ({
-                      ...current,
-                      csvContent: event.target.value
-                    }))
-                  }
-                  placeholder="Required: name, region, seed. Optional: id, shortName, regionSlot, site, subregion, isPlayIn, playInGroup, playInSeed."
-                  required
-                />
-              </label>
-            </form>
-          </div>
+          {renderImportModeSection(
+            "Bracket import",
+            bracketSourceMode,
+            setBracketSourceMode,
+            bracketSourceKey,
+            setBracketSourceKey,
+            activeBracketSources,
+            bracketImportDraft,
+            setBracketImportDraft,
+            bracketCsvInputRef,
+            "Import bracket",
+            onImportBracket,
+            "Required: name, region, seed. Optional: id, shortName, regionSlot, site, subregion, isPlayIn, playInGroup, playInSeed."
+          )}
 
-          <div className="admin-pane__section">
-            <p className="eyebrow admin-pane__section-kicker">Analysis import</p>
-            <form onSubmit={onImportAnalysis}>
-              <div className="compact-field-grid compact-field-grid--three">
-                <label className="field-shell">
-                  <span>Source label</span>
-                  <input
-                    value={analysisImportDraft.sourceName}
-                    onChange={(event) =>
-                      setAnalysisImportDraft((current) => ({
-                        ...current,
-                        sourceName: event.target.value
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label className="field-shell">
-                  <span>CSV file</span>
-                  <input
-                    ref={analysisCsvInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    onChange={(event) =>
-                      onImportCsvFile(event.target.files?.[0] ?? null, setAnalysisImportDraft)
-                    }
-                  />
-                </label>
-                <div className="button-row" style={{ alignItems: "end" }}>
-                  <button type="submit" className="button button--small" disabled={isPending}>
-                    Import analysis
-                  </button>
-                </div>
-              </div>
-              <label className="field-shell" style={{ marginTop: "1rem" }}>
-                <span>CSV content</span>
-                <textarea
-                  rows={8}
-                  value={analysisImportDraft.csvContent}
-                  onChange={(event) =>
-                    setAnalysisImportDraft((current) => ({
-                      ...current,
-                      csvContent: event.target.value
-                    }))
-                  }
-                  placeholder="Required: name, rating, offense, defense, tempo. Optional: teamId, shortName, NET Rank, KenPom Rank, Ranked Wins, 3PT%, Q1-Q4 wins."
-                  required
-                />
-              </label>
-            </form>
-          </div>
-
-          <div className="admin-pane__section">
-            <form onSubmit={onSaveDataSource}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <div>
-                  <p className="eyebrow admin-pane__section-kicker">Legacy projection source</p>
-                  <h3>Fallback import flow</h3>
-                </div>
-                <div className="button-row">
-                  <button type="submit" className="button button--small" disabled={isPending}>
-                    Save source
-                  </button>
-                  <button
-                    type="button"
-                    className="button button-secondary button--small"
-                    disabled={isPending}
-                    onClick={onRunImport}
-                  >
-                    Run legacy import
-                  </button>
-                </div>
-              </div>
-              <label className="field-shell" style={{ maxWidth: "24rem" }}>
-                <span>Active source</span>
-                <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
-                  <option value="builtin:mock">Built-in Mock Field</option>
-                  {config.dataSources
-                    .filter((source) => source.active)
-                    .map((source) => (
-                      <option key={source.id} value={`data-source:${source.id}`}>
-                        {source.name} ({source.kind.toUpperCase()})
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </form>
-          </div>
+          {renderImportModeSection(
+            "Analysis import",
+            analysisSourceMode,
+            setAnalysisSourceMode,
+            analysisSourceKey,
+            setAnalysisSourceKey,
+            activeAnalysisSources,
+            analysisImportDraft,
+            setAnalysisImportDraft,
+            analysisCsvInputRef,
+            "Import analysis",
+            onImportAnalysis,
+            "Required: name, rating, offense, defense, tempo. Optional: teamId, shortName, NET Rank, KenPom Rank, Ranked Wins, 3PT%, Q1-Q4 wins."
+          )}
 
           <div className="admin-pane__section">
             <p className="eyebrow admin-pane__section-kicker">Import history</p>

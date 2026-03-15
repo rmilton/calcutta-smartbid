@@ -219,4 +219,73 @@ describe("recommendations", () => {
     expect(recommendation?.baseBudgetHeadroom).toBeLessThan(0);
     expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
   });
+
+  it("describes bundle teams explicitly in recommendation rationale", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const asset = {
+      id: "bundle:south:13-16",
+      label: "South 13-16 Seeds",
+      type: "seed_bundle" as const,
+      region: "South",
+      seed: null,
+      seedRange: [13, 16] as [number, number],
+      memberTeamIds: ["south13", "south14", "south15", "south16"],
+      projectionIds: ["louisville", "texas-am", "marquette", "wisconsin"],
+      members: [
+        {
+          id: "south13",
+          type: "team" as const,
+          label: "Louisville",
+          region: "South",
+          seed: 13,
+          regionSlot: "South-13",
+          teamIds: ["south13"],
+          projectionIds: ["louisville"],
+          unresolved: false
+        },
+        {
+          id: "south14",
+          type: "team" as const,
+          label: "Texas A&M",
+          region: "South",
+          seed: 14,
+          regionSlot: "South-14",
+          teamIds: ["south14"],
+          projectionIds: ["texas-am"],
+          unresolved: false
+        },
+        {
+          id: "south15",
+          type: "team" as const,
+          label: "Marquette",
+          region: "South",
+          seed: 15,
+          regionSlot: "South-15",
+          teamIds: ["south15"],
+          projectionIds: ["marquette"],
+          unresolved: false
+        },
+        {
+          id: "south16",
+          type: "team" as const,
+          label: "Wisconsin",
+          region: "South",
+          seed: 16,
+          regionSlot: "South-16",
+          teamIds: ["south16"],
+          projectionIds: ["wisconsin"],
+          unresolved: false
+        }
+      ],
+      unresolved: false
+    };
+
+    const recommendation = buildBidRecommendation(session, null, focus, analysis, asset);
+
+    expect(recommendation?.rationale[0]).toContain("bundles");
+    expect(recommendation?.rationale[0]).toContain("13 Louisville");
+    expect(recommendation?.rationale[0]).toContain("16 Wisconsin");
+  });
 });

@@ -138,52 +138,25 @@ describe("session-managed imports", () => {
   });
 
   it("matches common team aliases between bracket and analysis imports", () => {
-    const bracketCsv = [
-      "name,region,seed,regionSlot",
-      "Michigan State,East,1,East-1",
-      "Ole Miss,East,2,East-2",
-      "UConn,East,3,East-3",
-      "Omaha,East,4,East-4",
-      "West Team 1,West,1,West-1",
-      "West Team 2,West,2,West-2",
-      "West Team 3,West,3,West-3",
-      "West Team 4,West,4,West-4",
-      "South Team 1,South,1,South-1",
-      "South Team 2,South,2,South-2",
-      "South Team 3,South,3,South-3",
-      "South Team 4,South,4,South-4",
-      "Midwest Team 1,Midwest,1,Midwest-1",
-      "Midwest Team 2,Midwest,2,Midwest-2",
-      "Midwest Team 3,Midwest,3,Midwest-3",
-      "Midwest Team 4,Midwest,4,Midwest-4"
-    ].join("\n");
-    const analysisCsv = [
-      "Team Name,Adjusted Offense Efficiency,Adjust Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo",
-      "Michigan St.,123,94,0.95,68",
-      "Mississippi,121,96,0.91,69",
-      "Connecticut,122,92,0.94,67",
-      "Nebraska Omaha,112,101,0.71,70",
-      "West Team 1,120,95,0.9,68",
-      "West Team 2,119,96,0.89,69",
-      "West Team 3,118,97,0.88,70",
-      "West Team 4,117,98,0.87,71",
-      "South Team 1,120,95,0.9,68",
-      "South Team 2,119,96,0.89,69",
-      "South Team 3,118,97,0.88,70",
-      "South Team 4,117,98,0.87,71",
-      "Midwest Team 1,120,95,0.9,68",
-      "Midwest Team 2,119,96,0.89,69",
-      "Midwest Team 3,118,97,0.88,70",
-      "Midwest Team 4,117,98,0.87,71"
-    ].join("\n");
+    const bracketRows = buildBracketCsv().split("\n");
+    bracketRows[1] = "michigan-state,Michigan State,,East,1,East-1,,";
+    bracketRows[2] = "ole-miss,Ole Miss,,East,2,East-2,,";
+    bracketRows[3] = "uconn,UConn,,East,3,East-3,,";
+    bracketRows[4] = "omaha,Omaha,,East,4,East-4,,";
+    const bracketCsv = bracketRows.join("\n");
+
+    const analysisRows = buildAnalysisCsv().split("\n");
+    analysisRows[1] = "michigan-state,Michigan St.,,0.95,123,94,68,3,8,6,6,4,2";
+    analysisRows[2] = "ole-miss,Mississippi,,0.91,121,96,69,4,7,5,6,4,2";
+    analysisRows[3] = "uconn,Connecticut,,0.94,122,92,67,5,7,5,6,4,2";
+    analysisRows[4] = "omaha,Nebraska Omaha,,0.71,112,101,70,18,3,1,3,4,2";
+    const analysisCsv = analysisRows.join("\n");
 
     const bracket = parseSessionBracketImport(bracketCsv, "Bracket");
     const analysis = parseSessionAnalysisImport(analysisCsv, "Analysis");
     const merged = mergeBracketAndAnalysisImports(bracket, analysis);
 
-    expect(merged.issues).toEqual([
-      "Bracket import contains 16 teams. The live room currently requires a resolved 64-team field."
-    ]);
+    expect(merged.issues).toEqual([]);
     expect(merged.projections.find((team) => team.name === "Michigan State")?.rating).toBe(0.95);
     expect(merged.projections.find((team) => team.name === "Ole Miss")?.rating).toBe(0.91);
     expect(merged.projections.find((team) => team.name === "UConn")?.rating).toBe(0.94);
@@ -198,6 +171,19 @@ describe("session-managed imports", () => {
     const merged = mergeBracketAndAnalysisImports(bracket, analysis);
 
     expect(merged.issues).toContain("Bracket import contains out-of-range seeds in East. Expected seeds 1-16.");
+    expect(merged.issues).toContain("Bracket import is missing seed 16 in East.");
+  });
+
+  it("requires a full 16-slot region before marking the bracket valid", () => {
+    const rows = buildBracketCsv().split("\n");
+    const trimmedBracketCsv = rows.filter((row) => !row.startsWith("east-16,")).join("\n");
+    const bracket = parseSessionBracketImport(trimmedBracketCsv, "Short Bracket");
+    const analysis = parseSessionAnalysisImport(buildAnalysisCsv(), "Metrics Feed");
+    const merged = mergeBracketAndAnalysisImports(bracket, analysis);
+
+    expect(merged.issues).toContain(
+      "Bracket import contains 15 bracket slots in East. Exactly 16 slots are required per region."
+    );
     expect(merged.issues).toContain("Bracket import is missing seed 16 in East.");
   });
 });

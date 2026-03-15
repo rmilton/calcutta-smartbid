@@ -9,6 +9,7 @@ import {
   TeamProjection,
   TeamScoutingProfile
 } from "@/lib/types";
+import { buildPlayInProjectionId } from "@/lib/auction-assets";
 
 interface MergeBracketAnalysisResult {
   projections: TeamProjection[];
@@ -253,19 +254,6 @@ export function mergeBracketAndAnalysisImports(
   const bracketTeams = bracketImport.teams;
   const analysisTeams = analysisImport.teams;
 
-  const playInCount = bracketTeams.filter((team) => team.isPlayIn).length;
-  if (playInCount > 0) {
-    issues.push(
-      `${playInCount} play-in teams were imported. The live room still needs a resolved 64-team field before simulations can run.`
-    );
-  }
-
-  if (bracketTeams.length !== 64) {
-    issues.push(
-      `Bracket import contains ${bracketTeams.length} teams. The live room currently requires a resolved 64-team field.`
-    );
-  }
-
   const structureIssues = validateBracketStructure(bracketTeams);
   issues.push(...structureIssues);
 
@@ -277,17 +265,56 @@ export function mergeBracketAndAnalysisImports(
     team.shortName ? [normalizeKey(team.shortName)] : []
   );
   const matchedAnalysis = new Set<number>();
+  const slotGroups = buildBracketSlotGroups(bracketTeams);
 
-  const projections: Array<TeamProjection | null> = bracketTeams.map((team) => {
+  const projections: Array<TeamProjection | null> = slotGroups.map((group) => {
+    if (group.length > 1) {
+      const matches = group
+        .map((team) => ({
+          team,
+          match:
+            findFirstUniqueMatch([team.id], analysisById) ??
+            findFirstUniqueMatch(buildTeamNameKeys(team.name, team.shortName), analysisByName) ??
+            findFirstUniqueMatch(team.shortName ? [normalizeKey(team.shortName)] : [], analysisByShortName)
+        }))
+        .filter((entry) => entry.match !== null);
+
+      if (matches.length !== group.length) {
+        group.forEach((team) => {
+          const hasMatch = matches.some((entry) => entry.team.id === team.id);
+          if (!hasMatch) {
+            issues.push(`Analysis import is missing metrics for ${team.name}.`);
+          }
+        });
+        return null;
+      }
+
+      matches.forEach((entry) => matchedAnalysis.add(entry.match!.index));
+      const first = group[0];
+      const averaged = averageMatchedTeams(matches.map((entry) => entry.match!.team));
+      return {
+        id: buildPlayInProjectionId(first),
+        name: group.map((team) => team.name).join(" / "),
+        shortName: group.map((team) => team.shortName).join("/"),
+        region: first.region,
+        seed: first.seed,
+        rating: averaged.rating,
+        offense: averaged.offense,
+        defense: averaged.defense,
+        tempo: averaged.tempo,
+        source: `${bracketImport.sourceName} + ${analysisImport.sourceName}`,
+        scouting: averaged.scouting
+      } satisfies TeamProjection;
+    }
+
+    const team = group[0];
     const match =
       findFirstUniqueMatch([team.id], analysisById) ??
       findFirstUniqueMatch(buildTeamNameKeys(team.name, team.shortName), analysisByName) ??
       findFirstUniqueMatch(team.shortName ? [normalizeKey(team.shortName)] : [], analysisByShortName);
 
     if (!match) {
-      if (!team.isPlayIn && !team.name.includes("/")) {
-        issues.push(`Analysis import is missing metrics for ${team.name}.`);
-      }
+      issues.push(`Analysis import is missing metrics for ${team.name}.`);
       return null;
     }
 
@@ -330,10 +357,22 @@ export function buildSessionImportReadiness(args: {
   const { bracketImport, analysisImport, baseProjections, simulationSnapshot } = args;
 
   if (!bracketImport && !analysisImport) {
-    const issues =
-      baseProjections.length === 0 ? ["No projections have been imported into this session yet."] : [];
-    const status: SessionImportStatus =
-      issues.length === 0 && simulationSnapshot ? "ready" : "attention";
+    if (baseProjections.length === 0) {
+      return {
+        mode: "session-imports",
+        status: "attention",
+        summary: "Session-managed imports still need attention before the room is ready.",
+        issues: ["Bracket import is still missing.", "Analysis import is still missing."],
+        warnings: [],
+        hasBracket: false,
+        hasAnalysis: false,
+        mergedProjectionCount: 0,
+        lastBracketImportAt: null,
+        lastAnalysisImportAt: null
+      };
+    }
+
+    const status: SessionImportStatus = simulationSnapshot ? "ready" : "attention";
 
     return {
       mode: "legacy",
@@ -342,7 +381,7 @@ export function buildSessionImportReadiness(args: {
         status === "ready"
           ? "Legacy projection source is loaded and simulations are ready."
           : "Legacy projection flow still needs a completed import and simulation snapshot.",
-      issues,
+      issues: status === "ready" ? [] : ["Simulations have not been rebuilt for the legacy field yet."],
       warnings: [],
       hasBracket: false,
       hasAnalysis: false,
@@ -406,21 +445,49 @@ function validateBracketStructure(teams: BracketImportTeam[]) {
     issues.push(`Bracket import contains ${byRegion.size} regions. Exactly four regions are required.`);
   }
 
-  const regionSizes = new Set([...byRegion.values()].map((group) => group.length));
+  const regionSizes = new Set(
+    [...byRegion.values()].map((group) => new Set(group.map((team) => team.regionSlot)).size)
+  );
   if (regionSizes.size > 1) {
-    issues.push("Each bracket region must contain the same number of teams.");
+    issues.push("Each bracket region must contain the same number of bracket slots.");
   }
 
   for (const [region, group] of byRegion.entries()) {
+    const slotGroups = buildBracketSlotGroups(group);
     const seenSeeds = new Set<number>();
-    for (const team of group) {
-      if (seenSeeds.has(team.seed)) {
-        issues.push(`Bracket import contains duplicate ${team.seed}-seeds in ${region}.`);
-      }
-      seenSeeds.add(team.seed);
+    const expectedSeedMax = 16;
+
+    if (slotGroups.length !== expectedSeedMax) {
+      issues.push(
+        `Bracket import contains ${slotGroups.length} bracket slots in ${region}. Exactly 16 slots are required per region.`
+      );
     }
 
-    const expectedSeedMax = group.length;
+    for (const slotGroup of slotGroups) {
+      const first = slotGroup[0];
+      if (slotGroup.some((team) => team.seed !== first.seed || team.regionSlot !== first.regionSlot)) {
+        issues.push(`Bracket import has inconsistent slot metadata in ${region} ${first.regionSlot}.`);
+        continue;
+      }
+
+      if (slotGroup.length > 2) {
+        issues.push(`Bracket import has more than two teams assigned to ${first.regionSlot}.`);
+      }
+
+      const isPlayInSlot = slotGroup.length > 1;
+      if (isPlayInSlot && slotGroup.some((team) => !team.isPlayIn)) {
+        issues.push(`Bracket import mixes play-in and non-play-in rows in ${first.regionSlot}.`);
+      }
+      if (isPlayInSlot && slotGroup.some((team) => team.playInGroup !== first.playInGroup)) {
+        issues.push(`Bracket import uses inconsistent play-in groups for ${first.regionSlot}.`);
+      }
+
+      if (seenSeeds.has(first.seed)) {
+        issues.push(`Bracket import contains duplicate ${first.seed}-seeds in ${region}.`);
+      }
+      seenSeeds.add(first.seed);
+    }
+
     if ([...seenSeeds].some((seed) => seed > expectedSeedMax)) {
       issues.push(
         `Bracket import contains out-of-range seeds in ${region}. Expected seeds 1-${expectedSeedMax}.`
@@ -435,6 +502,79 @@ function validateBracketStructure(teams: BracketImportTeam[]) {
   }
 
   return issues;
+}
+
+function buildBracketSlotGroups(teams: BracketImportTeam[]) {
+  const groups = new Map<string, BracketImportTeam[]>();
+  const orderedKeys: string[] = [];
+
+  for (const team of teams) {
+    const key = team.playInGroup ?? team.regionSlot;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      orderedKeys.push(key);
+    }
+    groups.get(key)!.push(team);
+  }
+
+  return orderedKeys.map((key) => groups.get(key) ?? []).filter((group) => group.length > 0);
+}
+
+function averageMatchedTeams(teams: AnalysisImportTeam[]) {
+  const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
+  return {
+    rating: average(teams.map((team) => team.rating)),
+    offense: average(teams.map((team) => team.offense)),
+    defense: average(teams.map((team) => team.defense)),
+    tempo: average(teams.map((team) => team.tempo)),
+    scouting: mergeScoutingProfiles(teams.map((team) => team.scouting))
+  };
+}
+
+function mergeScoutingProfiles(profiles: Array<TeamScoutingProfile | undefined>) {
+  const available = profiles.filter((profile): profile is TeamScoutingProfile => Boolean(profile));
+  if (available.length === 0) {
+    return undefined;
+  }
+
+  const collect = (selector: (profile: TeamScoutingProfile) => number | undefined) =>
+    available.map(selector).filter((value): value is number => typeof value === "number");
+  const quadProfiles = available
+    .map((profile) => profile.quadWins)
+    .filter((value): value is NonNullable<TeamScoutingProfile["quadWins"]> => Boolean(value));
+
+  return {
+    netRank: roundedAverageOrUndefined(collect((profile) => profile.netRank)),
+    kenpomRank: roundedAverageOrUndefined(collect((profile) => profile.kenpomRank)),
+    rankedWins: roundedAverageOrUndefined(collect((profile) => profile.rankedWins)),
+    threePointPct: averageOrUndefined(collect((profile) => profile.threePointPct)),
+    quadWins:
+      quadProfiles.length > 0
+        ? {
+            q1: roundedAverageOrZero(quadProfiles.map((profile) => profile.q1)),
+            q2: roundedAverageOrZero(quadProfiles.map((profile) => profile.q2)),
+            q3: roundedAverageOrZero(quadProfiles.map((profile) => profile.q3)),
+            q4: roundedAverageOrZero(quadProfiles.map((profile) => profile.q4))
+          }
+        : undefined
+  } satisfies TeamScoutingProfile;
+}
+
+function averageOrUndefined(values: number[]) {
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function roundedAverageOrUndefined(values: number[]) {
+  const average = averageOrUndefined(values);
+  return average === undefined ? undefined : Math.round(average);
+}
+
+function roundedAverageOrZero(values: number[]) {
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1));
 }
 
 function buildAnalysisLookup(

@@ -163,6 +163,32 @@ describe("bracket view", () => {
     ]);
   });
 
+  it("shows ownership markers for every underlying team in a grouped purchase", () => {
+    const session = buildSession();
+    session.purchases = [
+      {
+        id: "purchase_bundle",
+        sessionId: "session_bracket",
+        teamId: "east-13",
+        assetId: "bundle:east:13-16",
+        assetLabel: "East 13-16 Seeds",
+        projectionIds: ["east-13", "east-14", "east-15", "east-16"],
+        buyerSyndicateId: "syn_other",
+        price: 1800,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const bracket = buildBracketView(session);
+    const eastRoundOf64 = bracket.regions.find((region) => region.name === "East")?.rounds[0]?.games ?? [];
+    const ownedEntrants = eastRoundOf64
+      .flatMap((game) => game.entrants)
+      .filter((entrant) => entrant?.buyerSyndicateName === "Riverboat")
+      .map((entrant) => entrant?.teamId);
+
+    expect(ownedEntrants).toEqual(expect.arrayContaining(["east-13", "east-14", "east-15", "east-16"]));
+  });
+
   it("returns an unsupported state for incomplete fields", () => {
     const session = buildSession();
     session.projections = session.projections.slice(0, 32);

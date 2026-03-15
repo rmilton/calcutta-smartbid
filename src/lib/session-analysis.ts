@@ -14,7 +14,9 @@ export function buildSessionAnalysisSnapshot(
   focusSyndicate: Syndicate
 ): SessionAnalysisSnapshot {
   const intelligence = buildTeamIntelligence(session.projections, session.liveState.nominatedTeamId);
-  const soldTeamIds = new Set(session.purchases.map((purchase) => purchase.teamId));
+  const soldProjectionIds = new Set(
+    session.purchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
+  );
   const classificationLookup = session.teamClassifications;
   const noteLookup = session.teamNotes;
   const ranking = intelligence.ranking.map(
@@ -25,7 +27,7 @@ export function buildSessionAnalysisSnapshot(
         note: noteLookup[row.teamId]?.note ?? null
       }) satisfies AnalysisRankingRow
   );
-  const availableRows = ranking.filter((row) => !soldTeamIds.has(row.teamId));
+  const availableRows = ranking.filter((row) => !soldProjectionIds.has(row.teamId));
   const targetTeamCount = clamp(Math.round(session.analysisSettings.targetTeamCount), 2, 24);
   const maxSingleTeamPct = clamp(session.analysisSettings.maxSingleTeamPct, 8, 45);
   const candidateCount = clamp(
@@ -88,12 +90,14 @@ export function buildSessionAnalysisSnapshot(
     fieldAverages: { ...intelligence.fieldAverages },
     budgetRows,
     funding,
-    ownedTeams: ownedPurchases.map((purchase) => ({
-      teamId: purchase.teamId,
-      paidPrice: purchase.price,
-      targetBid: budgetLookup.get(purchase.teamId)?.targetBid ?? null,
-      maxBid: budgetLookup.get(purchase.teamId)?.maxBid ?? null
-    })),
+    ownedTeams: ownedPurchases.flatMap((purchase) =>
+      (purchase.projectionIds ?? [purchase.teamId]).map((teamId) => ({
+        teamId,
+        paidPrice: purchase.price,
+        targetBid: budgetLookup.get(teamId)?.targetBid ?? null,
+        maxBid: budgetLookup.get(teamId)?.maxBid ?? null
+      }))
+    ),
     investableCash,
     actualPaidSpend,
     remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom)),
