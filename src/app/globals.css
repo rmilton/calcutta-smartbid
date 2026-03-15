@@ -1043,6 +1043,12 @@ kbd {
   text-shadow: 0 0 26px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.decision-panel .decision-panel__hero-title--grouped {
+  font-size: clamp(2.35rem, 4vw, 4rem);
+  line-height: 0.98;
+  white-space: nowrap;
+}
+
 .decision-panel .decision-panel__hero-title--waiting {
   font-size: clamp(2.4rem, 4.2vw, 3.6rem);
   line-height: 0.98;
@@ -3075,6 +3081,10 @@ kbd {
 
   .decision-panel .decision-panel__hero-title {
     font-size: clamp(2.7rem, 10vw, 3.8rem);
+  }
+
+  .decision-panel .decision-panel__hero-title--grouped {
+    white-space: normal;
   }
 
   .decision-panel .decision-panel__hero-title--waiting {

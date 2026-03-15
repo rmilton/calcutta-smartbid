@@ -110,7 +110,7 @@ export function buildBidRecommendation(
     );
   }
 
-  if (ownershipExposure.likelyConflicts[0]) {
+  if (ownershipExposure.likelyConflicts[0] && ownershipExposure.likelyConflicts[0].probability >= 0.005) {
     const topConflict = ownershipExposure.likelyConflicts[0];
     rationale.push(
       `Largest collision risk is against ${topConflict.opponentId} in the ${titleCaseStage(topConflict.earliestRound)} window at ${Math.round(topConflict.probability * 100)}%.`
