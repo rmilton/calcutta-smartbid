@@ -34,10 +34,7 @@ function buildSession(): AuctionSession {
       sharedCodeConfigured: true
     },
     payoutRules,
-    analysisSettings: {
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    },
+    analysisSettings: {},
     mothershipFunding: {
       targetSharePrice: 201,
       allowHalfShares: true,
@@ -144,5 +141,24 @@ describe("session analysis classifications", () => {
     expect(analysis.ranking.find((row) => row.teamId === "alabama")?.classification).toBeNull();
     expect(analysis.ranking.find((row) => row.teamId === "alabama")?.note).toBeNull();
     expect(analysis.budgetRows.find((row) => row.teamId === "alabama")?.classification).toBeNull();
+  });
+
+  it("builds bid guidance for the full available field", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    session.purchases.push({
+      id: "purchase_2",
+      sessionId: session.id,
+      teamId: "alabama",
+      buyerSyndicateId: "syn_other",
+      price: 1500,
+      createdAt: new Date().toISOString()
+    });
+
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+
+    expect(analysis.budgetRows).toHaveLength(analysis.ranking.length - 1);
+    expect(analysis.budgetRows.some((row) => row.teamId === "alabama")).toBe(false);
+    expect(analysis.budgetRows.every((row) => row.targetBid > 0)).toBe(true);
   });
 });

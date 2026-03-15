@@ -7,7 +7,7 @@ import {
   SessionAnalysisSnapshot,
   Syndicate
 } from "@/lib/types";
-import { clamp, roundCurrency } from "@/lib/utils";
+import { roundCurrency } from "@/lib/utils";
 
 export function buildSessionAnalysisSnapshot(
   session: AuctionSession,
@@ -28,20 +28,11 @@ export function buildSessionAnalysisSnapshot(
       }) satisfies AnalysisRankingRow
   );
   const availableRows = ranking.filter((row) => !soldProjectionIds.has(row.teamId));
-  const targetTeamCount = clamp(Math.round(session.analysisSettings.targetTeamCount), 2, 24);
-  const maxSingleTeamPct = clamp(session.analysisSettings.maxSingleTeamPct, 8, 45);
-  const candidateCount = clamp(
-    Math.round(targetTeamCount * 4),
-    Math.min(targetTeamCount, Math.max(availableRows.length, 1)),
-    Math.max(availableRows.length, 1)
-  );
   const funding = deriveMothershipFundingSnapshot(session.mothershipFunding, focusSyndicate.spend);
   const investableCash = roundCurrency(Math.max(0, funding.baseBidRoom));
   const stretchCash = roundCurrency(Math.max(0, funding.stretchBidRoom));
-  const hardTeamCap = roundCurrency(investableCash * (maxSingleTeamPct / 100));
-  const stretchTeamCap = roundCurrency(stretchCash * (maxSingleTeamPct / 100));
 
-  const convictionRows = availableRows.slice(0, candidateCount).map((row) => ({
+  const convictionRows = availableRows.map((row) => ({
     row,
     conviction: computeConviction(row)
   }));
@@ -51,12 +42,8 @@ export function buildSessionAnalysisSnapshot(
   const budgetRows = convictionRows
     .map(({ row, conviction }) => {
       const share = convictionSum > 0 ? conviction / convictionSum : fallbackShare;
-      const rawBaseBid = investableCash * share;
-      const rawStretchBid = stretchCash * share;
-      const targetBid = roundCurrency(Math.min(rawBaseBid, hardTeamCap));
-      const maxBid = roundCurrency(
-        Math.max(targetBid, Math.min(rawStretchBid, stretchTeamCap))
-      );
+      const targetBid = roundCurrency(investableCash * share);
+      const maxBid = roundCurrency(Math.max(targetBid, stretchCash * share));
       const openingBid = roundCurrency(
         Math.max((targetBid > 0 ? targetBid : maxBid) * 0.62, 1)
       );
@@ -100,9 +87,7 @@ export function buildSessionAnalysisSnapshot(
     ),
     investableCash,
     actualPaidSpend,
-    remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom)),
-    targetTeamCount,
-    maxSingleTeamPct
+    remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom))
   };
 }
 

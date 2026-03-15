@@ -34,10 +34,7 @@ async function createBaselineSession() {
       ...getDefaultPayoutRules(),
       projectedPot: 100000
     },
-    analysisSettings: {
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    },
+    analysisSettings: {},
     bracketSelection: {
       mode: "upload",
       sourceName: "Official Bracket",
@@ -144,10 +141,7 @@ describe("repository funding model", () => {
       accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
       catalogSyndicateIds: [mothership.id, riverboat.id],
       payoutRules,
-      analysisSettings: {
-        targetTeamCount: 8,
-        maxSingleTeamPct: 22
-      },
+      analysisSettings: {},
       simulationIterations: 1000
     });
 
@@ -221,10 +215,7 @@ describe("repository funding model", () => {
         ...getDefaultPayoutRules(),
         projectedPot: 120000
       },
-      analysisSettings: {
-        targetTeamCount: 8,
-        maxSingleTeamPct: 22
-      },
+      analysisSettings: {},
       simulationIterations: 1000
     });
 
@@ -271,7 +262,7 @@ describe("repository funding model", () => {
       accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
       catalogSyndicateIds: [mothership.id, riverboat.id],
       payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
-      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      analysisSettings: {},
       bracketSelection: { mode: "saved-source", sourceKey: `data-source:${bracketSource.id}` },
       analysisSelection: { mode: "saved-source", sourceKey: `data-source:${analysisSource.id}` },
       simulationIterations: 1000
@@ -298,7 +289,7 @@ describe("repository funding model", () => {
       accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
       catalogSyndicateIds: [mothership.id, riverboat.id],
       payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
-      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      analysisSettings: {},
       bracketSelection: {
         mode: "upload",
         sourceName: "Official Bracket",
@@ -338,7 +329,7 @@ describe("repository funding model", () => {
       accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
       catalogSyndicateIds: [mothership.id, riverboat.id],
       payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
-      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      analysisSettings: {},
       bracketSelection: { mode: "saved-source", sourceKey: `data-source:${bracketSource.id}` },
       analysisSelection: {
         mode: "upload",
@@ -368,7 +359,7 @@ describe("repository funding model", () => {
       accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
       catalogSyndicateIds: [mothership.id, riverboat.id],
       payoutRules: { ...getDefaultPayoutRules(), projectedPot: 120000 },
-      analysisSettings: { targetTeamCount: 8, maxSingleTeamPct: 22 },
+      analysisSettings: {},
       simulationIterations: 1000
     });
 
@@ -400,10 +391,7 @@ describe("repository funding model", () => {
         ...getDefaultPayoutRules(),
         projectedPot: 120000
       },
-      analysisSettings: {
-        targetTeamCount: 8,
-        maxSingleTeamPct: 22
-      },
+      analysisSettings: {},
       simulationIterations: 1000
     });
 
@@ -1203,10 +1191,7 @@ describe("repository bracket state", () => {
         ...getDefaultPayoutRules(),
         projectedPot: 100000
       },
-      analysisSettings: {
-        targetTeamCount: 8,
-        maxSingleTeamPct: 22
-      },
+      analysisSettings: {},
       bracketSelection: {
         mode: "saved-source",
         sourceKey: `data-source:${source.id}`

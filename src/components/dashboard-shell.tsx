@@ -1546,15 +1546,7 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Analysis</p>
-                    <h2>Session ranking and budget plan</h2>
-                  </div>
-                  <div className="button-row">
-                    <span className="status-pill">
-                      {dashboard.analysis.targetTeamCount} target teams
-                    </span>
-                    <span className="status-pill">
-                      {dashboard.analysis.maxSingleTeamPct}% max cap
-                    </span>
+                    <h2>Session ranking and bid guidance</h2>
                   </div>
                 </div>
 
@@ -1833,7 +1825,7 @@ export function DashboardShell({
                         value={analysisDetailTeam.rating.toFixed(3)}
                       />
                       <MetricCard
-                        label="Target / max"
+                        label="Bid guide"
                         value={
                           analysisBudgetRow
                             ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
