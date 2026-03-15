@@ -941,6 +941,7 @@ export function DashboardShell({
   const bracketWorkspace = (
     <SessionBracket
       bracket={dashboard.bracket}
+      syndicates={dashboard.ledger}
       canEdit={!viewerMode}
       isSaving={viewerMode ? false : isSavingBracket}
       notice={notice}
@@ -950,7 +951,7 @@ export function DashboardShell({
   );
 
   return (
-    <main className={cn("dashboard-page", activeView === "bracket" && "dashboard-page--bracket")}>
+    <main className="dashboard-page">
       <header className="surface-card session-hero session-hero--slim">
         <div className="session-hero__copy">
           <p className="eyebrow">mothership smartbid™</p>

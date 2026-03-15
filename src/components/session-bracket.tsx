@@ -6,12 +6,14 @@ import {
   BracketGameTeam,
   BracketRegion,
   BracketRound,
-  BracketViewModel
+  BracketViewModel,
+  Syndicate
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface SessionBracketProps {
   bracket: BracketViewModel;
+  syndicates: Syndicate[];
   canEdit: boolean;
   isSaving: boolean;
   notice: string | null;
@@ -21,6 +23,7 @@ interface SessionBracketProps {
 
 export function SessionBracket({
   bracket,
+  syndicates,
   canEdit,
   isSaving,
   notice,
@@ -30,20 +33,37 @@ export function SessionBracket({
   return (
     <section className="bracket-shell">
       <article className="surface-card bracket-hero">
-        <div>
-          <p className="eyebrow">Tournament View</p>
-          <h2>Session bracket</h2>
-          <p className="bracket-hero__copy">
-            The full field stays visible throughout the auction. Purchased teams carry syndicate
-            ownership markers, and editors can advance winners as the tournament unfolds.
-          </p>
+        <div className="bracket-hero__header">
+          <div className="bracket-hero__content">
+            <p className="eyebrow">Tournament View</p>
+            <h2>Session bracket</h2>
+            <p className="bracket-hero__copy">
+              The full field stays visible throughout the auction. Purchased teams carry syndicate
+              ownership markers, and editors can advance winners as the tournament unfolds.
+            </p>
+          </div>
+          <div className="bracket-hero__mode">
+            <span className="status-pill status-pill--positive">
+              {canEdit ? "Click a team to advance it" : "Read-only viewer mode"}
+            </span>
+          </div>
         </div>
         <div className="bracket-legend">
-          <span className="status-pill status-pill--muted">Unsold team</span>
-          <span className="status-pill">Owned team</span>
-          <span className="status-pill status-pill--positive">
-            {canEdit ? "Click a team to advance it" : "Read-only viewer mode"}
-          </span>
+          <div className="bracket-legend__key" aria-label="Syndicate color key">
+            <span className="bracket-legend__title">Syndicate key</span>
+            <div className="bracket-legend__syndicates">
+              {syndicates.map((syndicate) => (
+                <span
+                  key={syndicate.id}
+                  className="bracket-syndicate-key"
+                  style={{ ["--bracket-owner-accent" as string]: syndicate.color }}
+                >
+                  <span className="bracket-syndicate-key__swatch" aria-hidden="true" />
+                  <span>{syndicate.name}</span>
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </article>
 
@@ -54,15 +74,17 @@ export function SessionBracket({
           <p>{bracket.unsupportedReason ?? "This session does not have a bracket-ready field yet."}</p>
         </article>
       ) : (
-        <div className="bracket-board-scroll">
-          <BracketBoard
-            bracket={bracket}
-            canEdit={canEdit}
-            isSaving={isSaving}
-            notice={notice}
-            error={error}
-            onSelectWinner={onSelectWinner}
-          />
+        <div className="bracket-board-breakout">
+          <div className="bracket-board-scroll">
+            <BracketBoard
+              bracket={bracket}
+              canEdit={canEdit}
+              isSaving={isSaving}
+              notice={notice}
+              error={error}
+              onSelectWinner={onSelectWinner}
+            />
+          </div>
         </div>
       )}
     </section>
