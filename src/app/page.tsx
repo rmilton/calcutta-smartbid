@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AccessForm } from "@/components/access-form";
+import { AppFooter } from "@/components/app-footer";
 import { getAuthenticatedMember } from "@/lib/auth";
 
 export default async function HomePage() {
@@ -14,9 +15,12 @@ export default async function HomePage() {
 
   return (
     <main className="minimal-landing">
-      <section className="minimal-landing__panel">
-        <AccessForm />
-      </section>
+      <div className="minimal-landing__content">
+        <section className="minimal-landing__panel">
+          <AccessForm />
+        </section>
+        <AppFooter className="minimal-landing__footer" />
+      </div>
     </main>
   );
 }

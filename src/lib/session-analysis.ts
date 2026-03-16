@@ -14,23 +14,25 @@ export function buildSessionAnalysisSnapshot(
   focusSyndicate: Syndicate
 ): SessionAnalysisSnapshot {
   const intelligence = buildTeamIntelligence(session.projections, session.liveState.nominatedTeamId);
-  const soldTeamIds = new Set(session.purchases.map((purchase) => purchase.teamId));
-  const ranking = intelligence.ranking.map((row) => ({ ...row } satisfies AnalysisRankingRow));
-  const availableRows = ranking.filter((row) => !soldTeamIds.has(row.teamId));
-  const targetTeamCount = clamp(Math.round(session.analysisSettings.targetTeamCount), 2, 24);
-  const maxSingleTeamPct = clamp(session.analysisSettings.maxSingleTeamPct, 8, 45);
-  const candidateCount = clamp(
-    Math.round(targetTeamCount * 4),
-    Math.min(targetTeamCount, Math.max(availableRows.length, 1)),
-    Math.max(availableRows.length, 1)
+  const soldProjectionIds = new Set(
+    session.purchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
   );
+  const classificationLookup = session.teamClassifications;
+  const noteLookup = session.teamNotes;
+  const ranking = intelligence.ranking.map(
+    (row) =>
+      ({
+        ...row,
+        classification: classificationLookup[row.teamId]?.classification ?? null,
+        note: noteLookup[row.teamId]?.note ?? null
+      }) satisfies AnalysisRankingRow
+  );
+  const availableRows = ranking.filter((row) => !soldProjectionIds.has(row.teamId));
   const funding = deriveMothershipFundingSnapshot(session.mothershipFunding, focusSyndicate.spend);
   const investableCash = roundCurrency(Math.max(0, funding.baseBidRoom));
   const stretchCash = roundCurrency(Math.max(0, funding.stretchBidRoom));
-  const hardTeamCap = roundCurrency(investableCash * (maxSingleTeamPct / 100));
-  const stretchTeamCap = roundCurrency(stretchCash * (maxSingleTeamPct / 100));
 
-  const convictionRows = availableRows.slice(0, candidateCount).map((row) => ({
+  const convictionRows = availableRows.map((row) => ({
     row,
     conviction: computeConviction(row)
   }));
@@ -40,11 +42,34 @@ export function buildSessionAnalysisSnapshot(
   const budgetRows = convictionRows
     .map(({ row, conviction }) => {
       const share = convictionSum > 0 ? conviction / convictionSum : fallbackShare;
-      const rawBaseBid = investableCash * share;
-      const rawStretchBid = stretchCash * share;
-      const targetBid = roundCurrency(Math.min(rawBaseBid, hardTeamCap));
+      const simulationResult = session.simulationSnapshot?.teamResults[row.teamId];
+      const expectedGrossPayout = simulationResult?.expectedGrossPayout ?? 0;
+      const confidenceFloor = simulationResult?.confidenceBand[0] ?? 0;
+      const confidenceCeiling = simulationResult?.confidenceBand[1] ?? 0;
+      const relativeConviction = fallbackShare > 0 ? share / fallbackShare : 1;
+      const convictionTilt = clamp(0.78 + relativeConviction * 0.22, 0.72, 1.28);
+
+      const legacyTargetBid = investableCash * share;
+      const legacyMaxBid = stretchCash * share;
+      const valueAnchoredTargetBase =
+        expectedGrossPayout > 0
+          ? Math.max(expectedGrossPayout * 0.42, confidenceFloor * 0.72)
+          : legacyTargetBid;
+      const valueAnchoredMaxBase =
+        expectedGrossPayout > 0
+          ? Math.max(
+              valueAnchoredTargetBase * 1.08,
+              Math.min(expectedGrossPayout * 0.62, confidenceCeiling * 0.76)
+            )
+          : legacyMaxBid;
+      const targetBid = roundCurrency(
+        Math.min(investableCash, valueAnchoredTargetBase * convictionTilt)
+      );
       const maxBid = roundCurrency(
-        Math.max(targetBid, Math.min(rawStretchBid, stretchTeamCap))
+        Math.max(
+          targetBid,
+          Math.min(stretchCash, valueAnchoredMaxBase * convictionTilt)
+        )
       );
       const openingBid = roundCurrency(
         Math.max((targetBid > 0 ? targetBid : maxBid) * 0.62, 1)
@@ -53,6 +78,7 @@ export function buildSessionAnalysisSnapshot(
       return {
         teamId: row.teamId,
         teamName: row.teamName,
+        classification: row.classification,
         rank: ranking.findIndex((candidate) => candidate.teamId === row.teamId) + 1,
         percentile: row.percentile,
         convictionScore: roundMetric(conviction, 4),
@@ -78,17 +104,17 @@ export function buildSessionAnalysisSnapshot(
     fieldAverages: { ...intelligence.fieldAverages },
     budgetRows,
     funding,
-    ownedTeams: ownedPurchases.map((purchase) => ({
-      teamId: purchase.teamId,
-      paidPrice: purchase.price,
-      targetBid: budgetLookup.get(purchase.teamId)?.targetBid ?? null,
-      maxBid: budgetLookup.get(purchase.teamId)?.maxBid ?? null
-    })),
+    ownedTeams: ownedPurchases.flatMap((purchase) =>
+      (purchase.projectionIds ?? [purchase.teamId]).map((teamId) => ({
+        teamId,
+        paidPrice: purchase.price,
+        targetBid: budgetLookup.get(teamId)?.targetBid ?? null,
+        maxBid: budgetLookup.get(teamId)?.maxBid ?? null
+      }))
+    ),
     investableCash,
     actualPaidSpend,
-    remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom)),
-    targetTeamCount,
-    maxSingleTeamPct
+    remainingBankroll: roundCurrency(Math.max(0, funding.baseBidRoom))
   };
 }
 

@@ -30,10 +30,7 @@ function buildSession(): AuctionSession {
       sharedCodeConfigured: true
     },
     payoutRules,
-    analysisSettings: {
-      targetTeamCount: 8,
-      maxSingleTeamPct: 22
-    },
+    analysisSettings: {},
     mothershipFunding: {
       targetSharePrice: 201,
       allowHalfShares: true,
@@ -75,6 +72,8 @@ function buildSession(): AuctionSession {
     ],
     baseProjections: projections,
     projectionOverrides: {},
+    teamClassifications: {},
+    teamNotes: {},
     projections,
     projectionProvider: "mock",
     activeDataSource: {
@@ -83,6 +82,20 @@ function buildSession(): AuctionSession {
       kind: "builtin"
     },
     finalFourPairings: getDefaultFinalFourPairings(),
+    bracketImport: null,
+    analysisImport: null,
+    importReadiness: {
+      mode: "legacy",
+      status: "ready",
+      summary: "Legacy projection source is loaded and simulations are ready.",
+      issues: [],
+      warnings: [],
+      hasBracket: false,
+      hasAnalysis: false,
+      mergedProjectionCount: projections.length,
+      lastBracketImportAt: null,
+      lastAnalysisImportAt: null
+    },
     liveState: {
       nominatedTeamId: "alabama",
       currentBid: 6200,
@@ -119,11 +132,14 @@ describe("recommendations", () => {
     expect(recommendation).not.toBeNull();
     expect(recommendation?.maxBid).toBeGreaterThan(0);
     expect(recommendation?.targetBid).toBeGreaterThan(0);
+    expect(recommendation?.targetBid).toBeGreaterThan(
+      (recommendation?.expectedGrossPayout ?? 0) * 0.35
+    );
     expect(recommendation?.drivers).toHaveLength(3);
     expect(recommendation?.valueGap).toBeDefined();
   });
 
-  it("does not show a buy signal when the team is outside the budget plan", () => {
+  it("returns bid guidance for lower-ranked available teams", () => {
     const session = {
       ...buildSession(),
       liveState: {
@@ -132,20 +148,13 @@ describe("recommendations", () => {
       }
     };
     const focus = session.syndicates[0];
-    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    const team = session.projections.at(-1) ?? null;
     const analysis = buildSessionAnalysisSnapshot(session, focus);
-    const recommendation = buildBidRecommendation(
-      session,
-      team,
-      focus,
-      {
-        ...analysis,
-        budgetRows: analysis.budgetRows.filter((row) => row.teamId !== "alabama")
-      }
-    );
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
 
     expect(recommendation).not.toBeNull();
-    expect(recommendation?.stoplight).toBe("pass");
+    expect(recommendation?.targetBid).toBeGreaterThan(0);
+    expect(recommendation?.maxBid).toBeGreaterThan(recommendation?.targetBid ?? 0);
   });
 
   it("caps the buy window at the conflict-adjusted max bid", () => {
@@ -202,5 +211,107 @@ describe("recommendations", () => {
     expect(recommendation?.fundingStatus).toBe("stretch");
     expect(recommendation?.baseBudgetHeadroom).toBeLessThan(0);
     expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
+  });
+
+  it("forces a pass when an owned Round of 64 collision is guaranteed", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    if (!team || !session.simulationSnapshot) {
+      throw new Error("Expected mock team and simulation snapshot");
+    }
+
+    session.simulationSnapshot.matchupMatrix[team.id] = {
+      ...(session.simulationSnapshot.matchupMatrix[team.id] ?? {}),
+      duke: 1
+    };
+    session.simulationSnapshot.teamResults[team.id] = {
+      ...session.simulationSnapshot.teamResults[team.id],
+      likelyConflicts: [
+        {
+          opponentId: "duke",
+          probability: 1,
+          earliestRound: "roundOf64"
+        }
+      ]
+    };
+
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
+
+    expect(recommendation?.stoplight).toBe("pass");
+    expect(recommendation?.forcedPassConflictTeamId).toBe("duke");
+    expect(recommendation?.forcedPassReason).toContain("Round of 64");
+    expect(recommendation?.rationale[0]).toContain("Automatic pass");
+    expect(recommendation?.rationale[0]).toContain("owned team duke");
+  });
+
+  it("describes bundle teams explicitly in recommendation rationale", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const asset = {
+      id: "bundle:south:13-16",
+      label: "South 13-16 Seeds",
+      type: "seed_bundle" as const,
+      region: "South",
+      seed: null,
+      seedRange: [13, 16] as [number, number],
+      memberTeamIds: ["south13", "south14", "south15", "south16"],
+      projectionIds: ["louisville", "texas-am", "marquette", "wisconsin"],
+      members: [
+        {
+          id: "south13",
+          type: "team" as const,
+          label: "Louisville",
+          region: "South",
+          seed: 13,
+          regionSlot: "South-13",
+          teamIds: ["south13"],
+          projectionIds: ["louisville"],
+          unresolved: false
+        },
+        {
+          id: "south14",
+          type: "team" as const,
+          label: "Texas A&M",
+          region: "South",
+          seed: 14,
+          regionSlot: "South-14",
+          teamIds: ["south14"],
+          projectionIds: ["texas-am"],
+          unresolved: false
+        },
+        {
+          id: "south15",
+          type: "team" as const,
+          label: "Marquette",
+          region: "South",
+          seed: 15,
+          regionSlot: "South-15",
+          teamIds: ["south15"],
+          projectionIds: ["marquette"],
+          unresolved: false
+        },
+        {
+          id: "south16",
+          type: "team" as const,
+          label: "Wisconsin",
+          region: "South",
+          seed: 16,
+          regionSlot: "South-16",
+          teamIds: ["south16"],
+          projectionIds: ["wisconsin"],
+          unresolved: false
+        }
+      ],
+      unresolved: false
+    };
+
+    const recommendation = buildBidRecommendation(session, null, focus, analysis, asset);
+
+    expect(recommendation?.rationale[0]).toContain("bundles");
+    expect(recommendation?.rationale[0]).toContain("13 Louisville");
+    expect(recommendation?.rationale[0]).toContain("16 Wisconsin");
   });
 });

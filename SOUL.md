@@ -76,6 +76,8 @@ A team is not valuable in isolation. Owning teams that likely collide early chan
 
 Live portfolio truth should come from actual Mothership purchases in the session, not a parallel manual-owned list in a separate tool.
 
+That also applies when the room sells grouped teams instead of a single school. A regional `13-16` package or unresolved play-in team is still one live decision and one purchase, even though it expands to multiple underlying teams.
+
 ### Mothership is the fixed strategy subject
 
 The app is not neutral between syndicates. Every room is evaluated from Mothership's perspective.
@@ -124,9 +126,11 @@ Future work should improve these assumptions, but should not hide them.
 ## UX Truths
 
 - the operator should always know the currently nominated team
+- if the currently nominated team is a grouped package, the operator should immediately see which schools are included
 - operator mode should keep current bid, target bid, and max bid visible at a glance
 - viewer mode should center the nominated team and Mothership context, not the current bid
 - `Analysis` should exist inside the live room, not as a second disconnected product surface
+- `Analysis` should make it obvious when a team belongs to a grouped auction package
 - the ledger should answer "who owns what" and "how much do they have left"
 - the product should make clear whether "money left" is forecast headroom or locked actual room state
 - viewer mode should feel synchronized, Mothership-centered, and never editable
@@ -149,7 +153,7 @@ The strongest next product improvements are:
 1. better live-room correction workflows
 2. richer explanation of recommendation changes inside the in-room `Analysis` workspace
 3. stronger actual-pot modeling as teams are sold
-4. better external projection ingestion and import ergonomics
+4. better Selection Sunday import ergonomics and grouped-team clarity
 
 ## Quality Bar
 

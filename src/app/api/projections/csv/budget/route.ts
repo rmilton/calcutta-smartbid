@@ -16,12 +16,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const bankroll = Number(url.searchParams.get("bankroll") ?? "10000");
-    const targetTeams = Number(url.searchParams.get("targetTeams") ?? "8");
     const reservePct = parsePercentInput(url.searchParams.get("reservePct"), 0);
-    const maxSingleTeamPct = parsePercentInput(
-      url.searchParams.get("maxSingleTeamPct"),
-      0.22
-    );
     const teamId = url.searchParams.get("teamId");
     const teamName = url.searchParams.get("team");
     const providerName = process.env.SPORTS_PROJECTIONS_CSV_PROVIDER ?? "csv-local";
@@ -39,9 +34,7 @@ export async function GET(request: Request) {
       analysis,
       {
         bankroll,
-        targetTeamCount: targetTeams,
-        reservePct,
-        maxSingleTeamPct
+        reservePct
       },
       inferredTeamId
     );
@@ -52,7 +45,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return jsonError(
-      error instanceof Error ? error.message : "Unable to generate CSV budget plan."
+      error instanceof Error ? error.message : "Unable to generate CSV bid guidance."
     );
   }
 }

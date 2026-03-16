@@ -6,12 +6,15 @@ The current implementation ships with:
 
 - a login-only landing page that routes by `email + shared code`
 - an admin center for sessions, users, syndicates, and data sources
-- a session-admin surface for access, payout rules, syndicates, and imports
-- a live operator board with real-time bid support
-- an in-room analysis workspace that shares the same recommendation model as the auction view
-- a synchronized viewer mode with a read-only shared Mothership board
+- a session-admin surface for access, payout rules, syndicates, session-managed imports, and room readiness
+- a live operator board with real-time bid support and last-purchase undo
+- in-room `Analysis`, `Bracket`, and `Overrides` workspaces around the live auction view
+- a consolidated `Auction` workspace that now includes live decisioning, syndicate context, and Mothership position in one surface
+- a synchronized viewer mode with a read-only shared Mothership board plus bracket access
 - Monte Carlo tournament simulation and Mothership-centered bid recommendations
 - a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
+- a session-managed bracket import plus a separate session-managed analysis import
+- grouped auction-team support for unresolved play-ins and regional `13-16` packages
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
 Additional project context lives in:
@@ -20,6 +23,15 @@ Additional project context lives in:
 - [DESIGN.md](/Users/rmilton/Code/Calcutta-SmartBid/DESIGN.md): visual system, layout rules, and shared UI direction
 - [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md): current deployment status, recent fixes, regression checklist
 - [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md): product intent and design principles
+
+## Live-room code map
+
+- [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
+- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, and keyboard shortcuts
+- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace
+- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace
+- [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives and asset-formatting helpers
+- [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors and matchup helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
 
 ## Run locally
 
@@ -45,20 +57,29 @@ AUTH_SESSION_SECRET=...
 MOTHERSHIP_SYNDICATE_NAME=Mothership
 ```
 
-### CSV-backed analysis local quickstart
+### Selection Sunday local quickstart
 
-Use this when you want CSV scouting data to drive the in-room `Analysis` workspace.
+Use this when you want a real bracket plus separate team-metrics data to drive the live room.
 
-1. Set `.env.local` values:
-   - `SPORTS_PROJECTIONS_CSV_FILE=/absolute/path/to/your.csv`
-   - `CALCUTTA_STORAGE_BACKEND=local` (or `supabase` if you want Supabase persistence)
-2. If using `supabase`, run `supabase/schema.sql` in your Supabase SQL editor before starting the app.
-3. Start dev server:
+1. Set `.env.local`:
+   - `CALCUTTA_STORAGE_BACKEND=local` for quick local persistence, or `supabase` for production-like persistence
+2. If using `supabase`, run `supabase/schema.sql` in the Supabase SQL editor before starting the app.
+3. Start the dev server:
    - `npm run dev`
 4. Create a session:
    - Go to `http://localhost:3000/admin/sessions/new`
    - Include `Mothership` in the tracked room participants
-5. Open the session and switch to `Analysis`.
+5. Open the session admin page and use the `Data` tab:
+   - import a bracket CSV
+   - import a separate analysis CSV
+   - confirm the readiness panel is green before opening the room
+6. Open the live room and use `Auction` or `Analysis`.
+
+The maintained Selection Sunday workflow is now:
+
+- bracket structure imported separately from team analysis
+- auction-team shape derived from the bracket
+- live room recommendations built from merged bracket + analysis data
 
 Legacy compatibility note:
 
@@ -71,6 +92,25 @@ Optional for local development only (skip login flow):
 
 If you use bypass mode, restart `npm run dev` after updating `.env.local`.
 
+### Local team logos
+
+Team logos are stored locally and rendered from the checked-in manifest under:
+
+- `public/team-logos/prototype/manifest.json`
+- `public/team-logos/prototype/*`
+
+The current checked-in set covers the official 2026 men's tournament field announced on March 15, 2026, which is `68` teams once the First Four are included.
+
+To refresh the logo set for a new field:
+
+```bash
+npm run logos:prototype
+```
+
+That script reads [scripts/team-logo-prototype-input.json](/Users/llewis/Code/side-projects/calcutta-smartbid/scripts/team-logo-prototype-input.json), downloads logos into `public/team-logos/prototype/`, and rewrites the manifest. The runtime logo lookup is manifest-backed, so new file extensions and NCAA fallback SVGs are picked up automatically without app code changes.
+
+The logo smoke check is now covered by [src/lib/team-logos.test.ts](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/team-logos.test.ts), which verifies that every requested team resolves to a local file on disk.
+
 ## Product surfaces
 
 - `Landing/login`
@@ -82,11 +122,18 @@ If you use bypass mode, restart `npm run dev` after updating `.env.local`.
   - platform-level setup and operations
   - manages users, tracked syndicates, data sources, and sessions
 - `Session admin`
-  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, imports, and lifecycle controls
+  - per-session access, shared code, payout structure, tracked syndicates, analysis settings, bracket/analysis imports, readiness, and lifecycle controls
 - `Live room`
   - shared persisted Mothership session state for operator and viewer
-  - operator can update active team, bid, and purchases
-  - operator also has an `Analysis` workspace for deeper team and bid review
+  - operator can update active team, bid, purchases, bracket winners, and undo the most recent purchase
+  - operator workspaces are `Auction`, `Analysis`, `Bracket`, and `Overrides`
+  - `Auction` now carries the old portfolio context directly in the live board through syndicate, ownership, and decision-context panels
+  - viewer workspaces are `Auction` and `Bracket`
+  - viewer `Auction` mirrors the operator decision-board language for the live call, rationale, ownership conflicts, recent sales, and ownership ledger, while staying read-only
+  - active team can represent:
+    - a single school
+    - an unresolved play-in team
+    - a regional `13-16` package
   - viewer is read-only
 
 ## Access model
@@ -141,23 +188,120 @@ For a Vercel deployment, production should always use:
 CALCUTTA_STORAGE_BACKEND=supabase
 ```
 
+## Session-managed imports
+
+Selection Sunday sessions can now be driven by separate bracket and analysis CSV imports.
+
+- `Bracket import` expects bracket structure fields such as `name`, `region`, and `seed`
+- `Analysis import` expects model fields such as `name`, `rating`, `offense`, `defense`, and `tempo`
+- room readiness is blocked until the imported bracket and analysis data can be merged into one session field
+- the legacy active data source remains available as a fallback combined import flow
+
+The live `Bracket` workspace requires a complete 64-team field. When the session does not have a bracket-ready field, the workspace stays visible but explains why it is unavailable.
+
 ## State model notes
 
-- completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
+- completed purchases are the authoritative auction record unless superseded by an explicit correction workflow
 - current bid and active nominated team are live operational state
+- the live room still talks about `teams` in the UI, but the internal auction model can represent:
+  - a single team
+  - an unresolved play-in slot
+  - a grouped `13-16` seed package
 - `projectedPot` is a provisional model input used for EV and bankroll forecasting
 - current `remainingBankroll` / headroom values are still modeled assumptions, not final room accounting
 - every live room is evaluated from the configured `MOTHERSHIP_SYNDICATE_NAME` perspective
 - selected syndicates in a session represent Mothership plus tracked room opponents
-- Mothership-owned purchases are the source of truth for owned-team portfolio state in live analysis
+- Mothership-owned purchases are the source of truth for owned-team position state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
+- `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
+- the in-room `Analysis` view now leads with a compact selected-team hero that keeps rank, bid guidance, round reach probabilities, classification, note, and scouting signals above the ranking table
+- `Bracket` reflects the same session truth as the live room, including purchased-team ownership markers
+- only the most recent purchase can be undone in the current correction flow
 - session analysis settings are:
   - `targetTeamCount` default `8`
   - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
-- viewer mode intentionally hides the live current bid and instead centers the active team plus Mothership context
+- viewer mode stays read-only but shows the same live current bid, decision call, and Mothership context as the operator board
 - archived sessions are hidden from the default admin sessions list but remain readable to platform admins
 - permanent delete is archive-gated and requires exact session-name confirmation
+
+## Selection Sunday imports
+
+The primary product path is no longer “import one projection source and go.” Session admin now supports two separate imports:
+
+- `Bracket import`
+  - stores bracket structure for the session
+  - supports region, seed, bracket slot, site metadata, and unresolved play-ins
+- `Analysis import`
+  - stores team strength and scouting metrics separately from bracket structure
+  - joins against the bracket to create the live tournament field
+
+The session readiness panel blocks the room from being considered ready until bracket, analysis, and simulation state line up cleanly.
+
+### Bracket CSV
+
+Required columns:
+
+- `name`
+- `region`
+- `seed`
+
+Recommended columns:
+
+- `id`
+- `shortName`
+- `regionSlot`
+
+Optional columns:
+
+- `site`
+- `subregion`
+- `isPlayIn`
+- `playInGroup`
+- `playInSeed`
+
+Recommended header:
+
+```csv
+id,name,shortName,region,seed,regionSlot,site,subregion,isPlayIn,playInGroup,playInSeed
+```
+
+Play-ins should be represented as two rows sharing the same `region`, `seed`, `regionSlot`, and `playInGroup`.
+
+### Analysis CSV
+
+Required columns:
+
+- `name`
+- `rating`
+- `offense`
+- `defense`
+- `tempo`
+
+Optional columns:
+
+- `teamId`
+- `shortName`
+- `NET Rank`
+- `KenPom Rank`
+- `Ranked Wins`
+- `3PT%`
+- `Q1 Wins`
+- `Q2 Wins`
+- `Q3 Wins`
+- `Q4 Wins`
+
+The analysis importer also recognizes NCAA-style power-rating headers such as `Power Rating - Chance of Beating Average D1 Team`.
+
+### Auction-team behavior
+
+The live room can now derive grouped auction teams from the imported bracket:
+
+- unresolved `11` and `12` play-ins become one auction team
+- unresolved `16` play-ins fold into the regional `13-16` package
+- each region’s `13-16` seeds are sold as one auction team
+
+Recommendations, owned-position state, and sold-team displays all resolve back to the underlying teams while preserving the grouped auction behavior.
 
 ## Projection providers
 
@@ -188,7 +332,8 @@ Use the existing **Import remote feed** button to load this dataset into a sessi
 
 The standalone CSV-analysis page is now legacy compatibility only. The maintained product flow is:
 
-- import CSV-backed projections into a session
+- import bracket CSV into a session
+- import analysis CSV into the same session
 - open the session
 - use the in-room `Analysis` tab
 
@@ -257,6 +402,7 @@ The app includes:
 - a starter schema at `supabase/schema.sql`
 - `record_purchase_transaction` for transactional purchase writes
 - a projection override table for session-scoped manual model corrections
+- session-level `bracket_import` and `analysis_import` fields on `auction_sessions`
 
 The local repository remains the default execution path so the app works immediately without provisioning infrastructure.
 

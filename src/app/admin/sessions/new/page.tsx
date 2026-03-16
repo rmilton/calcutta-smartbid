@@ -1,4 +1,5 @@
 import { SetupForm } from "@/components/setup-form";
+import { AppFooter } from "@/components/app-footer";
 import { requirePlatformAdminPage } from "@/lib/auth";
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { getSessionRepository } from "@/lib/repository";
@@ -17,6 +18,7 @@ export default async function NewSessionPage() {
           mothershipSyndicateName={getConfiguredMothershipSyndicateName()}
         />
       </section>
+      <AppFooter />
     </main>
   );
 }

@@ -1,6 +1,5 @@
 import { AdminCenter } from "@/components/admin-center";
 import { requirePlatformAdminPage } from "@/lib/auth";
-import { getConfiguredStorageBackend } from "@/lib/config";
 import { getSessionRepository } from "@/lib/repository";
 
 export default async function AdminPage() {
@@ -11,7 +10,6 @@ export default async function AdminPage() {
   return (
     <AdminCenter
       initialData={adminData}
-      storageBackend={getConfiguredStorageBackend()}
       platformAdminEmail={currentAdmin.email}
     />
   );

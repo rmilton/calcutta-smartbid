@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
+  Dispatch,
   FormEvent,
+  SetStateAction,
   useEffect,
   useMemo,
   useRef,
@@ -12,10 +15,14 @@ import {
 } from "react";
 import { accessImportSampleCsv } from "@/lib/access-import";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
+import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
+import { readErrorMessage } from "@/lib/http-client";
 import {
   BudgetConfidence,
+  DataSource,
   MothershipFundingModel,
   PayoutRules,
+  SessionPresenceView,
   SessionAdminConfig,
   Syndicate
 } from "@/lib/types";
@@ -39,7 +46,48 @@ interface SyndicateFundingDraft {
   budgetNotes: string;
 }
 
+interface ImportDraft {
+  sourceName: string;
+  fileName: string;
+  csvContent: string;
+}
+
+type SourceSetupMode = "saved-source" | "upload";
+
 const confidenceOptions: BudgetConfidence[] = ["low", "medium", "high"];
+
+function buildImportDraft(
+  sourceName: string,
+  imported?: { sourceName: string; fileName: string | null } | null
+): ImportDraft {
+  return {
+    sourceName: imported?.sourceName ?? sourceName,
+    fileName: imported?.fileName ?? "",
+    csvContent: ""
+  };
+}
+
+function getDefaultSourceMode(
+  imported: { sourceName: string } | null | undefined,
+  sources: DataSource[]
+): SourceSetupMode {
+  if (imported?.sourceName && !sources.some((source) => source.name === imported.sourceName)) {
+    return "upload";
+  }
+
+  return sources.length > 0 ? "saved-source" : "upload";
+}
+
+function getSourceKeyForImport(
+  imported: { sourceName: string } | null | undefined,
+  sources: DataSource[]
+) {
+  const matchedSource = imported
+    ? sources.find((source) => source.name === imported.sourceName) ?? null
+    : null;
+  const selectedSource = matchedSource ?? sources[0] ?? null;
+  return selectedSource ? `data-source:${selectedSource.id}` : "";
+}
 
 function formatDollarInput(value: number) {
   return formatCurrency(Math.max(0, value));
@@ -87,6 +135,21 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatWorkspaceView(view: SessionPresenceView) {
+  return (
+    {
+      auction: "Auction",
+      analysis: "Analysis",
+      bracket: "Bracket",
+      overrides: "Overrides"
+    } satisfies Record<SessionPresenceView, string>
+  )[view];
+}
+
+function formatRoleLabel(role: "admin" | "viewer") {
+  return role === "admin" ? "Operator" : "Viewer";
+}
+
 function buildSyndicateFundingDrafts(syndicates: Syndicate[]) {
   return Object.fromEntries(
     syndicates
@@ -109,9 +172,9 @@ export function SessionAdminCenter({
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const [activeTab, setActiveTab] = useState<SessionTab>("settings");
+  const [presenceRefreshedAt, setPresenceRefreshedAt] = useState(() => new Date().toISOString());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
   const [sharedAccessCode, setSharedAccessCode] = useState("");
@@ -138,15 +201,19 @@ export function SessionAdminCenter({
   const [syndicateFundingDrafts, setSyndicateFundingDrafts] = useState<
     Record<string, SyndicateFundingDraft>
   >(buildSyndicateFundingDrafts(initialConfig.session.syndicates));
-  const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
   const [projectedPotInput, setProjectedPotInput] = useState(
     formatDollarInput(initialConfig.session.payoutRules.projectedPot)
   );
-  const [analysisSettings, setAnalysisSettings] = useState(
-    initialConfig.session.analysisSettings
-  );
   const accessCsvInputRef = useRef<HTMLInputElement | null>(null);
+  const bracketCsvInputRef = useRef<HTMLInputElement | null>(null);
+  const analysisCsvInputRef = useRef<HTMLInputElement | null>(null);
+  const [bracketImportDraft, setBracketImportDraft] = useState<ImportDraft>(
+    buildImportDraft("Official Bracket", initialConfig.session.bracketImport)
+  );
+  const [analysisImportDraft, setAnalysisImportDraft] = useState<ImportDraft>(
+    buildImportDraft("Team Analysis", initialConfig.session.analysisImport)
+  );
 
   const activeUsers = useMemo(
     () => config.platformUsers.filter((user) => user.active),
@@ -165,6 +232,26 @@ export function SessionAdminCenter({
   const activeSyndicates = useMemo(
     () => config.syndicateCatalog.filter((entry) => entry.active),
     [config.syndicateCatalog]
+  );
+  const activeBracketSources = useMemo(
+    () => config.dataSources.filter((source) => source.active && source.purpose === "bracket"),
+    [config.dataSources]
+  );
+  const activeAnalysisSources = useMemo(
+    () => config.dataSources.filter((source) => source.active && source.purpose === "analysis"),
+    [config.dataSources]
+  );
+  const [bracketSourceMode, setBracketSourceMode] = useState<SourceSetupMode>(
+    getDefaultSourceMode(initialConfig.session.bracketImport, activeBracketSources)
+  );
+  const [analysisSourceMode, setAnalysisSourceMode] = useState<SourceSetupMode>(
+    getDefaultSourceMode(initialConfig.session.analysisImport, activeAnalysisSources)
+  );
+  const [bracketSourceKey, setBracketSourceKey] = useState(
+    getSourceKeyForImport(initialConfig.session.bracketImport, activeBracketSources)
+  );
+  const [analysisSourceKey, setAnalysisSourceKey] = useState(
+    getSourceKeyForImport(initialConfig.session.analysisImport, activeAnalysisSources)
   );
   const mothershipCatalogEntry = useMemo(
     () =>
@@ -218,23 +305,66 @@ export function SessionAdminCenter({
     );
     setMothershipFunding(config.session.mothershipFunding);
     setSyndicateFundingDrafts(buildSyndicateFundingDrafts(config.session.syndicates));
-    setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
     setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
-    setAnalysisSettings(config.session.analysisSettings);
-  }, [config]);
+    setBracketImportDraft(buildImportDraft("Official Bracket", config.session.bracketImport));
+    setAnalysisImportDraft(buildImportDraft("Team Analysis", config.session.analysisImport));
+    setBracketSourceMode(getDefaultSourceMode(config.session.bracketImport, activeBracketSources));
+    setAnalysisSourceMode(getDefaultSourceMode(config.session.analysisImport, activeAnalysisSources));
+    setBracketSourceKey(getSourceKeyForImport(config.session.bracketImport, activeBracketSources));
+    setAnalysisSourceKey(getSourceKeyForImport(config.session.analysisImport, activeAnalysisSources));
+  }, [activeAnalysisSources, activeBracketSources, config]);
 
-  async function refreshConfig() {
+  const refreshConfig = useCallback(async () => {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
       cache: "no-store"
     });
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Unable to refresh session settings.");
+      throw new Error(await readErrorMessage(response, "Unable to refresh session settings."));
     }
     const payload = (await response.json()) as SessionAdminConfig;
     setConfig(payload);
-  }
+    setPresenceRefreshedAt(new Date().toISOString());
+  }, [config.session.id]);
+
+  const refreshPresence = useCallback(async () => {
+    const response = await fetch(`/api/admin/sessions/${config.session.id}/presence`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Unable to refresh active viewers.");
+    }
+
+    const payload = (await response.json()) as {
+      activeViewers: SessionAdminConfig["activeViewers"];
+    };
+    setConfig((current) => ({
+      ...current,
+      activeViewers: payload.activeViewers
+    }));
+    setPresenceRefreshedAt(new Date().toISOString());
+  }, [config.session.id]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshPresence().catch(() => undefined);
+      }
+    }, 30_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPresence().catch(() => undefined);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshPresence]);
 
   async function submitJson(
     url: string,
@@ -242,8 +372,7 @@ export function SessionAdminCenter({
     body: Record<string, unknown>,
     successMessage: string
   ) {
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     const response = await fetch(url, {
       method,
       headers: {
@@ -253,17 +382,17 @@ export function SessionAdminCenter({
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Request failed.");
+      throw new Error(await readErrorMessage(response, "Request failed."));
     }
 
     const payload = (await response.json()) as SessionAdminConfig | null;
     if (payload) {
       setConfig(payload);
+      setPresenceRefreshedAt(new Date().toISOString());
     } else {
       await refreshConfig();
     }
-    setNotice(successMessage);
+    showNotice(successMessage);
   }
 
   function toggleUser(userId: string) {
@@ -310,7 +439,7 @@ export function SessionAdminCenter({
           "Session access updated."
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to save access.");
+        showError(submitError instanceof Error ? submitError.message : "Unable to save access.");
       }
     });
   }
@@ -327,7 +456,7 @@ export function SessionAdminCenter({
         );
         setSharedAccessCode("");
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to rotate shared access code."
@@ -343,10 +472,9 @@ export function SessionAdminCenter({
 
     try {
       await navigator.clipboard.writeText(config.currentSharedAccessCode);
-      setError(null);
-      setNotice("Shared access code copied.");
+      showNotice("Shared access code copied.");
     } catch {
-      setError("Unable to copy the shared access code.");
+      showError("Unable to copy the shared access code.");
     }
   }
 
@@ -359,10 +487,9 @@ export function SessionAdminCenter({
       const url = new URL("/", window.location.origin);
       url.searchParams.set("code", config.currentSharedAccessCode);
       await navigator.clipboard.writeText(url.toString());
-      setError(null);
-      setNotice("Join link copied.");
+      showNotice("Join link copied.");
     } catch {
-      setError("Unable to copy the join link.");
+      showError("Unable to copy the join link.");
     }
   }
 
@@ -391,7 +518,7 @@ export function SessionAdminCenter({
           "Users imported into session access."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to import session access users."
@@ -402,6 +529,25 @@ export function SessionAdminCenter({
         }
       }
     });
+  }
+
+  function onImportCsvFile(
+    file: File | null,
+    setDraft: Dispatch<SetStateAction<ImportDraft>>
+  ) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((current) => ({
+        ...current,
+        fileName: file.name,
+        csvContent: String(reader.result ?? "")
+      }));
+    };
+    reader.readAsText(file);
   }
 
   function onSaveSyndicates(event: FormEvent<HTMLFormElement>) {
@@ -421,7 +567,7 @@ export function SessionAdminCenter({
           "Tracked syndicates updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update syndicates."
         );
       }
@@ -439,26 +585,8 @@ export function SessionAdminCenter({
           "Funding plan updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update funding plan."
-        );
-      }
-    });
-  }
-
-  function onSaveDataSource(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    startTransition(async () => {
-      try {
-        await submitJson(
-          `/api/admin/sessions/${config.session.id}/data`,
-          "PUT",
-          { sourceKey },
-          "Active data source updated."
-        );
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error ? submitError.message : "Unable to update data source."
         );
       }
     });
@@ -475,7 +603,7 @@ export function SessionAdminCenter({
           "Payout structure updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to update payout structure."
@@ -484,39 +612,165 @@ export function SessionAdminCenter({
     });
   }
 
-  function onSaveAnalysisSettings(event: FormEvent<HTMLFormElement>) {
+  function buildImportSelection(
+    mode: SourceSetupMode,
+    sourceKey: string,
+    draft: ImportDraft
+  ) {
+    if (mode === "saved-source") {
+      return {
+        mode: "saved-source" as const,
+        sourceKey
+      };
+    }
+
+    return {
+      mode: "upload" as const,
+      sourceName: draft.sourceName,
+      fileName: draft.fileName || null,
+      csvContent: draft.csvContent
+    };
+  }
+
+  function onImportBracket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     startTransition(async () => {
       try {
         await submitJson(
-          `/api/admin/sessions/${config.session.id}/analysis`,
-          "PUT",
-          { analysisSettings },
-          "Analysis settings updated."
+          `/api/admin/sessions/${config.session.id}/bracket/import`,
+          "POST",
+          { selection: buildImportSelection(bracketSourceMode, bracketSourceKey, bracketImportDraft) },
+          "Bracket import updated."
         );
       } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "Unable to update analysis settings."
+        showError(
+          submitError instanceof Error ? submitError.message : "Unable to import bracket."
         );
       }
     });
   }
 
-  function onRunImport() {
+  function onImportAnalysis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     startTransition(async () => {
       try {
         await submitJson(
-          `/api/admin/sessions/${config.session.id}/data/import`,
+          `/api/admin/sessions/${config.session.id}/analysis/import`,
           "POST",
-          { sourceKey },
-          "Projection import completed."
+          {
+            selection: buildImportSelection(
+              analysisSourceMode,
+              analysisSourceKey,
+              analysisImportDraft
+            )
+          },
+          "Analysis import updated."
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to run import.");
+        showError(
+          submitError instanceof Error ? submitError.message : "Unable to import analysis."
+        );
       }
     });
+  }
+
+  function renderImportModeSection(
+    title: string,
+    mode: SourceSetupMode,
+    setMode: Dispatch<SetStateAction<SourceSetupMode>>,
+    sourceKey: string,
+    setSourceKey: Dispatch<SetStateAction<string>>,
+    sources: DataSource[],
+    draft: ImportDraft,
+    setDraft: Dispatch<SetStateAction<ImportDraft>>,
+    fileInputRef: React.RefObject<HTMLInputElement | null>,
+    submitLabel: string,
+    onSubmit: (event: FormEvent<HTMLFormElement>) => void,
+    placeholder: string
+  ) {
+    return (
+      <div className="admin-pane__section">
+        <p className="eyebrow admin-pane__section-kicker">{title}</p>
+        <form onSubmit={onSubmit}>
+          <div className="compact-field-grid compact-field-grid--three">
+            <label className="field-shell">
+              <span>Mode</span>
+              <select value={mode} onChange={(event) => setMode(event.target.value as SourceSetupMode)}>
+                <option value="saved-source">Saved source</option>
+                <option value="upload">Upload new file</option>
+              </select>
+            </label>
+            {mode === "saved-source" ? (
+              <label className="field-shell">
+                <span>{title} source</span>
+                <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
+                  <option value="">Select a source</option>
+                  {sources.map((source) => (
+                    <option key={source.id} value={`data-source:${source.id}`}>
+                      {source.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <>
+                <label className="field-shell">
+                  <span>Source label</span>
+                  <input
+                    value={draft.sourceName}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        sourceName: event.target.value
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label className="field-shell">
+                  <span>CSV file</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) =>
+                      onImportCsvFile(event.target.files?.[0] ?? null, setDraft)
+                    }
+                  />
+                </label>
+              </>
+            )}
+            <div className="button-row" style={{ alignItems: "end" }}>
+              <button type="submit" className="button button--small" disabled={isPending}>
+                {submitLabel}
+              </button>
+            </div>
+          </div>
+          {mode === "upload" ? (
+            <label className="field-shell" style={{ marginTop: "1rem" }}>
+              <span>CSV content</span>
+              <textarea
+                rows={8}
+                value={draft.csvContent}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    csvContent: event.target.value
+                  }))
+                }
+                placeholder={placeholder}
+                required
+              />
+            </label>
+          ) : null}
+          {mode === "saved-source" && sources.length === 0 ? (
+            <p className="support-copy" style={{ marginTop: "1rem" }}>
+              No active saved sources are available for this section yet.
+            </p>
+          ) : null}
+        </form>
+      </div>
+    );
   }
 
   function updateSyndicateFundingDraft(
@@ -538,8 +792,7 @@ export function SessionAdminCenter({
   function onArchiveSession() {
     startTransition(async () => {
       try {
-        setError(null);
-        setNotice(null);
+        clearFeedback();
         const response = await fetch(
           `/api/admin/sessions/${config.session.id}/lifecycle`,
           {
@@ -552,14 +805,13 @@ export function SessionAdminCenter({
         );
 
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "Unable to archive session.");
+          throw new Error(await readErrorMessage(response, "Unable to archive session."));
         }
 
         await refreshConfig();
-        setNotice("Session archived.");
+        showNotice("Session archived.");
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to archive session."
         );
       }
@@ -569,8 +821,7 @@ export function SessionAdminCenter({
   function onDeleteSession() {
     startTransition(async () => {
       try {
-        setError(null);
-        setNotice(null);
+        clearFeedback();
         const response = await fetch(
           `/api/admin/sessions/${config.session.id}/lifecycle`,
           {
@@ -583,14 +834,13 @@ export function SessionAdminCenter({
         );
 
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "Unable to delete session.");
+          throw new Error(await readErrorMessage(response, "Unable to delete session."));
         }
 
         router.push("/admin");
         router.refresh();
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to delete session."
         );
       }
@@ -609,10 +859,6 @@ export function SessionAdminCenter({
             Back
           </Link>
           <ThemeToggle />
-          <span className="status-pill">{config.session.activeDataSource.name}</span>
-          <span className="status-pill">
-            {config.importRuns.length} import{config.importRuns.length === 1 ? "" : "s"}
-          </span>
           <Link
             href={`/session/${config.session.id}`}
             className="button button-secondary button--small"
@@ -652,6 +898,40 @@ export function SessionAdminCenter({
         <section className="admin-access-layout">
           <article className="surface-card admin-pane admin-access-users">
             <form onSubmit={onSaveAccess}>
+              <section className="admin-presence-card">
+                <div className="admin-presence-card__header">
+                  <div>
+                    <p className="eyebrow">Watching now</p>
+                    <h2>{config.activeViewers.length} active viewer{config.activeViewers.length === 1 ? "" : "s"}</h2>
+                  </div>
+                  <div className="admin-presence-card__meta">
+                    <span className="status-pill">
+                      Refreshed {formatDateTime(presenceRefreshedAt)}
+                    </span>
+                  </div>
+                </div>
+                {config.activeViewers.length ? (
+                  <div className="admin-presence-list">
+                    {config.activeViewers.map((viewer) => (
+                      <div key={viewer.memberId} className="admin-presence-row">
+                        <div className="admin-presence-row__identity">
+                          <strong>{viewer.name}</strong>
+                          <span>{viewer.email}</span>
+                        </div>
+                        <div className="admin-presence-row__meta">
+                          <span className="status-pill status-pill--muted">
+                            {formatRoleLabel(viewer.role)}
+                          </span>
+                          <span>{formatWorkspaceView(viewer.currentView)}</span>
+                          <span>Seen {formatDateTime(viewer.lastSeenAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-copy">No viewers currently watching.</p>
+                )}
+              </section>
               <div className="admin-pane__header admin-pane__section-header">
                 <h2>Users</h2>
                 <div className="button-row">
@@ -1180,88 +1460,123 @@ export function SessionAdminCenter({
             </div>
           </form>
 
-          <div className="admin-pane__section">
-            <form onSubmit={onSaveAnalysisSettings}>
-              <div className="admin-pane__header admin-pane__section-header">
-                <h2>Analysis strategy</h2>
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save strategy
-                </button>
-              </div>
-              <div className="compact-field-grid compact-field-grid--three">
-                <label className="field-shell">
-                  <span>Target teams</span>
-                  <input
-                    type="number"
-                    min={2}
-                    max={24}
-                    step={1}
-                    value={analysisSettings.targetTeamCount}
-                    onChange={(event) =>
-                      setAnalysisSettings((current) => ({
-                        ...current,
-                        targetTeamCount: Number(event.target.value)
-                      }))
-                    }
-                    required
-                  />
-                </label>
-                <label className="field-shell">
-                  <span>Max per-team %</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={45}
-                    step={1}
-                    value={analysisSettings.maxSingleTeamPct}
-                    onChange={(event) =>
-                      setAnalysisSettings((current) => ({
-                        ...current,
-                        maxSingleTeamPct: Number(event.target.value)
-                      }))
-                    }
-                    required
-                  />
-                </label>
-              </div>
-            </form>
-          </div>
         </section>
       ) : null}
 
       {activeTab === "data" ? (
         <section className="surface-card admin-pane">
-          <form onSubmit={onSaveDataSource}>
-            <div className="admin-pane__header">
+          <div className="admin-pane__header">
+            <div>
               <h2>Data</h2>
-              <div className="button-row">
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save source
-                </button>
-                <button
-                  type="button"
-                  className="button button-secondary button--small"
-                  disabled={isPending}
-                  onClick={onRunImport}
-                >
-                  Run import
-                </button>
+              <p>{config.session.importReadiness.summary}</p>
+            </div>
+            <div className="button-row">
+              <span
+                className={
+                  config.session.importReadiness.status === "ready"
+                    ? "status-pill status-pill--positive"
+                    : "status-pill status-pill--danger"
+                }
+              >
+                {config.session.importReadiness.status === "ready" ? "Room ready" : "Needs attention"}
+              </span>
+              <span className="status-pill">
+                {config.session.importReadiness.mergedProjectionCount} merged teams
+              </span>
+              <span className="status-pill">
+                {(config.session.auctionAssets ?? []).length} auction teams
+              </span>
+            </div>
+          </div>
+
+          <div className="admin-pane__section">
+            <p className="eyebrow admin-pane__section-kicker">Selection Sunday readiness</p>
+            <div className="compact-field-grid compact-field-grid--three">
+              <div className="surface-card" style={{ padding: "1rem" }}>
+                <strong>Bracket</strong>
+                <p>
+                  {config.session.bracketImport
+                    ? `${config.session.bracketImport.teamCount} teams from ${config.session.bracketImport.sourceName}`
+                    : "No bracket import loaded"}
+                </p>
+                <p className="support-copy">
+                  {config.session.importReadiness.lastBracketImportAt
+                    ? `Updated ${formatDateTime(config.session.importReadiness.lastBracketImportAt)}`
+                    : "Waiting for import"}
+                </p>
+              </div>
+              <div className="surface-card" style={{ padding: "1rem" }}>
+                <strong>Analysis</strong>
+                <p>
+                  {config.session.analysisImport
+                    ? `${config.session.analysisImport.teamCount} rows from ${config.session.analysisImport.sourceName}`
+                    : "No analysis import loaded"}
+                </p>
+                <p className="support-copy">
+                  {config.session.importReadiness.lastAnalysisImportAt
+                    ? `Updated ${formatDateTime(config.session.importReadiness.lastAnalysisImportAt)}`
+                    : "Waiting for import"}
+                </p>
+              </div>
+              <div className="surface-card" style={{ padding: "1rem" }}>
+                <strong>Readiness</strong>
+                <p>{config.session.importReadiness.status === "ready" ? "Ready" : "Needs attention"}</p>
+                <p className="support-copy">
+                  Saved sources and one-off uploads both feed the same session-managed import flow.
+                </p>
               </div>
             </div>
-            <label className="field-shell" style={{ maxWidth: "24rem" }}>
-              <span>Active source</span>
-              <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
-                <option value="builtin:mock">Built-in Mock Field</option>
-                {config.dataSources
-                  .filter((source) => source.active)
-                  .map((source) => (
-                    <option key={source.id} value={`data-source:${source.id}`}>
-                      {source.name} ({source.kind.toUpperCase()})
-                    </option>
+            {config.session.importReadiness.issues.length ? (
+              <div className="surface-card" style={{ padding: "1rem", marginTop: "1rem" }}>
+                <p className="eyebrow admin-pane__section-kicker">Blocking issues</p>
+                <ul className="support-copy" style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                  {config.session.importReadiness.issues.map((issue) => (
+                    <li key={issue}>{issue}</li>
                   ))}
-              </select>
-            </label>
-          </form>
+                </ul>
+              </div>
+            ) : null}
+            {config.session.importReadiness.warnings.length ? (
+              <div className="surface-card" style={{ padding: "1rem", marginTop: "1rem" }}>
+                <p className="eyebrow admin-pane__section-kicker">Warnings</p>
+                <ul className="support-copy" style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                  {config.session.importReadiness.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          {renderImportModeSection(
+            "Bracket import",
+            bracketSourceMode,
+            setBracketSourceMode,
+            bracketSourceKey,
+            setBracketSourceKey,
+            activeBracketSources,
+            bracketImportDraft,
+            setBracketImportDraft,
+            bracketCsvInputRef,
+            "Import bracket",
+            onImportBracket,
+            "Required: name, region, seed. Optional: id, shortName, regionSlot, site, subregion, isPlayIn, playInGroup, playInSeed."
+          )}
+
+          {renderImportModeSection(
+            "Analysis import",
+            analysisSourceMode,
+            setAnalysisSourceMode,
+            analysisSourceKey,
+            setAnalysisSourceKey,
+            activeAnalysisSources,
+            analysisImportDraft,
+            setAnalysisImportDraft,
+            analysisCsvInputRef,
+            "Import analysis",
+            onImportAnalysis,
+            "Required: name, rating, offense, defense, tempo. Optional: teamId, shortName, NET Rank, KenPom Rank, Ranked Wins, 3PT%, Q1-Q4 wins."
+          )}
 
           <div className="admin-pane__section">
             <p className="eyebrow admin-pane__section-kicker">Import history</p>

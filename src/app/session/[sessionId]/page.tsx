@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AppFooter } from "@/components/app-footer";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { requireAuthenticatedPageSession } from "@/lib/auth";
 import { getSessionRepository } from "@/lib/repository";
@@ -17,11 +18,17 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
 
   try {
     const dashboard = await repository.getDashboard(sessionId);
+    const initialView =
+      view === "analysis" ||
+      view === "bracket" ||
+      view === "overrides"
+        ? view
+        : "auction";
     return (
       <DashboardShell
         sessionId={sessionId}
         initialDashboard={dashboard}
-        initialView={view === "analysis" ? "analysis" : "auction"}
+        initialView={initialView}
         viewerMode={currentMember.role === "viewer"}
         currentMember={currentMember}
       />
@@ -49,6 +56,30 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
               </Link>
             </div>
           </section>
+          <AppFooter variant="live" />
+        </main>
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.includes("Session-managed imports still need attention before the room is ready")
+    ) {
+      return (
+        <main className="dashboard-page">
+          <section className="surface-card session-hero">
+            <div className="session-hero__copy">
+              <p className="eyebrow">Live room</p>
+              <h1>Imports still in progress</h1>
+              <p>{error.message}</p>
+            </div>
+            <div className="session-hero__meta">
+              <Link href="/" className="button button-secondary">
+                Back to login
+              </Link>
+            </div>
+          </section>
+          <AppFooter variant="live" />
         </main>
       );
     }

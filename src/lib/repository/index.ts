@@ -2,12 +2,18 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  applyBracketWinnerMutation,
+  createEmptyBracketState,
+  normalizeBracketState
+} from "@/lib/bracket";
+import {
   buildDefaultMothershipFunding,
   deriveLegacyBudgetSeed,
   deriveSyndicateEstimateState,
   normalizeMothershipFunding,
   normalizeSyndicateEstimate
 } from "@/lib/funding";
+import { buildAuctionAssets } from "@/lib/auction-assets";
 import {
   getConfiguredMothershipSyndicateName,
   getConfiguredStorageBackend
@@ -28,44 +34,68 @@ import {
   loadProjectionsFromSource,
   testDataSourceConnection
 } from "@/lib/providers/projections";
+import {
+  buildSessionImportReadiness,
+  enrichProjectionFieldScouting,
+  mergeBracketAndAnalysisImports,
+  parseSessionAnalysisImport,
+  parseSessionBracketImport
+} from "@/lib/session-imports";
 import { getSyndicateBrandColor } from "@/lib/syndicate-colors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   AccessMember,
+  ActiveSessionViewer,
   AnalysisSettings,
   AdminCenterData,
   AdminSessionSummary,
   AuthenticatedMember,
+  AuctionAsset,
   AuctionDashboard,
   AuctionSession,
+  BracketState,
   CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
+  DataSourcePurpose,
   MothershipFundingModel,
   PlatformUser,
   ProjectionOverride,
+  PurchaseRecord,
   PayoutRules,
+  SessionAnalysisImport,
   SessionAdminConfig,
   SessionDataSourceRef,
+  SessionImportReadiness,
+  SessionPresenceView,
   SessionRole,
+  SessionBracketImport,
+  SessionSourceSelection,
   SessionSyndicateFundingInput,
+  SessionViewerPresence,
   StoredAuctionSession,
   StorageBackend,
   Syndicate,
   SyndicateCatalogEntry,
+  TeamClassificationTag,
+  TeamClassificationValue,
+  TeamNoteTag,
   TeamProjection,
   createDataSourceSchema,
   createPlatformUserSchema,
   createSessionSchema,
+  updateBracketGameSchema,
+  saveTeamNoteSchema,
   createSyndicateCatalogSchema,
   updateDataSourceSchema,
   updatePlatformUserSchema,
   updateSyndicateCatalogSchema
 } from "@/lib/types";
-import { clamp, createId, roundCurrency } from "@/lib/utils";
+import { createId, roundCurrency } from "@/lib/utils";
 
 interface SessionStore {
   sessions: StoredAuctionSession[];
+  viewerPresence: SessionViewerPresence[];
   platformUsers: PlatformUser[];
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
@@ -80,7 +110,8 @@ interface CreateSessionInput {
   catalogSyndicateIds: string[];
   payoutRules: PayoutRules;
   analysisSettings: AnalysisSettings;
-  dataSourceKey: string;
+  bracketSelection?: SessionSourceSelection;
+  analysisSelection?: SessionSourceSelection;
   simulationIterations: number;
 }
 
@@ -91,6 +122,14 @@ interface ProjectionOverrideInput {
   tempo?: number;
 }
 
+interface TeamClassificationInput {
+  classification: TeamClassificationValue;
+}
+
+interface TeamNoteInput {
+  note: string;
+}
+
 const storeFile =
   process.env.CALCUTTA_STORE_FILE ?? path.join(os.tmpdir(), "calcutta-smartbid-store.json");
 
@@ -99,6 +138,7 @@ const builtinMockSource: SessionDataSourceRef = {
   name: "Built-in Mock Field",
   kind: "builtin"
 };
+const ACTIVE_VIEWER_WINDOW_MS = 5 * 60 * 1000;
 
 export interface SessionRepository {
   backend: StorageBackend;
@@ -106,9 +146,15 @@ export interface SessionRepository {
   listSessions(): Promise<AdminSessionSummary[]>;
   getAdminCenterData(): Promise<AdminCenterData>;
   getSessionAdminConfig(sessionId: string): Promise<SessionAdminConfig>;
+  getActiveSessionViewers(sessionId: string): Promise<ActiveSessionViewer[]>;
   getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
   getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
+  recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ): Promise<void>;
   authenticateMember(
     email: string,
     sharedCode: string
@@ -132,12 +178,11 @@ export interface SessionRepository {
   ): Promise<SyndicateCatalogEntry>;
   createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }): Promise<DataSource>;
   updateDataSource(
     sourceId: string,
@@ -146,8 +191,6 @@ export interface SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ): Promise<DataSource>;
   testDataSource(sourceId: string): Promise<void>;
@@ -184,24 +227,42 @@ export interface SessionRepository {
       syndicateFunding: SessionSyndicateFundingInput[];
     }
   ): Promise<SessionAdminConfig>;
+  importSessionBracket(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ): Promise<SessionAdminConfig>;
+  importSessionAnalysis(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ): Promise<SessionAdminConfig>;
   setSessionDataSource(sessionId: string, sourceKey: string): Promise<SessionAdminConfig>;
   runSessionImport(sessionId: string, sourceKey?: string): Promise<SessionAdminConfig>;
   importProjections(sessionId: string, provider: "mock" | "remote"): Promise<AuctionDashboard>;
   rebuildSimulation(sessionId: string, iterations?: number): Promise<AuctionDashboard>;
   updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ): Promise<AuctionDashboard>;
   recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ): Promise<AuctionDashboard>;
+  undoPurchase(sessionId: string, purchaseId?: string): Promise<AuctionDashboard>;
   saveProjectionOverride(
     sessionId: string,
     teamId: string,
     input: ProjectionOverrideInput
   ): Promise<AuctionDashboard>;
   clearProjectionOverride(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  saveTeamClassification(
+    sessionId: string,
+    teamId: string,
+    input: TeamClassificationInput
+  ): Promise<AuctionDashboard>;
+  clearTeamClassification(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput): Promise<AuctionDashboard>;
+  clearTeamNote(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null): Promise<AuctionDashboard>;
   getCsvAnalysisPortfolio(sessionId: string, memberId: string): Promise<CsvAnalysisPortfolio>;
   saveCsvAnalysisPortfolio(
     sessionId: string,
@@ -225,14 +286,16 @@ class LocalSessionRepository implements SessionRepository {
   async listSessions() {
     const store = await this.readStore();
     return store.sessions
-      .map((session) => buildAdminSessionSummary(session))
+      .map((session) => buildAdminSessionSummary(session, store.viewerPresence))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   async getAdminCenterData() {
     const store = await this.readStore();
     return {
-      sessions: await this.listSessions(),
+      sessions: store.sessions
+        .map((session) => buildAdminSessionSummary(session, store.viewerPresence))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
       platformUsers: [...store.platformUsers].sort(sortByName),
       syndicateCatalog: [...store.syndicateCatalog].sort(sortByName),
       dataSources: [...store.dataSources].sort(sortByName)
@@ -242,7 +305,13 @@ class LocalSessionRepository implements SessionRepository {
   async getSessionAdminConfig(sessionId: string) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
+  }
+
+  async getActiveSessionViewers(sessionId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    return buildActiveSessionViewers(session.accessMembers, store.viewerPresence, session.id);
   }
 
   async getSession(sessionId: string) {
@@ -258,6 +327,37 @@ class LocalSessionRepository implements SessionRepository {
   async getAccessMember(sessionId: string, memberId: string) {
     const session = await this.requireSession(sessionId);
     return session.accessMembers.find((member) => member.id === memberId) ?? null;
+  }
+
+  async recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ) {
+    const store = await this.readStore();
+    const member = await this.getAccessMember(sessionId, memberId);
+
+    if (!member || !member.active) {
+      throw new Error("Your access to this auction is no longer active.");
+    }
+
+    const nextPresence: SessionViewerPresence = {
+      sessionId,
+      memberId,
+      currentView,
+      lastSeenAt: new Date().toISOString()
+    };
+    const existingIndex = store.viewerPresence.findIndex(
+      (entry) => entry.sessionId === sessionId && entry.memberId === memberId
+    );
+
+    if (existingIndex >= 0) {
+      store.viewerPresence[existingIndex] = nextPresence;
+    } else {
+      store.viewerPresence.push(nextPresence);
+    }
+
+    await this.writeStore(store);
   }
 
   async authenticateMember(email: string, sharedCode: string) {
@@ -371,44 +471,29 @@ class LocalSessionRepository implements SessionRepository {
 
   async createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }) {
     const store = await this.readStore();
     const parsed = createDataSourceSchema.parse(input);
     const now = new Date().toISOString();
-    const source: DataSource =
-      parsed.kind === "csv"
-        ? {
-            id: createId("source"),
-            name: parsed.name.trim(),
-            kind: "csv",
-            active: parsed.active,
-            config: {
-              csvContent: parsed.csvContent,
-              fileName: parsed.fileName ?? null
-            },
-            createdAt: now,
-            updatedAt: now,
-            lastTestedAt: null
-          }
-        : {
-            id: createId("source"),
-            name: parsed.name.trim(),
-            kind: "api",
-            active: parsed.active,
-            config: {
-              url: parsed.url,
-              bearerToken: parsed.bearerToken ?? ""
-            },
-            createdAt: now,
-            updatedAt: now,
-            lastTestedAt: null
-          };
+    const source: DataSource = {
+      id: createId("source"),
+      name: parsed.name.trim(),
+      kind: "csv",
+      purpose: parsed.purpose,
+      active: parsed.active,
+      config: {
+        csvContent: parsed.csvContent,
+        fileName: parsed.fileName ?? null
+      },
+      createdAt: now,
+      updatedAt: now,
+      lastTestedAt: null
+    };
     store.dataSources.push(source);
     await this.writeStore(store);
     return source;
@@ -421,8 +506,6 @@ class LocalSessionRepository implements SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ) {
     const store = await this.readStore();
@@ -437,13 +520,8 @@ class LocalSessionRepository implements SessionRepository {
     if (source.kind === "csv") {
       source.config = {
         csvContent: parsed.csvContent ?? (source.config as { csvContent: string }).csvContent,
-        fileName: parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
-      };
-    } else {
-      source.config = {
-        url: parsed.url ?? (source.config as { url: string }).url,
-        bearerToken:
-          parsed.bearerToken ?? (source.config as { bearerToken?: string }).bearerToken ?? ""
+        fileName:
+          parsed.fileName ?? (source.config as { fileName: string | null }).fileName ?? null
       };
     }
     source.updatedAt = new Date().toISOString();
@@ -469,7 +547,7 @@ class LocalSessionRepository implements SessionRepository {
     session.accessMembers = buildAccessMembers(assignments, store.platformUsers, session.accessMembers);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async rotateSessionSharedCode(sessionId: string, sharedAccessCode: string) {
@@ -479,7 +557,7 @@ class LocalSessionRepository implements SessionRepository {
     setStoredSharedAccessCode(session, sharedAccessCode);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionPayoutRules(sessionId: string, payoutRules: PayoutRules) {
@@ -487,7 +565,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyPayoutRulesMutation(session, payoutRules);
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionFunding(sessionId: string, mothershipFunding: MothershipFundingModel) {
@@ -495,7 +573,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyMothershipFundingMutation(session, mothershipFunding);
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
@@ -504,7 +582,7 @@ class LocalSessionRepository implements SessionRepository {
     session.analysisSettings = normalizeAnalysisSettings(analysisSettings);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async archiveSession(
@@ -566,7 +644,97 @@ class LocalSessionRepository implements SessionRepository {
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
+  }
+
+  async importSessionBracket(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
+    const bracketImport = resolveSessionImportSelection(
+      input.selection,
+      "bracket",
+      store.dataSources
+    );
+    if (!bracketImport) {
+      throw new Error("Bracket import payload is required.");
+    }
+    session.bracketImport = bracketImport;
+
+    try {
+      applySessionManagedImports(session);
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
+          "success",
+          "Bracket import completed."
+        )
+      );
+      await this.writeStore(store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
+    } catch (error) {
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import bracket."
+        )
+      );
+      await this.writeStore(store);
+      throw error;
+    }
+  }
+
+  async importSessionAnalysis(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
+    const analysisImport = resolveSessionImportSelection(
+      input.selection,
+      "analysis",
+      store.dataSources
+    );
+    if (!analysisImport) {
+      throw new Error("Analysis import payload is required.");
+    }
+    session.analysisImport = analysisImport;
+
+    try {
+      applySessionManagedImports(session);
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
+          "success",
+          "Analysis import completed."
+        )
+      );
+      await this.writeStore(store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
+    } catch (error) {
+      store.dataImportRuns.push(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import analysis."
+        )
+      );
+      await this.writeStore(store);
+      throw error;
+    }
   }
 
   async setSessionDataSource(sessionId: string, sourceKey: string) {
@@ -575,7 +743,7 @@ class LocalSessionRepository implements SessionRepository {
     session.activeDataSource = resolveDataSourceRef(sourceKey, store.dataSources);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async runSessionImport(sessionId: string, sourceKey?: string) {
@@ -588,7 +756,7 @@ class LocalSessionRepository implements SessionRepository {
       const run = createImportRun(session.id, resolvedSource, "success", "Import completed.");
       store.dataImportRuns.push(run);
       await this.writeStore(store);
-      return buildSessionAdminConfig(session, store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to import projections.";
       store.dataImportRuns.push(createImportRun(session.id, resolvedSource, "failed", message));
@@ -615,7 +783,7 @@ class LocalSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -626,11 +794,19 @@ class LocalSessionRepository implements SessionRepository {
 
   async recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     applyPurchaseMutation(session, input);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    undoPurchaseMutation(session, purchaseId);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
   }
@@ -647,6 +823,51 @@ class LocalSessionRepository implements SessionRepository {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     clearProjectionOverrideMutation(session, teamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async saveTeamClassification(
+    sessionId: string,
+    teamId: string,
+    input: TeamClassificationInput
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    applyTeamClassificationMutation(session, teamId, input);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamClassification(sessionId: string, teamId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    clearTeamClassificationMutation(session, teamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    applyTeamNoteMutation(session, teamId, input);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamNote(sessionId: string, teamId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    clearTeamNoteMutation(session, teamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
   }
@@ -720,6 +941,7 @@ class LocalSessionRepository implements SessionRepository {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return {
           sessions: [],
+          viewerPresence: [],
           platformUsers: [],
           syndicateCatalog: [],
           dataSources: [],
@@ -755,8 +977,10 @@ class SupabaseSessionRepository implements SessionRepository {
       sessionsResult,
       syndicatesResult,
       purchasesResult,
+      projectionsResult,
       overridesResult,
       membersResult,
+      presenceResult,
       usersResult,
       catalogResult,
       sourcesResult
@@ -764,13 +988,15 @@ class SupabaseSessionRepository implements SessionRepository {
       client
         .from("auction_sessions")
         .select(
-          "id, name, created_at, updated_at, archived_at, projection_provider, active_data_source_name"
+          "id, name, created_at, updated_at, archived_at, projection_provider, bracket_import, analysis_import"
         )
         .order("updated_at", { ascending: false }),
       client.from("syndicates").select("session_id"),
       client.from("purchase_records").select("session_id"),
+      client.from("team_projections").select("session_id"),
       client.from("projection_overrides").select("session_id"),
-      client.from("session_members").select("session_id, role, active"),
+      client.from("session_members").select("id, session_id, role, active"),
+      client.from("session_viewer_presence").select("session_id, member_id, last_seen_at"),
       client.from("platform_users").select("*").order("name", { ascending: true }),
       client.from("syndicate_catalog").select("*").order("name", { ascending: true }),
       client.from("data_sources").select("*").order("name", { ascending: true })
@@ -779,8 +1005,10 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(sessionsResult.error);
     throwOnSupabaseError(syndicatesResult.error);
     throwOnSupabaseError(purchasesResult.error);
+    throwOnSupabaseError(projectionsResult.error);
     throwOnSupabaseError(overridesResult.error);
     throwOnSupabaseError(membersResult.error);
+    throwOnSupabaseError(presenceResult.error);
     throwOnSupabaseError(usersResult.error);
     throwOnSupabaseError(catalogResult.error);
     throwOnSupabaseError(sourcesResult.error);
@@ -791,10 +1019,17 @@ class SupabaseSessionRepository implements SessionRepository {
     const purchaseCounts = countRowsBySession(
       (purchasesResult.data as Array<Record<string, unknown>> | null) ?? []
     );
+    const projectionCounts = countRowsBySession(
+      (projectionsResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
     const overrideCounts = countRowsBySession(
       (overridesResult.data as Array<Record<string, unknown>> | null) ?? []
     );
     const memberCounts = countMembersBySession(
+      (membersResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const activeViewerCounts = countActiveViewerPresenceBySession(
+      (presenceResult.data as Array<Record<string, unknown>> | null) ?? [],
       (membersResult.data as Array<Record<string, unknown>> | null) ?? []
     );
 
@@ -806,6 +1041,11 @@ class SupabaseSessionRepository implements SessionRepository {
             adminCount: 0,
             viewerCount: 0
           };
+          const readiness = buildAdminImportReadinessFromSummaryData({
+            bracketImport: row.bracket_import as SessionBracketImport | null | undefined,
+            analysisImport: row.analysis_import as SessionAnalysisImport | null | undefined,
+            projectionCount: projectionCounts.get(sessionId) ?? 0
+          });
 
           return {
             id: sessionId,
@@ -815,12 +1055,22 @@ class SupabaseSessionRepository implements SessionRepository {
             isArchived: row.archived_at !== null,
             archivedAt: row.archived_at ? String(row.archived_at) : null,
             projectionProvider: String(row.projection_provider),
-            activeDataSourceName: String(row.active_data_source_name ?? "Built-in Mock Field"),
+            bracketSourceName: readiness.hasBracket
+              ? normalizeBracketImport(row.bracket_import as SessionBracketImport | null | undefined)
+                  ?.sourceName ?? null
+              : null,
+            analysisSourceName: readiness.hasAnalysis
+              ? normalizeAnalysisImport(row.analysis_import as SessionAnalysisImport | null | undefined)
+                  ?.sourceName ?? null
+              : null,
+            importReadinessStatus: readiness.status,
+            importReadinessSummary: readiness.summary,
             purchaseCount: purchaseCounts.get(sessionId) ?? 0,
             syndicateCount: syndicateCounts.get(sessionId) ?? 0,
             overrideCount: overrideCounts.get(sessionId) ?? 0,
             adminCount: memberCount.adminCount,
-            viewerCount: memberCount.viewerCount
+            viewerCount: memberCount.viewerCount,
+            activeViewerCount: activeViewerCounts.get(sessionId) ?? 0
           } satisfies AdminSessionSummary;
         }
       )) as AdminSessionSummary[],
@@ -831,15 +1081,17 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getSessionAdminConfig(sessionId: string) {
-    const [session, refs, importRuns] = await Promise.all([
+    const [session, refs, importRuns, activeViewers] = await Promise.all([
       this.requireSession(sessionId),
       this.readReferenceData(),
-      this.listImportRuns(sessionId)
+      this.listImportRuns(sessionId),
+      this.getActiveSessionViewers(sessionId)
     ]);
     return {
       session,
       currentSharedAccessCode: getStoredSharedAccessCode(session),
       accessMembers: session.accessMembers,
+      activeViewers,
       platformUsers: refs.platformUsers,
       syndicateCatalog: refs.syndicateCatalog,
       dataSources: refs.dataSources,
@@ -856,6 +1108,8 @@ class SupabaseSessionRepository implements SessionRepository {
       purchasesResult,
       snapshotResult,
       overridesResult,
+      classificationsResult,
+      notesResult,
       membersResult,
       usersResult
     ] = await Promise.all([
@@ -875,6 +1129,8 @@ class SupabaseSessionRepository implements SessionRepository {
         .limit(1)
         .maybeSingle(),
       client.from("projection_overrides").select("*").eq("session_id", sessionId),
+      client.from("team_classifications").select("*").eq("session_id", sessionId),
+      client.from("team_notes").select("*").eq("session_id", sessionId),
       client.from("session_members").select("*").eq("session_id", sessionId),
       client.from("platform_users").select("*")
     ]);
@@ -885,6 +1141,8 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(purchasesResult.error);
     throwOnSupabaseError(snapshotResult.error);
     throwOnSupabaseError(overridesResult.error);
+    throwOnSupabaseError(classificationsResult.error);
+    throwOnSupabaseError(notesResult.error);
     throwOnSupabaseError(membersResult.error);
     throwOnSupabaseError(usersResult.error);
 
@@ -894,9 +1152,11 @@ class SupabaseSessionRepository implements SessionRepository {
 
     const platformUsers = mapPlatformUsers(usersResult.data);
     const baseProjections = sortProjections(
-      (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map(
-        mapTeamProjectionRow
-      ) as TeamProjection[])
+      enrichProjectionFieldScouting(
+        (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map(
+          mapTeamProjectionRow
+        ) as TeamProjection[])
+      )
     );
 
     const overrides = Object.fromEntries(
@@ -912,6 +1172,32 @@ class SupabaseSessionRepository implements SessionRepository {
         } satisfies ProjectionOverride
       ])
     );
+    const teamClassifications = Object.fromEntries(
+      ((classificationsResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => [
+        String(row.team_id),
+        {
+          teamId: String(row.team_id),
+          classification: String(row.classification) as TeamClassificationValue,
+          updatedAt: String(row.updated_at)
+        } satisfies TeamClassificationTag
+      ])
+    );
+    const teamNotes = Object.fromEntries(
+      ((notesResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => [
+        String(row.team_id),
+        {
+          teamId: String(row.team_id),
+          note: String(row.note),
+          updatedAt: String(row.updated_at)
+        } satisfies TeamNoteTag
+      ])
+    );
+
+    const rawAuctionAssets = buildAuctionAssets({
+      baseProjections,
+      bracketImport:
+        (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null
+    });
 
     return normalizeSessionShape({
       id: String(sessionResult.data.id),
@@ -944,6 +1230,8 @@ class SupabaseSessionRepository implements SessionRepository {
       baseProjections,
       projections: applyProjectionOverrides(baseProjections, overrides),
       projectionOverrides: overrides,
+      teamClassifications,
+      teamNotes,
       projectionProvider: String(sessionResult.data.projection_provider),
       activeDataSource: {
         key: String(sessionResult.data.active_data_source_key ?? builtinMockSource.key),
@@ -953,16 +1241,35 @@ class SupabaseSessionRepository implements SessionRepository {
         ) as SessionDataSourceRef["kind"]
       },
       finalFourPairings: sessionResult.data.final_four_pairings as [string, string][],
+      bracketImport:
+        (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null,
+      analysisImport:
+        (sessionResult.data.analysis_import as SessionAnalysisImport | null) ?? null,
+      importReadiness: buildSessionImportReadiness({
+        bracketImport: (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null,
+        analysisImport: (sessionResult.data.analysis_import as SessionAnalysisImport | null) ?? null,
+        baseProjections,
+        simulationSnapshot: (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
+      }),
       liveState: sessionResult.data.live_state as AuctionSession["liveState"],
+      bracketState: (sessionResult.data.bracket_state as BracketState | null) ?? createEmptyBracketState(),
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
-        (row) => ({
-          id: String(row.id),
-          sessionId: String(row.session_id),
-          teamId: String(row.team_id),
-          buyerSyndicateId: String(row.buyer_syndicate_id),
-          price: Number(row.price),
-          createdAt: String(row.created_at)
-        })
+        (row) => {
+          const storedId = String(row.team_id);
+          const matchingAsset = rawAuctionAssets.find((asset) => asset.id === storedId) ?? null;
+
+          return {
+            id: String(row.id),
+            sessionId: String(row.session_id),
+            teamId: storedId,
+            assetId: matchingAsset?.id,
+            assetLabel: matchingAsset?.label,
+            projectionIds: matchingAsset?.projectionIds,
+            buyerSyndicateId: String(row.buyer_syndicate_id),
+            price: Number(row.price),
+            createdAt: String(row.created_at)
+          };
+        }
       )) as AuctionSession["purchases"],
       simulationSnapshot:
         (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
@@ -975,8 +1282,71 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
-    const session = await this.requireSession(sessionId);
-    return session.accessMembers.find((member) => member.id === memberId) ?? null;
+    const result = await requireSupabaseClient()
+      .from("session_members")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("id", memberId)
+      .maybeSingle();
+
+    throwOnSupabaseError(result.error);
+
+    if (!result.data) {
+      return null;
+    }
+
+    return mapAccessMemberRow(result.data as Record<string, unknown>);
+  }
+
+  async getActiveSessionViewers(sessionId: string) {
+    const client = requireSupabaseClient();
+    const [membersResult, presenceResult] = await Promise.all([
+      client.from("session_members").select("*").eq("session_id", sessionId),
+      client
+        .from("session_viewer_presence")
+        .select("session_id, member_id, current_view, last_seen_at")
+        .eq("session_id", sessionId)
+    ]);
+
+    throwOnSupabaseError(membersResult.error);
+    throwOnSupabaseError(presenceResult.error);
+
+    return buildActiveSessionViewers(
+      mapAccessMembers(
+        (membersResult.data as Array<Record<string, unknown>> | null) ?? [],
+        []
+      ),
+      mapSessionViewerPresenceRows(
+        (presenceResult.data as Array<Record<string, unknown>> | null) ?? []
+      ),
+      sessionId
+    );
+  }
+
+  async recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ) {
+    const member = await this.getAccessMember(sessionId, memberId);
+
+    if (!member || !member.active) {
+      throw new Error("Your access to this auction is no longer active.");
+    }
+
+    const result = await requireSupabaseClient().from("session_viewer_presence").upsert(
+      {
+        session_id: sessionId,
+        member_id: memberId,
+        current_view: currentView,
+        last_seen_at: new Date().toISOString()
+      },
+      {
+        onConflict: "session_id,member_id"
+      }
+    );
+
+    throwOnSupabaseError(result.error);
   }
 
   async authenticateMember(email: string, sharedCode: string) {
@@ -1155,34 +1525,27 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async createDataSource(input: {
     name: string;
-    kind: "csv" | "api";
+    kind?: "csv";
+    purpose: DataSourcePurpose;
     active?: boolean;
     csvContent?: string;
     fileName?: string | null;
-    url?: string;
-    bearerToken?: string;
   }) {
     const parsed = createDataSourceSchema.parse(input);
     const now = new Date().toISOString();
-    const config =
-      parsed.kind === "csv"
-        ? {
-            csvContent: parsed.csvContent,
-            fileName: parsed.fileName ?? null
-          }
-        : {
-            url: parsed.url,
-            bearerToken: parsed.bearerToken ?? ""
-          };
     const client = requireSupabaseClient();
     const result = await client
       .from("data_sources")
       .insert({
         id: createId("source"),
         name: parsed.name.trim(),
-        kind: parsed.kind,
+        kind: "csv",
+        purpose: parsed.purpose,
         active: parsed.active,
-        config,
+        config: {
+          csvContent: parsed.csvContent,
+          fileName: parsed.fileName ?? null
+        },
         created_at: now,
         updated_at: now,
         last_tested_at: null
@@ -1200,8 +1563,6 @@ class SupabaseSessionRepository implements SessionRepository {
       active: boolean;
       csvContent: string;
       fileName: string | null;
-      url: string;
-      bearerToken: string;
     }>
   ) {
     const parsed = updateDataSourceSchema.parse(input);
@@ -1217,13 +1578,7 @@ class SupabaseSessionRepository implements SessionRepository {
             fileName:
               parsed.fileName ?? (current.config as { fileName: string | null }).fileName ?? null
           }
-        : {
-            url: parsed.url ?? (current.config as { url: string }).url,
-            bearerToken:
-              parsed.bearerToken ??
-              (current.config as { bearerToken?: string }).bearerToken ??
-              ""
-          };
+        : current.config;
 
     const result = await client
       .from("data_sources")
@@ -1375,6 +1730,92 @@ class SupabaseSessionRepository implements SessionRepository {
     return this.getSessionAdminConfig(sessionId);
   }
 
+  async importSessionBracket(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ) {
+    const refs = await this.readReferenceData();
+    const session = await this.requireSession(sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
+    const bracketImport = resolveSessionImportSelection(input.selection, "bracket", refs.dataSources);
+    if (!bracketImport) {
+      throw new Error("Bracket import payload is required.");
+    }
+    session.bracketImport = bracketImport;
+
+    try {
+      applySessionManagedImports(session);
+      await this.persistProjectionImport(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
+          "success",
+          "Bracket import completed."
+        )
+      );
+      return this.getSessionAdminConfig(sessionId);
+    } catch (error) {
+      await this.persistSessionMeta(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:bracket", name: bracketImport.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import bracket."
+        )
+      );
+      throw error;
+    }
+  }
+
+  async importSessionAnalysis(
+    sessionId: string,
+    input: { selection: SessionSourceSelection }
+  ) {
+    const refs = await this.readReferenceData();
+    const session = await this.requireSession(sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
+    const analysisImport = resolveSessionImportSelection(
+      input.selection,
+      "analysis",
+      refs.dataSources
+    );
+    if (!analysisImport) {
+      throw new Error("Analysis import payload is required.");
+    }
+    session.analysisImport = analysisImport;
+
+    try {
+      applySessionManagedImports(session);
+      await this.persistProjectionImport(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
+          "success",
+          "Analysis import completed."
+        )
+      );
+      return this.getSessionAdminConfig(sessionId);
+    } catch (error) {
+      await this.persistSessionMeta(session);
+      await this.insertImportRun(
+        createImportRun(
+          session.id,
+          { key: "session:analysis", name: analysisImport.sourceName, kind: "csv" },
+          "failed",
+          error instanceof Error ? error.message : "Unable to import analysis."
+        )
+      );
+      throw error;
+    }
+  }
+
   async setSessionDataSource(sessionId: string, sourceKey: string) {
     const refs = await this.readReferenceData();
     const session = await this.requireSession(sessionId);
@@ -1426,7 +1867,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const session = await this.requireSession(sessionId);
     applyLiveStatePatch(session, patch);
@@ -1446,7 +1887,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ) {
     const session = await this.requireSession(sessionId);
     const purchase = applyPurchaseMutation(session, input);
@@ -1474,6 +1915,29 @@ class SupabaseSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const session = await this.requireSession(sessionId);
+    const purchase = undoPurchaseMutation(session, purchaseId);
+    const client = requireSupabaseClient();
+
+    const result = await client.rpc("undo_purchase_transaction", {
+      p_session_id: sessionId,
+      p_purchase_id: purchase.id,
+      p_live_state: session.liveState,
+      p_updated_at: session.updatedAt,
+      p_syndicates: session.syndicates.map((syndicate) => ({
+        id: syndicate.id,
+        spend: syndicate.spend,
+        remaining_bankroll: syndicate.remainingBankroll,
+        owned_team_ids: syndicate.ownedTeamIds,
+        portfolio_expected_value: syndicate.portfolioExpectedValue
+      }))
+    });
+
+    throwOnSupabaseError(result.error);
+    return buildDashboard(session, this.backend);
+  }
+
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
     const session = await this.requireSession(sessionId);
     applyProjectionOverrideMutation(session, teamId, input);
@@ -1485,6 +1949,46 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     clearProjectionOverrideMutation(session, teamId);
     await this.persistProjectionState(session, teamId, true);
+    return buildDashboard(session, this.backend);
+  }
+
+  async saveTeamClassification(
+    sessionId: string,
+    teamId: string,
+    input: TeamClassificationInput
+  ) {
+    const session = await this.requireSession(sessionId);
+    applyTeamClassificationMutation(session, teamId, input);
+    await this.persistTeamClassificationState(session, teamId);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamClassification(sessionId: string, teamId: string) {
+    const session = await this.requireSession(sessionId);
+    clearTeamClassificationMutation(session, teamId);
+    await this.persistTeamClassificationState(session, teamId, true);
+    return buildDashboard(session, this.backend);
+  }
+
+  async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
+    const session = await this.requireSession(sessionId);
+    applyTeamNoteMutation(session, teamId, input);
+    await this.persistTeamNoteState(session, teamId);
+    return buildDashboard(session, this.backend);
+  }
+
+  async clearTeamNote(sessionId: string, teamId: string) {
+    const session = await this.requireSession(sessionId);
+    clearTeamNoteMutation(session, teamId);
+    await this.persistTeamNoteState(session, teamId, true);
+    return buildDashboard(session, this.backend);
+  }
+
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const session = await this.requireSession(sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
+    await this.persistBracketState(session);
     return buildDashboard(session, this.backend);
   }
 
@@ -1647,7 +2151,10 @@ class SupabaseSessionRepository implements SessionRepository {
       active_data_source_name: session.activeDataSource.name,
       active_data_source_kind: session.activeDataSource.kind,
       final_four_pairings: session.finalFourPairings,
+      bracket_import: session.bracketImport,
+      analysis_import: session.analysisImport,
       live_state: session.liveState,
+      bracket_state: session.bracketState,
       created_at: session.createdAt,
       updated_at: session.updatedAt
     });
@@ -1723,6 +2230,30 @@ class SupabaseSessionRepository implements SessionRepository {
         updated_at: override.updatedAt
       }))
     );
+    await replaceRows(
+      client,
+      "team_classifications",
+      "session_id",
+      session.id,
+      Object.values(session.teamClassifications).map((classification) => ({
+        session_id: session.id,
+        team_id: classification.teamId,
+        classification: classification.classification,
+        updated_at: classification.updatedAt
+      }))
+    );
+    await replaceRows(
+      client,
+      "team_notes",
+      "session_id",
+      session.id,
+      Object.values(session.teamNotes).map((note) => ({
+        session_id: session.id,
+        team_id: note.teamId,
+        note: note.note,
+        updated_at: note.updatedAt
+      }))
+    );
     await client.from("simulation_snapshots").delete().eq("session_id", session.id);
     if (session.simulationSnapshot) {
       const snapshotResult = await client.from("simulation_snapshots").insert({
@@ -1792,13 +2323,100 @@ class SupabaseSessionRepository implements SessionRepository {
 
     await this.persistDerivedState(session);
   }
+
+  private async persistTeamClassificationState(
+    session: StoredAuctionSession,
+    teamId: string,
+    cleared = false
+  ) {
+    const client = requireSupabaseClient();
+    await updateAuctionSessionRow(
+      client,
+      {
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+
+    if (cleared) {
+      const deleteClassification = await client
+        .from("team_classifications")
+        .delete()
+        .eq("session_id", session.id)
+        .eq("team_id", teamId);
+      throwOnSupabaseError(deleteClassification.error);
+      return;
+    }
+
+    const classification = session.teamClassifications[teamId];
+    const classificationResult = await client.from("team_classifications").upsert({
+      session_id: session.id,
+      team_id: classification.teamId,
+      classification: classification.classification,
+      updated_at: classification.updatedAt
+    });
+    throwOnSupabaseError(classificationResult.error);
+  }
+
+  private async persistTeamNoteState(
+    session: StoredAuctionSession,
+    teamId: string,
+    cleared = false
+  ) {
+    const client = requireSupabaseClient();
+    await updateAuctionSessionRow(
+      client,
+      {
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+
+    if (cleared) {
+      const deleteNote = await client
+        .from("team_notes")
+        .delete()
+        .eq("session_id", session.id)
+        .eq("team_id", teamId);
+      throwOnSupabaseError(deleteNote.error);
+      return;
+    }
+
+    const note = session.teamNotes[teamId];
+    const noteResult = await client.from("team_notes").upsert({
+      session_id: session.id,
+      team_id: note.teamId,
+      note: note.note,
+      updated_at: note.updatedAt
+    });
+    throwOnSupabaseError(noteResult.error);
+  }
+
+  private async persistBracketState(session: StoredAuctionSession) {
+    await updateAuctionSessionRow(
+      requireSupabaseClient(),
+      {
+        bracket_state: session.bracketState,
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+  }
 }
 
 async function createSessionModel(input: CreateSessionInput, refs: ReferenceData) {
   const parsed = createSessionSchema.parse(input);
   const accessMembers = buildAccessMembers(parsed.accessAssignments, refs.platformUsers);
-  const dataSource = resolveDataSourceRef(parsed.dataSourceKey, refs.dataSources);
-  const projectionFeed = await loadProjectionsFromSource(dataSource, refs.dataSources);
+  const bracketImport = resolveSessionImportSelection(
+    parsed.bracketSelection,
+    "bracket",
+    refs.dataSources
+  );
+  const analysisImport = resolveSessionImportSelection(
+    parsed.analysisSelection,
+    "analysis",
+    refs.dataSources
+  );
   const timestamp = new Date().toISOString();
   const sessionId = createId("session");
   const legacyBudgetSeed = deriveLegacyBudgetSeed(
@@ -1833,25 +2451,37 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     analysisSettings: normalizeAnalysisSettings(parsed.analysisSettings),
     mothershipFunding: buildDefaultMothershipFunding(legacyBudgetSeed),
     syndicates,
-    baseProjections: projectionFeed.teams,
-    projections: projectionFeed.teams,
+    baseProjections: [],
+    projections: [],
     projectionOverrides: {},
-    projectionProvider: projectionFeed.provider,
-    activeDataSource: dataSource,
+    teamClassifications: {},
+    teamNotes: {},
+    projectionProvider: "Session-managed imports",
+    activeDataSource: builtinMockSource,
     finalFourPairings: getDefaultFinalFourPairings(),
+    bracketImport,
+    analysisImport,
+    importReadiness: buildSessionImportReadiness({
+      bracketImport,
+      analysisImport,
+      baseProjections: [],
+      simulationSnapshot: null
+    }),
     liveState: {
-      nominatedTeamId: projectionFeed.teams[0]?.id ?? null,
+      nominatedTeamId: null,
       currentBid: 0,
       soldTeamIds: [],
       lastUpdatedAt: timestamp
     },
+    bracketState: createEmptyBracketState(),
     purchases: [],
     simulationSnapshot: null
   });
 
   setStoredSharedAccessCode(session, parsed.sharedAccessCode);
-
-  recalculateSessionState(session, parsed.simulationIterations);
+  if (session.bracketImport || session.analysisImport) {
+    applySessionManagedImports(session, parsed.simulationIterations);
+  }
   return session;
 }
 
@@ -1865,6 +2495,8 @@ async function applyProjectionImport(
   }
 
   const projectionFeed = await loadProjectionsFromSource(dataSource, dataSources);
+  session.bracketImport = null;
+  session.analysisImport = null;
   session.baseProjections = sortProjections(projectionFeed.teams);
   session.projectionProvider = projectionFeed.provider;
   session.activeDataSource = dataSource;
@@ -1872,6 +2504,11 @@ async function applyProjectionImport(
     session.projectionOverrides,
     session.baseProjections
   );
+  session.teamClassifications = filterTeamClassificationsForProjectionSet(
+    session.teamClassifications,
+    session.baseProjections
+  );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
   session.projections = applyProjectionOverrides(
     session.baseProjections,
     session.projectionOverrides
@@ -1883,7 +2520,90 @@ async function applyProjectionImport(
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
+}
+
+function applySessionManagedImports(
+  session: StoredAuctionSession,
+  requestedIterations?: number
+) {
+  if (session.purchases.length > 0) {
+    throw new Error("Cannot replace projections after purchases have been recorded.");
+  }
+
+  const simulationIterations = requestedIterations ?? session.simulationSnapshot?.iterations;
+  session.updatedAt = new Date().toISOString();
+  session.activeDataSource = {
+    key: "session:managed-imports",
+    name: "Session-managed imports",
+    kind: "csv"
+  };
+  session.projectionProvider = "Session-managed imports";
+  session.baseProjections = [];
+  session.projections = [];
+  session.simulationSnapshot = null;
+  session.liveState = {
+    ...session.liveState,
+    nominatedTeamId: null,
+    currentBid: 0,
+    soldTeamIds: [],
+    lastUpdatedAt: session.updatedAt
+  };
+
+  if (!session.bracketImport || !session.analysisImport) {
+    session.importReadiness = buildSessionImportReadiness({
+      bracketImport: session.bracketImport,
+      analysisImport: session.analysisImport,
+      baseProjections: [],
+      simulationSnapshot: null
+    });
+    return;
+  }
+
+  const merge = mergeBracketAndAnalysisImports(session.bracketImport, session.analysisImport);
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: merge.projections,
+    simulationSnapshot: null
+  });
+
+  if (merge.issues.length > 0) {
+    return;
+  }
+
+  session.baseProjections = sortProjections(merge.projections);
+  session.projectionProvider = `${session.bracketImport.sourceName} + ${session.analysisImport.sourceName}`;
+  session.activeDataSource = {
+    key: "session:managed-imports",
+    name: "Session-managed imports",
+    kind: "csv"
+  };
+  session.projectionOverrides = filterOverridesForProjectionSet(
+    session.projectionOverrides,
+    session.baseProjections
+  );
+  session.teamClassifications = filterTeamClassificationsForProjectionSet(
+    session.teamClassifications,
+    session.baseProjections
+  );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
+  session.projections = applyProjectionOverrides(session.baseProjections, session.projectionOverrides);
+  session.liveState = {
+    ...session.liveState,
+    nominatedTeamId: session.projections[0]?.id ?? null,
+    currentBid: 0,
+    soldTeamIds: [],
+    lastUpdatedAt: session.updatedAt
+  };
+  recalculateSessionState(session, simulationIterations);
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: session.baseProjections,
+    simulationSnapshot: session.simulationSnapshot
+  });
 }
 
 async function applyProjectionImportLegacy(session: StoredAuctionSession, provider: "mock" | "remote") {
@@ -1892,6 +2612,8 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
   }
 
   const projectionFeed = await loadProjectionProvider(provider);
+  session.bracketImport = null;
+  session.analysisImport = null;
   session.baseProjections = sortProjections(projectionFeed.teams);
   session.projectionProvider = projectionFeed.provider;
   session.activeDataSource = provider === "mock" ? builtinMockSource : session.activeDataSource;
@@ -1899,6 +2621,11 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
     session.projectionOverrides,
     session.baseProjections
   );
+  session.teamClassifications = filterTeamClassificationsForProjectionSet(
+    session.teamClassifications,
+    session.baseProjections
+  );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
   session.projections = applyProjectionOverrides(
     session.baseProjections,
     session.projectionOverrides
@@ -1910,6 +2637,7 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -1918,6 +2646,28 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
     session.baseProjections,
     session.projectionOverrides
   );
+  session.auctionAssets = buildAuctionAssets({
+    baseProjections: session.baseProjections,
+    bracketImport: session.bracketImport
+  });
+  session.liveState = normalizeLiveState(
+    session.liveState,
+    session.auctionAssets,
+    session.projections,
+    session.purchases
+  );
+  if (session.projections.length === 0) {
+    session.simulationSnapshot = null;
+    session.syndicates = recalculateSyndicateValues(session);
+    session.updatedAt = new Date().toISOString();
+    session.importReadiness = buildSessionImportReadiness({
+      bracketImport: session.bracketImport,
+      analysisImport: session.analysisImport,
+      baseProjections: session.baseProjections,
+      simulationSnapshot: null
+    });
+    return;
+  }
   session.simulationSnapshot = simulateAuctionField({
     sessionId: session.id,
     projections: session.projections,
@@ -1928,17 +2678,52 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
   });
   session.syndicates = recalculateSyndicateValues(session);
   session.updatedAt = new Date().toISOString();
+  session.importReadiness = buildSessionImportReadiness({
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    baseProjections: session.baseProjections,
+    simulationSnapshot: session.simulationSnapshot
+  });
 }
 
 function applyLiveStatePatch(
   session: StoredAuctionSession,
-  patch: { nominatedTeamId?: string | null; currentBid?: number }
+  patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
 ) {
+  const auctionAssets = session.auctionAssets ?? [];
   const nextState = {
     ...session.liveState,
     ...patch,
     lastUpdatedAt: new Date().toISOString()
   };
+
+  if (patch.nominatedAssetId !== undefined) {
+    if (patch.nominatedAssetId === null) {
+      nextState.nominatedAssetId = null;
+      nextState.nominatedTeamId = null;
+    } else {
+      const asset = auctionAssets.find((candidate) => candidate.id === patch.nominatedAssetId) ?? null;
+      if (!asset) {
+        throw new Error("Selected team does not exist in the tournament field.");
+      }
+      if ((nextState.soldAssetIds ?? []).includes(asset.id)) {
+        throw new Error("That team has already been sold.");
+      }
+
+      nextState.nominatedAssetId = asset.id;
+      nextState.nominatedTeamId = resolveRepresentativeProjectionId(asset, session.projections);
+    }
+  } else if (patch.nominatedTeamId) {
+    const asset = auctionAssets.find((candidate) => candidate.id === patch.nominatedTeamId) ?? null;
+    if (asset) {
+      if ((nextState.soldAssetIds ?? []).includes(asset.id)) {
+        throw new Error("That team has already been sold.");
+      }
+
+      nextState.nominatedAssetId = asset.id;
+      nextState.nominatedTeamId = resolveRepresentativeProjectionId(asset, session.projections);
+    }
+  }
 
   if (
     nextState.nominatedTeamId &&
@@ -1955,8 +2740,8 @@ function applyLiveStatePatch(
   }
 
   if (
-    patch.nominatedTeamId !== undefined &&
-    patch.nominatedTeamId !== session.liveState.nominatedTeamId &&
+    (patch.nominatedAssetId !== undefined || patch.nominatedTeamId !== undefined) &&
+    nextState.nominatedAssetId !== session.liveState.nominatedAssetId &&
     patch.currentBid === undefined
   ) {
     nextState.currentBid = 0;
@@ -1968,23 +2753,28 @@ function applyLiveStatePatch(
 
 function applyPurchaseMutation(
   session: StoredAuctionSession,
-  input: { teamId?: string; buyerSyndicateId: string; price: number }
+  input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
 ) {
   if (input.price <= 0) {
     throw new Error("Enter a bid greater than $0 before recording a purchase.");
   }
 
-  const teamId = input.teamId ?? session.liveState.nominatedTeamId;
-  if (!teamId) {
+  const auctionAssets = session.auctionAssets ?? [];
+  const assetId =
+    input.assetId ??
+    input.teamId ??
+    session.liveState.nominatedAssetId ??
+    session.liveState.nominatedTeamId;
+  if (!assetId) {
     throw new Error("No team is currently nominated.");
   }
 
-  const team = session.projections.find((projection) => projection.id === teamId);
-  if (!team) {
-    throw new Error("The nominated team is missing from projections.");
+  const asset = auctionAssets.find((candidate) => candidate.id === assetId) ?? null;
+  if (!asset) {
+    throw new Error("The nominated team is missing from the tournament field.");
   }
 
-  if (session.purchases.some((purchase) => purchase.teamId === teamId)) {
+  if (session.purchases.some((purchase) => (purchase.assetId ?? purchase.teamId) === asset.id)) {
     throw new Error("That team has already been sold.");
   }
 
@@ -1996,10 +2786,17 @@ function applyPurchaseMutation(
   }
 
   const createdAt = new Date().toISOString();
+  const representativeProjectionId =
+    asset.projectionIds.find((projectionId) =>
+      session.projections.some((projection) => projection.id === projectionId)
+    ) ?? asset.projectionIds[0] ?? asset.id;
   const purchase = {
     id: createId("purchase"),
     sessionId: session.id,
-    teamId,
+    teamId: representativeProjectionId,
+    assetId: asset.id,
+    assetLabel: asset.label,
+    projectionIds: asset.projectionIds,
     buyerSyndicateId: syndicate.id,
     price: roundCurrency(input.price),
     createdAt
@@ -2009,12 +2806,53 @@ function applyPurchaseMutation(
   session.liveState = {
     ...session.liveState,
     currentBid: 0,
+    nominatedAssetId: null,
     nominatedTeamId: null,
-    soldTeamIds: [...session.liveState.soldTeamIds, teamId],
+    soldAssetIds: [...(session.liveState.soldAssetIds ?? []), asset.id],
+    soldTeamIds: [...new Set([...session.liveState.soldTeamIds, ...asset.projectionIds])],
     lastUpdatedAt: createdAt
   };
   session.syndicates = recalculateSyndicateValues(session);
   session.updatedAt = createdAt;
+  return purchase;
+}
+
+function undoPurchaseMutation(session: StoredAuctionSession, purchaseId?: string) {
+  const purchase = session.purchases[session.purchases.length - 1];
+  if (!purchase) {
+    throw new Error("No purchase is available to undo.");
+  }
+
+  if (purchaseId && purchase.id !== purchaseId) {
+    throw new Error("Only the most recent purchase can be undone.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const restoredProjectionIds =
+    purchase.projectionIds && purchase.projectionIds.length > 0
+      ? purchase.projectionIds
+      : [purchase.teamId];
+  const restoredTeamId =
+    restoredProjectionIds.find((teamId) =>
+      session.projections.some((projection) => projection.id === teamId)
+    ) ?? null;
+  const restoredAssetId = purchase.assetId ?? purchase.teamId;
+  session.purchases = session.purchases.filter((candidate) => candidate.id !== purchase.id);
+  session.liveState = {
+    ...session.liveState,
+    nominatedAssetId: restoredAssetId,
+    nominatedTeamId: restoredTeamId,
+    currentBid: purchase.price,
+    soldAssetIds: (session.liveState.soldAssetIds ?? []).filter(
+      (assetId) => assetId !== restoredAssetId
+    ),
+    soldTeamIds: session.liveState.soldTeamIds.filter(
+      (teamId) => !restoredProjectionIds.includes(teamId)
+    ),
+    lastUpdatedAt: updatedAt
+  };
+  session.syndicates = recalculateSyndicateValues(session);
+  session.updatedAt = updatedAt;
   return purchase;
 }
 
@@ -2070,6 +2908,61 @@ function clearProjectionOverrideMutation(session: StoredAuctionSession, teamId: 
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
+function applyTeamClassificationMutation(
+  session: StoredAuctionSession,
+  teamId: string,
+  input: TeamClassificationInput
+) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team classification team not found.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  session.teamClassifications[teamId] = {
+    teamId,
+    classification: input.classification,
+    updatedAt
+  };
+  session.updatedAt = updatedAt;
+}
+
+function clearTeamClassificationMutation(session: StoredAuctionSession, teamId: string) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team classification team not found.");
+  }
+
+  delete session.teamClassifications[teamId];
+  session.updatedAt = new Date().toISOString();
+}
+
+function applyTeamNoteMutation(
+  session: StoredAuctionSession,
+  teamId: string,
+  input: TeamNoteInput
+) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team note team not found.");
+  }
+
+  const parsed = saveTeamNoteSchema.parse(input);
+  const updatedAt = new Date().toISOString();
+  session.teamNotes[teamId] = {
+    teamId,
+    note: parsed.note,
+    updatedAt
+  };
+  session.updatedAt = updatedAt;
+}
+
+function clearTeamNoteMutation(session: StoredAuctionSession, teamId: string) {
+  if (!session.baseProjections.some((projection) => projection.id === teamId)) {
+    throw new Error("Team note team not found.");
+  }
+
+  delete session.teamNotes[teamId];
+  session.updatedAt = new Date().toISOString();
+}
+
 function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] {
   const mothership = requireSessionFocusSyndicate(session);
   return session.syndicates.map((syndicate) => {
@@ -2077,7 +2970,9 @@ function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] 
       (purchase) => purchase.buyerSyndicateId === syndicate.id
     );
     const spend = ownedPurchases.reduce((total, purchase) => total + purchase.price, 0);
-    const ownedTeamIds = ownedPurchases.map((purchase) => purchase.teamId);
+    const ownedTeamIds = [...new Set(
+      ownedPurchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
+    )];
     const portfolioExpectedValue = ownedTeamIds.reduce(
       (total, teamId) =>
         total + (session.simulationSnapshot?.teamResults[teamId]?.expectedGrossPayout ?? 0),
@@ -2385,6 +3280,68 @@ function resolveDataSourceRef(sourceKey: string, dataSources: DataSource[]): Ses
   };
 }
 
+function resolveManagedDataSource(
+  sourceKey: string,
+  purpose: DataSourcePurpose,
+  dataSources: DataSource[]
+) {
+  const source = dataSources.find((candidate) => `data-source:${candidate.id}` === sourceKey) ?? null;
+  if (!source) {
+    throw new Error("Selected data source was not found.");
+  }
+  if (!source.active) {
+    throw new Error("Selected data source is unavailable.");
+  }
+  if (source.kind !== "csv") {
+    throw new Error("Selected data source is not supported for session-managed imports.");
+  }
+  if (source.purpose !== purpose) {
+    throw new Error(
+      purpose === "bracket"
+        ? "Selected data source is not available for bracket imports."
+        : "Selected data source is not available for analysis imports."
+    );
+  }
+
+  return source;
+}
+
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: "bracket",
+  dataSources: DataSource[]
+): SessionBracketImport | null;
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: "analysis",
+  dataSources: DataSource[]
+): SessionAnalysisImport | null;
+function resolveSessionImportSelection(
+  selection: SessionSourceSelection | undefined,
+  purpose: DataSourcePurpose,
+  dataSources: DataSource[]
+) {
+  if (!selection) {
+    return null;
+  }
+
+  if (selection.mode === "saved-source") {
+    const source = resolveManagedDataSource(selection.sourceKey, purpose, dataSources);
+    return parseSessionImportFromSource(source);
+  }
+
+  return purpose === "bracket"
+    ? parseSessionBracketImport(selection.csvContent, selection.sourceName, selection.fileName)
+    : parseSessionAnalysisImport(selection.csvContent, selection.sourceName, selection.fileName);
+}
+
+function parseSessionImportFromSource(source: DataSource) {
+  const config = source.config as { csvContent: string; fileName: string | null };
+  return source.purpose === "bracket"
+    ? parseSessionBracketImport(config.csvContent, source.name, config.fileName)
+    : parseSessionAnalysisImport(config.csvContent, source.name, config.fileName);
+}
+
 function createImportRun(
   sessionId: string,
   source: SessionDataSourceRef,
@@ -2402,7 +3359,10 @@ function createImportRun(
   } satisfies DataImportRun;
 }
 
-function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSummary {
+function buildAdminSessionSummary(
+  session: StoredAuctionSession,
+  viewerPresence: SessionViewerPresence[]
+): AdminSessionSummary {
   const activeMembers = session.accessMembers.filter((member) => member.active);
   return {
     id: session.id,
@@ -2412,20 +3372,30 @@ function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSu
     isArchived: Boolean(session.archivedAt),
     archivedAt: session.archivedAt,
     projectionProvider: session.projectionProvider,
-    activeDataSourceName: session.activeDataSource?.name ?? builtinMockSource.name,
+    bracketSourceName: session.bracketImport?.sourceName ?? null,
+    analysisSourceName: session.analysisImport?.sourceName ?? null,
+    importReadinessStatus: session.importReadiness.status,
+    importReadinessSummary: session.importReadiness.summary,
     purchaseCount: session.purchases.length,
     syndicateCount: session.syndicates.length,
     overrideCount: Object.keys(session.projectionOverrides).length,
     adminCount: activeMembers.filter((member) => member.role === "admin").length,
-    viewerCount: activeMembers.filter((member) => member.role === "viewer").length
+    viewerCount: activeMembers.filter((member) => member.role === "viewer").length,
+    activeViewerCount: buildActiveSessionViewers(session.accessMembers, viewerPresence, session.id)
+      .length
   };
 }
 
-function buildSessionAdminConfig(session: StoredAuctionSession, refs: ReferenceData): SessionAdminConfig {
+function buildSessionAdminConfig(
+  session: StoredAuctionSession,
+  refs: ReferenceData,
+  viewerPresence: SessionViewerPresence[]
+): SessionAdminConfig {
   return {
     session,
     currentSharedAccessCode: getStoredSharedAccessCode(session),
     accessMembers: session.accessMembers,
+    activeViewers: buildActiveSessionViewers(session.accessMembers, viewerPresence, session.id),
     platformUsers: refs.platformUsers,
     syndicateCatalog: refs.syndicateCatalog,
     dataSources: refs.dataSources,
@@ -2484,15 +3454,40 @@ function syncSessionActiveDataSource(
   });
 }
 
+function buildAdminImportReadinessFromSummaryData(args: {
+  bracketImport: SessionBracketImport | null | undefined;
+  analysisImport: SessionAnalysisImport | null | undefined;
+  projectionCount: number;
+}) {
+  const bracketImport = normalizeBracketImport(args.bracketImport);
+  const analysisImport = normalizeAnalysisImport(args.analysisImport);
+  const baseProjections =
+    args.projectionCount > 0 ? buildPlaceholderProjections(args.projectionCount) : [];
+
+  return buildSessionImportReadiness({
+    bracketImport,
+    analysisImport,
+    baseProjections,
+    simulationSnapshot:
+      args.projectionCount > 0
+        ? ({} as NonNullable<StoredAuctionSession["simulationSnapshot"]>)
+        : null
+  });
+}
+
 function normalizeStoreShape(store: SessionStore) {
   return {
     sessions: (store.sessions ?? []).map(normalizeSessionShape),
+    viewerPresence: mapSessionViewerPresenceRows(store.viewerPresence ?? []),
     platformUsers: (store.platformUsers ?? []).map((user) => ({
       ...user,
       email: user.email.trim().toLowerCase()
     })),
     syndicateCatalog: store.syndicateCatalog ?? [],
-    dataSources: store.dataSources ?? [],
+    dataSources: (store.dataSources ?? []).map((source) => ({
+      ...source,
+      purpose: (source.purpose === "bracket" ? "bracket" : "analysis") as DataSourcePurpose
+    })),
     dataImportRuns: store.dataImportRuns ?? [],
     csvAnalysisPortfolios: (store.csvAnalysisPortfolios ?? []).map((portfolio) => ({
       sessionId: String(portfolio.sessionId),
@@ -2503,9 +3498,116 @@ function normalizeStoreShape(store: SessionStore) {
   };
 }
 
+function buildPlaceholderProjections(count: number): TeamProjection[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `summary-${index}`,
+    name: `Summary Team ${index + 1}`,
+    shortName: `S${index + 1}`,
+    region: "East",
+    seed: 1,
+    rating: 0,
+    offense: 0,
+    defense: 0,
+    tempo: 0,
+    source: "summary"
+  }));
+}
+
+function normalizeBracketImport(
+  input: SessionBracketImport | null | undefined
+): SessionBracketImport | null {
+  if (!input) {
+    return null;
+  }
+
+  return {
+    sourceName: String(input.sourceName),
+    fileName: input.fileName ? String(input.fileName) : null,
+    importedAt: String(input.importedAt),
+    teamCount: Number(input.teamCount ?? input.teams.length),
+    teams: (input.teams ?? []).map((team) => ({
+      id: String(team.id),
+      name: String(team.name),
+      shortName: String(team.shortName),
+      region: String(team.region),
+      seed: Number(team.seed),
+      regionSlot: String(team.regionSlot ?? `${team.region}-${team.seed}`),
+      site: team.site ? String(team.site) : null,
+      subregion: team.subregion ? String(team.subregion) : null,
+      isPlayIn: Boolean(team.isPlayIn),
+      playInGroup: team.playInGroup ? String(team.playInGroup) : null,
+      playInSeed: typeof team.playInSeed === "number" ? Number(team.playInSeed) : null
+    }))
+  };
+}
+
+function normalizeAnalysisImport(
+  input: SessionAnalysisImport | null | undefined
+): SessionAnalysisImport | null {
+  if (!input) {
+    return null;
+  }
+
+  return {
+    sourceName: String(input.sourceName),
+    fileName: input.fileName ? String(input.fileName) : null,
+    importedAt: String(input.importedAt),
+    teamCount: Number(input.teamCount ?? input.teams.length),
+    teams: (input.teams ?? []).map((team) => ({
+      teamId: team.teamId ? String(team.teamId) : null,
+      name: String(team.name),
+      shortName: String(team.shortName),
+      rating: Number(team.rating),
+      offense: Number(team.offense),
+      defense: Number(team.defense),
+      tempo: Number(team.tempo),
+      winsAboveBubble:
+        typeof team.winsAboveBubble === "number" ? Number(team.winsAboveBubble) : null,
+      scouting: team.scouting,
+      nateSilverProjection: team.nateSilverProjection
+    }))
+  };
+}
+
+function reattachAnalysisImportMetadata(
+  projections: TeamProjection[],
+  bracketImport: SessionBracketImport | null,
+  analysisImport: SessionAnalysisImport | null
+) {
+  if (!bracketImport || !analysisImport || projections.length === 0) {
+    return projections;
+  }
+
+  const merged = mergeBracketAndAnalysisImports(bracketImport, analysisImport);
+  if (merged.projections.length === 0) {
+    return projections;
+  }
+
+  const metadataById = new Map(
+    merged.projections.map((projection) => [
+      projection.id,
+      {
+        nateSilverProjection: projection.nateSilverProjection
+      }
+    ])
+  );
+
+  return projections.map((projection) => ({
+    ...projection,
+    nateSilverProjection:
+      metadataById.get(projection.id)?.nateSilverProjection ?? projection.nateSilverProjection
+  }));
+}
+
 function normalizeSessionShape(
-  session: Omit<StoredAuctionSession, "mothershipFunding"> & {
+  session: Omit<
+    StoredAuctionSession,
+    "mothershipFunding" | "bracketImport" | "analysisImport" | "importReadiness"
+  > & {
     mothershipFunding?: Partial<MothershipFundingModel>;
+    bracketImport?: SessionBracketImport | null;
+    analysisImport?: SessionAnalysisImport | null;
+    importReadiness?: SessionImportReadiness;
   }
 ): StoredAuctionSession {
   const seedBudget = deriveLegacyBudgetSeed(
@@ -2527,11 +3629,40 @@ function normalizeSessionShape(
   );
   const mothershipFunding = normalizeMothershipFunding(session.mothershipFunding, seedBudget);
   const projectionOverrides = session.projectionOverrides ?? {};
-  const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
+  const teamClassifications = filterTeamClassificationsForProjectionSet(
+    session.teamClassifications ?? {},
+    session.baseProjections ?? session.projections ?? []
+  );
+  const teamNotes = filterTeamNotesForProjectionSet(
+    session.teamNotes ?? {},
+    session.baseProjections ?? session.projections ?? []
+  );
+  const bracketState = normalizeBracketState(session.bracketState);
+  const bracketImport = normalizeBracketImport(session.bracketImport);
+  const analysisImport = normalizeAnalysisImport(session.analysisImport);
+  const baseProjections = sortProjections(
+    reattachAnalysisImportMetadata(
+      session.baseProjections ?? session.projections ?? [],
+      bracketImport,
+      analysisImport
+    )
+  );
   const projections =
     session.projections && session.baseProjections
-      ? sortProjections(session.projections)
+      ? sortProjections(
+          reattachAnalysisImportMetadata(session.projections, bracketImport, analysisImport)
+        )
       : applyProjectionOverrides(baseProjections, projectionOverrides);
+  const auctionAssets = buildAuctionAssets({
+    baseProjections,
+    bracketImport
+  });
+  const liveState = normalizeLiveState(
+    session.liveState,
+    auctionAssets,
+    projections,
+    session.purchases
+  );
   const normalizedSyndicates: Syndicate[] = (session.syndicates ?? []).map((syndicate) => {
     const estimate = normalizeSyndicateEstimate(syndicate, seedBudget);
     const estimateState = deriveSyndicateEstimateState(estimate.estimatedBudget, syndicate.spend ?? 0);
@@ -2604,7 +3735,20 @@ function normalizeSessionShape(
     baseProjections,
     projections,
     projectionOverrides,
-    activeDataSource: session.activeDataSource ?? builtinMockSource
+    activeDataSource: session.activeDataSource ?? builtinMockSource,
+    bracketImport,
+    analysisImport,
+    importReadiness: buildSessionImportReadiness({
+      bracketImport,
+      analysisImport,
+      baseProjections,
+      simulationSnapshot: session.simulationSnapshot ?? null
+    }),
+    auctionAssets,
+    liveState,
+    teamClassifications,
+    teamNotes,
+    bracketState
   };
 }
 
@@ -2615,6 +3759,100 @@ function sortProjections(projections: TeamProjection[]) {
     }
     return left.region.localeCompare(right.region);
   });
+}
+
+function normalizeLiveState(
+  liveState: StoredAuctionSession["liveState"] | undefined,
+  auctionAssets: NonNullable<StoredAuctionSession["auctionAssets"]>,
+  projections: TeamProjection[],
+  purchases: PurchaseRecord[]
+) {
+  const purchasedAssetIds = purchases
+    .map((purchase) => purchase.assetId ?? purchase.teamId)
+    .filter((assetId) => auctionAssets.some((asset) => asset.id === assetId));
+  const purchasedProjectionIds = purchases.flatMap(
+    (purchase) => purchase.projectionIds ?? [purchase.teamId]
+  );
+  const normalized = {
+    nominatedAssetId: liveState?.nominatedAssetId ?? null,
+    nominatedTeamId: liveState?.nominatedTeamId ?? null,
+    currentBid: liveState?.currentBid ?? 0,
+    soldAssetIds: [...new Set([...(liveState?.soldAssetIds ?? []), ...purchasedAssetIds])],
+    soldTeamIds: [...new Set([...(liveState?.soldTeamIds ?? []), ...purchasedProjectionIds])],
+    lastUpdatedAt: liveState?.lastUpdatedAt ?? new Date(0).toISOString()
+  };
+
+  if (
+    normalized.nominatedAssetId &&
+    !auctionAssets.some((asset) => asset.id === normalized.nominatedAssetId)
+  ) {
+    normalized.nominatedAssetId = null;
+  }
+
+  if (normalized.nominatedAssetId) {
+    const asset = auctionAssets.find((candidate) => candidate.id === normalized.nominatedAssetId) ?? null;
+    normalized.nominatedTeamId = asset
+      ? resolveRepresentativeProjectionId(asset, projections)
+      : null;
+  } else if (normalized.nominatedTeamId) {
+    const matchingAsset =
+      auctionAssets.find((asset) => asset.projectionIds.includes(normalized.nominatedTeamId!)) ?? null;
+    normalized.nominatedAssetId = matchingAsset?.id ?? null;
+  } else {
+    normalized.nominatedAssetId = auctionAssets[0]?.id ?? null;
+    normalized.nominatedTeamId = auctionAssets[0]
+      ? resolveRepresentativeProjectionId(auctionAssets[0], projections)
+      : null;
+  }
+
+  normalized.soldAssetIds = normalized.soldAssetIds.filter((assetId) =>
+    auctionAssets.some((asset) => asset.id === assetId)
+  );
+  normalized.soldTeamIds = normalized.soldTeamIds.filter((teamId) =>
+    projections.some((projection) => projection.id === teamId)
+  );
+
+  return normalized;
+}
+
+function resolveRepresentativeProjectionId(
+  asset: AuctionAsset,
+  projections: TeamProjection[]
+) {
+  const directProjection = asset.projectionIds.find((projectionId) =>
+    projections.some((projection) => projection.id === projectionId)
+  );
+  if (directProjection) {
+    return directProjection;
+  }
+
+  const matchingTeamId = asset.memberTeamIds.find((teamId) =>
+    projections.some((projection) => projection.id === teamId)
+  );
+  if (matchingTeamId) {
+    return matchingTeamId;
+  }
+
+  if (asset.seedRange) {
+    return (
+      projections.find(
+        (projection) =>
+          projection.region === asset.region &&
+          projection.seed >= asset.seedRange![0] &&
+          projection.seed <= asset.seedRange![1]
+      )?.id ?? null
+    );
+  }
+
+  if (asset.seed !== null) {
+    return (
+      projections.find(
+        (projection) => projection.region === asset.region && projection.seed === asset.seed
+      )?.id ?? null
+    );
+  }
+
+  return null;
 }
 
 function normalizePayoutRules(
@@ -2649,27 +3887,14 @@ function normalizePayoutRules(
 }
 
 function defaultAnalysisSettings(): AnalysisSettings {
-  return {
-    targetTeamCount: 8,
-    maxSingleTeamPct: 22
-  };
+  return {};
 }
 
 function normalizeAnalysisSettings(
   analysisSettings: Partial<AnalysisSettings> | undefined
 ): AnalysisSettings {
-  const defaults = defaultAnalysisSettings();
-
-  return {
-    targetTeamCount:
-      typeof analysisSettings?.targetTeamCount === "number"
-        ? clamp(Math.round(analysisSettings.targetTeamCount), 2, 24)
-        : defaults.targetTeamCount,
-    maxSingleTeamPct:
-      typeof analysisSettings?.maxSingleTeamPct === "number"
-        ? clamp(analysisSettings.maxSingleTeamPct, 8, 45)
-        : defaults.maxSingleTeamPct
-  };
+  void analysisSettings;
+  return defaultAnalysisSettings();
 }
 
 function applySyndicateFundingUpdates(
@@ -2713,6 +3938,24 @@ function filterOverridesForProjectionSet(
   return Object.fromEntries(
     Object.entries(overrides).filter(([teamId]) => validIds.has(teamId))
   );
+}
+
+function filterTeamClassificationsForProjectionSet(
+  classifications: Record<string, TeamClassificationTag>,
+  baseProjections: TeamProjection[]
+) {
+  const validIds = new Set(baseProjections.map((projection) => projection.id));
+  return Object.fromEntries(
+    Object.entries(classifications).filter(([teamId]) => validIds.has(teamId))
+  );
+}
+
+function filterTeamNotesForProjectionSet(
+  notes: Record<string, TeamNoteTag>,
+  baseProjections: TeamProjection[]
+) {
+  const validIds = new Set(baseProjections.map((projection) => projection.id));
+  return Object.fromEntries(Object.entries(notes).filter(([teamId]) => validIds.has(teamId)));
 }
 
 function findSession(sessions: StoredAuctionSession[], sessionId: string) {
@@ -2766,6 +4009,8 @@ function mapDataSources(rows: Array<Record<string, unknown>> | null | undefined)
     id: String(row.id),
     name: String(row.name),
     kind: String(row.kind) as DataSource["kind"],
+    purpose:
+      String(row.purpose ?? "").toLowerCase() === "bracket" ? "bracket" : "analysis",
     active: Boolean(row.active),
     config: row.config as DataSource["config"],
     createdAt: String(row.created_at),
@@ -2779,21 +4024,85 @@ function mapAccessMembers(
   platformUsers: PlatformUser[]
 ) {
   return rows.map((row) => {
-    const platformUserId = row.platform_user_id ? String(row.platform_user_id) : null;
+    const accessMember = mapAccessMemberRow(row);
+    if (!accessMember.platformUserId) {
+      return accessMember;
+    }
+
     const platformUser =
-      platformUserId
-        ? platformUsers.find((candidate) => candidate.id === platformUserId) ?? null
-        : null;
+      platformUsers.find((candidate) => candidate.id === accessMember.platformUserId) ?? null;
+
     return {
-      id: String(row.id),
-      platformUserId,
-      name: platformUser?.name ?? String(row.name),
-      email: platformUser?.email ?? String(row.email),
-      role: String(row.role) as AccessMember["role"],
-      active: Boolean(row.active),
-      createdAt: String(row.created_at)
+      ...accessMember,
+      name: platformUser?.name ?? accessMember.name,
+      email: platformUser?.email ?? accessMember.email
     } satisfies AccessMember;
   });
+}
+
+function mapAccessMemberRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    platformUserId: row.platform_user_id ? String(row.platform_user_id) : null,
+    name: String(row.name),
+    email: String(row.email),
+    role: String(row.role) as AccessMember["role"],
+    active: Boolean(row.active),
+    createdAt: String(row.created_at)
+  } satisfies AccessMember;
+}
+
+function mapSessionViewerPresenceRows(
+  rows: Array<Record<string, unknown>> | SessionViewerPresence[]
+) {
+  return rows.map((row) => ({
+    sessionId: String("session_id" in row ? row.session_id : row.sessionId),
+    memberId: String("member_id" in row ? row.member_id : row.memberId),
+    currentView: String("current_view" in row ? row.current_view : row.currentView) as SessionPresenceView,
+    lastSeenAt: String("last_seen_at" in row ? row.last_seen_at : row.lastSeenAt)
+  })) satisfies SessionViewerPresence[];
+}
+
+function isPresenceActive(lastSeenAt: string, now = Date.now()) {
+  const timestamp = new Date(lastSeenAt).getTime();
+  if (Number.isNaN(timestamp)) {
+    return false;
+  }
+
+  return now - timestamp <= ACTIVE_VIEWER_WINDOW_MS;
+}
+
+function buildActiveSessionViewers(
+  accessMembers: AccessMember[],
+  viewerPresence: SessionViewerPresence[],
+  sessionId?: string,
+  now = Date.now()
+) {
+  const eligibleMembers = new Map(
+    accessMembers
+      .filter((member) => member.active && member.role === "viewer")
+      .map((member) => [member.id, member])
+  );
+
+  return viewerPresence
+    .filter((entry) => (!sessionId || entry.sessionId === sessionId) && isPresenceActive(entry.lastSeenAt, now))
+    .map((entry) => {
+      const member = eligibleMembers.get(entry.memberId);
+      if (!member) {
+        return null;
+      }
+
+      return {
+        memberId: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+        currentView: entry.currentView,
+        lastSeenAt: entry.lastSeenAt
+      } satisfies ActiveSessionViewer;
+    })
+    .filter((entry): entry is ActiveSessionViewer => entry !== null)
+    .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
 }
 
 function mapTeamProjectionRow(row: Record<string, unknown>): TeamProjection {
@@ -3013,6 +4322,36 @@ function countMembersBySession(rows: Array<Record<string, unknown>>) {
   }, new Map<string, { adminCount: number; viewerCount: number }>());
 }
 
+function countActiveViewerPresenceBySession(
+  presenceRows: Array<Record<string, unknown>>,
+  memberRows: Array<Record<string, unknown>>,
+  now = Date.now()
+) {
+  const eligibleMembers = memberRows.reduce((lookup, row) => {
+    if (!Boolean(row.active) || String(row.role) !== "viewer") {
+      return lookup;
+    }
+
+    lookup.set(`${String(row.session_id)}:${String(row.id ?? row.member_id ?? "")}`, true);
+    return lookup;
+  }, new Map<string, boolean>());
+
+  return presenceRows.reduce((counts, row) => {
+    const sessionId = String(row.session_id);
+    const memberId = String(row.member_id);
+    if (!eligibleMembers.has(`${sessionId}:${memberId}`)) {
+      return counts;
+    }
+
+    if (!isPresenceActive(String(row.last_seen_at), now)) {
+      return counts;
+    }
+
+    counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+}
+
 async function replaceRows(
   client: ReturnType<typeof createServerSupabaseClient>,
   table: string,
@@ -3079,6 +4418,12 @@ function throwOnSupabaseError(
       );
     }
 
+    if (isMissingUndoPurchaseFunctionError(error)) {
+      throw new Error(
+        "Undo purchase requires the latest Supabase schema update. Apply the SQL changes in supabase/schema.sql, then try again."
+      );
+    }
+
     throw new Error(error.message ?? "Supabase request failed.");
   }
 }
@@ -3115,6 +4460,24 @@ function isMissingSharedCodePlaintextColumnError(error: {
     rawText.includes("shared_code_plaintext") &&
     (rawText.includes("schema cache") ||
       rawText.includes("column") ||
+      rawText.includes("does not exist"))
+  );
+}
+
+function isMissingUndoPurchaseFunctionError(error: {
+  message?: string;
+  code?: string;
+  details?: string | null;
+}) {
+  const rawText = [error.message, error.details, error.code]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    rawText.includes("undo_purchase_transaction") &&
+    (rawText.includes("schema cache") ||
+      rawText.includes("function") ||
       rawText.includes("does not exist"))
   );
 }

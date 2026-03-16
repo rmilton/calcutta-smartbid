@@ -75,23 +75,22 @@ describe("buildCsvProjectionFeed", () => {
     expect(analysis.intelligence.ranking.every((row) => row.rankedWins === null)).toBe(true);
   });
 
-  it("builds budget guidance and caps single-team spend", () => {
+  it("builds full-field budget guidance without per-team caps", () => {
     const analysis = buildCsvTeamAnalysis(buildCsvFixture(), "csv-test");
     const plan = buildCsvBudgetPlan(
       analysis,
       {
         bankroll: 10000,
-        targetTeamCount: 8,
-        reservePct: 0.28,
-        maxSingleTeamPct: 0.22
+        reservePct: 0.28
       },
       analysis.teams[0]?.id
     );
 
     expect(plan.investableCash).toBe(7200);
     expect(plan.reservedCash).toBe(2800);
+    expect(plan.rows).toHaveLength(analysis.intelligence.ranking.length);
     expect(plan.selected).not.toBeNull();
-    expect(plan.selected?.maxBid).toBeLessThanOrEqual(2200);
+    expect(plan.selected?.maxBid).toBeGreaterThan(plan.selected?.targetBid ?? 0);
   });
 
   it("defaults to investing the full bankroll with zero reserve", () => {

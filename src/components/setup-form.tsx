@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import {
-  AnalysisSettings,
   DataSource,
+  DataSourcePurpose,
   PlatformUser,
-  SyndicateCatalogEntry,
-  PayoutRules
+  PayoutRules,
+  SyndicateCatalogEntry
 } from "@/lib/types";
 import { getDefaultPayoutRules } from "@/lib/sample-data";
 import { titleCaseStage } from "@/lib/utils";
@@ -23,6 +23,22 @@ interface SetupFormProps {
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
   mothershipSyndicateName: string;
+}
+
+type SourceSetupMode = "later" | "saved-source" | "upload";
+
+interface UploadDraft {
+  sourceName: string;
+  fileName: string;
+  csvContent: string;
+}
+
+function buildUploadDraft(sourceName: string): UploadDraft {
+  return {
+    sourceName,
+    fileName: "",
+    csvContent: ""
+  };
 }
 
 export function SetupForm({
@@ -68,12 +84,29 @@ export function SetupForm({
   );
   const [sharedAccessCode, setSharedAccessCode] = useState("march26");
   const [iterations, setIterations] = useState(4000);
-  const [dataSourceKey, setDataSourceKey] = useState("builtin:mock");
+  const activeBracketSources = useMemo(
+    () => dataSources.filter((source) => source.active && source.purpose === "bracket"),
+    [dataSources]
+  );
+  const activeAnalysisSources = useMemo(
+    () => dataSources.filter((source) => source.active && source.purpose === "analysis"),
+    [dataSources]
+  );
+  const [bracketMode, setBracketMode] = useState<SourceSetupMode>("later");
+  const [analysisMode, setAnalysisMode] = useState<SourceSetupMode>("later");
+  const [bracketSourceKey, setBracketSourceKey] = useState(
+    activeBracketSources[0] ? `data-source:${activeBracketSources[0].id}` : ""
+  );
+  const [analysisSourceKey, setAnalysisSourceKey] = useState(
+    activeAnalysisSources[0] ? `data-source:${activeAnalysisSources[0].id}` : ""
+  );
+  const [bracketUpload, setBracketUpload] = useState<UploadDraft>(
+    buildUploadDraft("Official Bracket")
+  );
+  const [analysisUpload, setAnalysisUpload] = useState<UploadDraft>(
+    buildUploadDraft("Team Analysis")
+  );
   const [payoutRules, setPayoutRules] = useState<PayoutRules>(defaults);
-  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
-    targetTeamCount: 8,
-    maxSingleTeamPct: 22
-  });
   const mothershipSelected =
     mothershipCatalogEntry !== null && selectedSyndicateIds.includes(mothershipCatalogEntry.id);
   const totalPayoutPercent = useMemo(
@@ -99,6 +132,142 @@ export function SetupForm({
     );
   }
 
+  function onCsvFileSelect(
+    file: File | null,
+    setDraft: React.Dispatch<React.SetStateAction<UploadDraft>>
+  ) {
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((current) => ({
+        ...current,
+        fileName: file.name,
+        csvContent: String(reader.result ?? "")
+      }));
+    };
+    reader.readAsText(file);
+  }
+
+  function buildSourceSelection(
+    mode: SourceSetupMode,
+    sourceKey: string,
+    upload: UploadDraft
+  ) {
+    if (mode === "saved-source" && sourceKey) {
+      return {
+        mode: "saved-source" as const,
+        sourceKey
+      };
+    }
+
+    if (mode === "upload" && upload.csvContent.trim()) {
+      return {
+        mode: "upload" as const,
+        sourceName: upload.sourceName,
+        fileName: upload.fileName || null,
+        csvContent: upload.csvContent
+      };
+    }
+
+    return undefined;
+  }
+
+  function renderSourceSection(
+    purpose: DataSourcePurpose,
+    title: string,
+    mode: SourceSetupMode,
+    setMode: React.Dispatch<React.SetStateAction<SourceSetupMode>>,
+    sourceKey: string,
+    setSourceKey: React.Dispatch<React.SetStateAction<string>>,
+    upload: UploadDraft,
+    setUpload: React.Dispatch<React.SetStateAction<UploadDraft>>,
+    sources: DataSource[],
+    placeholder: string
+  ) {
+    return (
+      <section className="surface-card admin-form-section">
+        <div className="admin-form-section__heading">
+          <h2>{title}</h2>
+          <span className="status-pill">
+            {mode === "later" ? "Add later" : mode === "saved-source" ? "Saved source" : "Upload"}
+          </span>
+        </div>
+        <div className="compact-field-grid compact-field-grid--three">
+          <label className="field-shell">
+            <span>Setup mode</span>
+            <select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as SourceSetupMode)}
+            >
+              <option value="later">Add later</option>
+              <option value="saved-source">Saved source</option>
+              <option value="upload">Upload new file</option>
+            </select>
+          </label>
+          {mode === "saved-source" ? (
+            <label className="field-shell">
+              <span>{title} source</span>
+              <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
+                <option value="">Select a source</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={`data-source:${source.id}`}>
+                    {source.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {mode === "upload" ? (
+            <>
+              <label className="field-shell">
+                <span>Source label</span>
+                <input
+                  value={upload.sourceName}
+                  onChange={(event) =>
+                    setUpload((current) => ({
+                      ...current,
+                      sourceName: event.target.value
+                    }))
+                  }
+                  required={mode === "upload"}
+                />
+              </label>
+              <label className="field-shell">
+                <span>CSV file</span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => onCsvFileSelect(event.target.files?.[0] ?? null, setUpload)}
+                />
+              </label>
+              <label className="field-shell admin-inline-span">
+                <span>CSV content</span>
+                <textarea
+                  rows={6}
+                  value={upload.csvContent}
+                  onChange={(event) =>
+                    setUpload((current) => ({
+                      ...current,
+                      csvContent: event.target.value
+                    }))
+                  }
+                  placeholder={placeholder}
+                  required={mode === "upload"}
+                />
+              </label>
+            </>
+          ) : null}
+          {mode === "saved-source" && sources.length === 0 ? (
+            <p className="support-copy">No active {purpose} sources are available yet.</p>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -119,10 +288,10 @@ export function SetupForm({
           sharedAccessCode,
           accessAssignments,
           catalogSyndicateIds: selectedSyndicateIds,
-          dataSourceKey,
+          bracketSelection: buildSourceSelection(bracketMode, bracketSourceKey, bracketUpload),
+          analysisSelection: buildSourceSelection(analysisMode, analysisSourceKey, analysisUpload),
           simulationIterations: iterations,
-          payoutRules,
-          analysisSettings
+          payoutRules
         })
       });
 
@@ -176,19 +345,6 @@ export function SetupForm({
             />
           </label>
           <label className="field-shell">
-            <span>Projection source</span>
-            <select value={dataSourceKey} onChange={(event) => setDataSourceKey(event.target.value)}>
-              <option value="builtin:mock">Built-in Mock Field</option>
-              {dataSources
-                .filter((source) => source.active)
-                .map((source) => (
-                  <option key={source.id} value={`data-source:${source.id}`}>
-                    {source.name} ({source.kind.toUpperCase()})
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="field-shell">
             <span>Projected pot</span>
             <input
               type="number"
@@ -219,47 +375,31 @@ export function SetupForm({
         </div>
       </section>
 
-      <section className="surface-card admin-form-section">
-        <div className="admin-form-section__heading">
-          <h2>Analysis strategy</h2>
-        </div>
-        <div className="compact-field-grid compact-field-grid--three">
-          <label className="field-shell">
-            <span>Target teams</span>
-            <input
-              type="number"
-              min={2}
-              max={24}
-              step={1}
-              value={analysisSettings.targetTeamCount}
-              onChange={(event) =>
-                setAnalysisSettings((current) => ({
-                  ...current,
-                  targetTeamCount: Number(event.target.value)
-                }))
-              }
-              required
-            />
-          </label>
-          <label className="field-shell">
-            <span>Max per-team %</span>
-            <input
-              type="number"
-              min={8}
-              max={45}
-              step={1}
-              value={analysisSettings.maxSingleTeamPct}
-              onChange={(event) =>
-                setAnalysisSettings((current) => ({
-                  ...current,
-                  maxSingleTeamPct: Number(event.target.value)
-                }))
-              }
-              required
-            />
-          </label>
-        </div>
-      </section>
+      {renderSourceSection(
+        "bracket",
+        "Bracket data",
+        bracketMode,
+        setBracketMode,
+        bracketSourceKey,
+        setBracketSourceKey,
+        bracketUpload,
+        setBracketUpload,
+        activeBracketSources,
+        "Required: name, region, seed. Optional: id, shortName, regionSlot, site, subregion, isPlayIn, playInGroup, playInSeed."
+      )}
+
+      {renderSourceSection(
+        "analysis",
+        "Analysis data",
+        analysisMode,
+        setAnalysisMode,
+        analysisSourceKey,
+        setAnalysisSourceKey,
+        analysisUpload,
+        setAnalysisUpload,
+        activeAnalysisSources,
+        "Required: name, rating, offense, defense, tempo. Optional: teamId, shortName, NET Rank, KenPom Rank, Ranked Wins, 3PT%, Q1-Q4 wins."
+      )}
 
       <section className="surface-card admin-form-section">
         <div className="admin-form-section__heading">
