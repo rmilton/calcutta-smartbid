@@ -26,7 +26,7 @@ Additional project context lives in:
 
 ## Live-room code map
 
-- [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces
+- [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
 - [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, and keyboard shortcuts
 - [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace
 - [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace
@@ -214,6 +214,7 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
 - Mothership-owned purchases are the source of truth for owned-team position state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
 - `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
+- the in-room `Analysis` view now leads with a compact selected-team hero that keeps rank, bid guidance, round reach probabilities, classification, note, and scouting signals above the ranking table
 - `Bracket` reflects the same session truth as the live room, including purchased-team ownership markers
 - only the most recent purchase can be undone in the current correction flow
 - session analysis settings are:

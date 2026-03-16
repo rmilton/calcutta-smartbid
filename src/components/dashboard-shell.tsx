@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { Route } from "next";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
@@ -29,7 +29,6 @@ import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 import { OperatorAuctionWorkspace } from "@/components/dashboard-shell/operator-auction-workspace";
 import {
-  MetricCard,
   displayNullableNumber,
   displayNullablePercent,
   formatBreakEvenStage,
@@ -89,6 +88,14 @@ const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
   pass: "Pass"
 };
 
+const analysisRoundLadder = [
+  { stage: "roundOf32", shortLabel: "R32", label: "Round of 32" },
+  { stage: "sweet16", shortLabel: "S16", label: "Sweet 16" },
+  { stage: "elite8", shortLabel: "E8", label: "Elite 8" },
+  { stage: "finalFour", shortLabel: "F4", label: "Final Four" },
+  { stage: "champion", shortLabel: "Champ", label: "Champion" }
+] as const;
+
 function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMember["scope"]) {
   if (scope === "platform" && role === "admin") {
     return "Platform admin";
@@ -111,6 +118,7 @@ export function DashboardShell({
   currentMember
 }: DashboardShellProps) {
   const router = useRouter();
+  const [isAnalysisNoteFocused, setIsAnalysisNoteFocused] = useState(false);
   const availableViews = viewerMode ? viewerViews : editorViews;
   const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const controller = useLiveRoomController({
@@ -262,6 +270,8 @@ export function DashboardShell({
   const analysisTeamNote = analysisRow?.note ?? null;
   const trimmedTeamNoteInput = teamNoteInput.trim();
   const teamNoteIsDirty = trimmedTeamNoteInput !== (analysisTeamNote ?? "");
+  const showAnalysisNoteCounter =
+    isAnalysisNoteFocused || teamNoteInput.length > 0 || Boolean(analysisTeamNote);
   const focusOwnedTeams = useMemo(() => getFocusOwnedTeams(dashboard), [dashboard]);
   const operatorSyndicateHoldings = useMemo(
     () => buildOperatorSyndicateHoldings(dashboard.soldAssets, orderedSyndicateBoard),
@@ -405,6 +415,26 @@ export function DashboardShell({
   const selectedSimulation = analysisDetailTeam
     ? snapshot?.teamResults[analysisDetailTeam.id] ?? null
     : null;
+  const analysisSelectedRank =
+    analysisTeamId && analysisRankIndexLookup.has(analysisTeamId)
+      ? (analysisRankIndexLookup.get(analysisTeamId) ?? 0) + 1
+      : null;
+  const analysisBidGuideDisplay = analysisBudgetRow
+    ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
+    : "Sold / unavailable";
+  const analysisAuctionTeamSummary =
+    analysisDetailAsset && analysisDetailAsset.type !== "single_team"
+      ? formatAssetMembersCompact(analysisDetailAsset, { includeParens: false })
+      : null;
+  const analysisOffDefTempoDisplay = analysisDetailTeam
+    ? `${analysisDetailTeam.offense.toFixed(1)} · ${analysisDetailTeam.defense.toFixed(1)} · ${analysisDetailTeam.tempo.toFixed(1)}`
+    : "--";
+  const analysisThreePointKenPomDisplay = analysisRow
+    ? `${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`
+    : "--";
+  const analysisSimConfidenceDisplay = selectedSimulation
+    ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
+    : "--";
   const breakEvenStage = selectedTeam
     ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
@@ -657,17 +687,312 @@ export function DashboardShell({
           ) : null}
 
           {activeView === "analysis" ? (
-            <section className="detail-grid">
+            <section className="stack-layout">
               <article className="surface-card">
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Analysis</p>
-                    <h2>Session ranking and bid guidance</h2>
                   </div>
                 </div>
 
+                {analysisDetailTeam && analysisRow ? (
+                  <div className="analysis-selected-panel">
+                    <div className="analysis-selected-panel__top">
+                      <div className="analysis-selected-panel__identity">
+                        <div className="team-label">
+                          <TeamLogo
+                            teamId={analysisDetailTeam.id}
+                            teamName={analysisDetailTeam.name}
+                            size="md"
+                            decorative
+                          />
+                          <div className="team-label__copy">
+                            <p className="eyebrow">Selected Team</p>
+                            <h3>{analysisDetailTeam.name}</h3>
+                          </div>
+                        </div>
+                        <div className="analysis-selected-panel__meta">
+                          {analysisDetailAsset && analysisDetailAsset.type !== "single_team" ? (
+                            <span className="status-pill">
+                              Auction team · {analysisDetailAsset.label}
+                            </span>
+                          ) : (
+                            <span className="status-pill">Auction team · Single team</span>
+                          )}
+                          {analysisAuctionTeamSummary ? (
+                            <span className="status-pill status-pill--muted">
+                              {analysisAuctionTeamSummary}
+                            </span>
+                          ) : null}
+                          <span
+                            className={cn(
+                              "status-pill",
+                              !analysisAssetBudget && "status-pill--muted"
+                            )}
+                          >
+                            {analysisAssetBudget
+                              ? `${formatCurrency(analysisAssetBudget.targetBid)} / ${formatCurrency(analysisAssetBudget.maxBid)}`
+                              : "Sold / unavailable"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="analysis-selected-panel__stats">
+                      <div className="analysis-selected-stat">
+                        <span>Rank / percentile</span>
+                        <strong>
+                          {analysisSelectedRank !== null
+                            ? `#${analysisSelectedRank} / ${analysisRow.percentile}th`
+                            : "--"}
+                        </strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Composite score</span>
+                        <strong>{analysisRow.compositeScore.toFixed(3)}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Model rating</span>
+                        <strong>{analysisDetailTeam.rating.toFixed(3)}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Bid guide</span>
+                        <strong>{analysisBidGuideDisplay}</strong>
+                      </div>
+                      <div className="analysis-selected-stat analysis-selected-stat--inline-values">
+                        <span>Off / Def / Tempo</span>
+                        <strong>{analysisOffDefTempoDisplay}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Q1 wins</span>
+                        <strong>{displayNullableNumber(analysisRow.q1Wins)}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Ranked wins</span>
+                        <strong>{displayNullableNumber(analysisRow.rankedWins)}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>3PT / KenPom</span>
+                        <strong>{analysisThreePointKenPomDisplay}</strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Opening bid</span>
+                        <strong>
+                          {analysisBudgetRow ? formatCurrency(analysisBudgetRow.openingBid) : "--"}
+                        </strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Conviction weight</span>
+                        <strong>
+                          {analysisBudgetRow
+                            ? formatPercent(analysisBudgetRow.investableShare)
+                            : "--"}
+                        </strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Sim expected gross</span>
+                        <strong>
+                          {selectedSimulation
+                            ? formatCurrency(selectedSimulation.expectedGrossPayout)
+                            : "--"}
+                        </strong>
+                      </div>
+                      <div className="analysis-selected-stat">
+                        <span>Sim confidence</span>
+                        <strong>{analysisSimConfidenceDisplay}</strong>
+                      </div>
+                    </div>
+
+                    <div className="analysis-round-ladder" aria-label="Round reach probabilities">
+                      {analysisRoundLadder.map(({ stage, shortLabel, label }) => {
+                        const probability = selectedSimulation?.roundProbabilities[stage] ?? null;
+
+                        return (
+                          <div key={stage} className="analysis-round-ladder__step">
+                            <div className="analysis-round-ladder__labels">
+                              <span className="analysis-round-ladder__short">{shortLabel}</span>
+                              <span className="analysis-round-ladder__value">
+                                {probability === null ? "--" : formatPercent(probability)}
+                              </span>
+                            </div>
+                            <div
+                              className="analysis-round-ladder__track"
+                              role="presentation"
+                              aria-hidden="true"
+                            >
+                              <span
+                                className="analysis-round-ladder__fill"
+                                style={{
+                                  width: `${
+                                    probability === null
+                                      ? 0
+                                      : probability > 0
+                                        ? Math.max(3, Math.min(100, probability * 100))
+                                        : 0
+                                  }%`
+                                }}
+                              />
+                            </div>
+                            <span className="analysis-round-ladder__caption">{label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="analysis-selected-panel__toolbar">
+                      <div className="analysis-inline-control analysis-inline-control--classification">
+                        <span className="analysis-inline-control__label">Classification</span>
+                        <div
+                          className="classification-picker classification-picker--compact"
+                          role="radiogroup"
+                          aria-label="Team classification"
+                        >
+                          {TEAM_CLASSIFICATION_ORDER.map((classification) => {
+                            const meta = getTeamClassificationMeta(classification);
+                            const isSelected = analysisTeamClassification === classification;
+
+                            return (
+                              <button
+                                key={classification}
+                                type="button"
+                                className={cn(
+                                  "classification-option",
+                                  meta && `classification-option--${meta.tone}`,
+                                  isSelected && "classification-option--selected"
+                                )}
+                                onClick={() => void saveTeamClassification(classification)}
+                                disabled={isSavingClassification}
+                                aria-pressed={isSelected}
+                              >
+                                <span className="classification-option__icon" aria-hidden="true">
+                                  {meta ? (
+                                    <>
+                                      <Image
+                                        className="classification-option__icon-image"
+                                        src={meta.iconSrc}
+                                        alt=""
+                                        width={20}
+                                        height={20}
+                                        unoptimized
+                                        onError={(event) => {
+                                          event.currentTarget.style.display = "none";
+                                          event.currentTarget.nextElementSibling?.removeAttribute(
+                                            "hidden"
+                                          );
+                                        }}
+                                      />
+                                      <span className="classification-option__icon-fallback" hidden>
+                                        {meta.iconLabel}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                </span>
+                                <span>{meta?.shortLabel ?? meta?.label ?? classification}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamClassification()}
+                          disabled={!analysisTeamClassification || isSavingClassification}
+                        >
+                          Clear
+                        </button>
+                      </div>
+
+                      <div className="analysis-inline-control analysis-inline-control--note">
+                        <span className="analysis-inline-control__label">Team note</span>
+                        <input
+                          className="analysis-note-inline__input"
+                          type="text"
+                          value={teamNoteInput}
+                          onChange={(event) => setTeamNoteInput(event.target.value)}
+                          onFocus={() => setIsAnalysisNoteFocused(true)}
+                          onBlur={() => setIsAnalysisNoteFocused(false)}
+                          maxLength={80}
+                          placeholder="Quick thought on this team"
+                        />
+                        {showAnalysisNoteCounter ? (
+                          <span
+                            className={cn(
+                              "status-pill status-pill--muted analysis-note-counter",
+                              teamNoteInput.length === 0 && "analysis-note-counter--subtle"
+                            )}
+                          >
+                            {teamNoteInput.length}/80
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="button button-accent button--small"
+                          onClick={() => void saveTeamNote()}
+                          disabled={
+                            isSavingTeamNote ||
+                            trimmedTeamNoteInput.length === 0 ||
+                            !teamNoteIsDirty
+                          }
+                        >
+                          Save
+                        </button>
+                        {analysisTeamNote ? (
+                          <button
+                            type="button"
+                            className="button button-ghost button--small"
+                            onClick={() => void clearTeamNote()}
+                            disabled={isSavingTeamNote}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="analysis-selected-panel__signals">
+                      <div className="analysis-signal-card">
+                        <span className="analysis-signal-card__label">Strengths</span>
+                        {analysisRow.strengths.length ? (
+                          <div className="analysis-signal-card__list">
+                            {analysisRow.strengths.map((strength) => (
+                              <div key={strength} className="analysis-signal-card__item">
+                                {strength}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">
+                            No standout strengths from available scouting data.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="analysis-signal-card">
+                        <span className="analysis-signal-card__label">Risks</span>
+                        {analysisRow.risks.length ? (
+                          <div className="analysis-signal-card__list">
+                            {analysisRow.risks.map((risk) => (
+                              <div key={risk} className="analysis-signal-card__item">
+                                {risk}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="empty-copy">
+                            No material risk flags from available scouting data.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="analysis-selected-panel analysis-selected-panel--empty">
+                    <p className="empty-copy">Select a team to inspect deeper analysis.</p>
+                  </div>
+                )}
+
                 <div className="form-grid analysis-search-row">
-                  <label className="field-shell">
+                  <label className="field-shell analysis-search-field">
                     <span>Search</span>
                     <input
                       type="search"
@@ -676,33 +1001,6 @@ export function DashboardShell({
                       placeholder="Type team, package, or abbreviation"
                     />
                   </label>
-                </div>
-
-                <div className="mini-grid analysis-summary-grid analysis-summary-row">
-                  <MetricCard
-                    label="Base room"
-                    value={formatCurrency(dashboard.analysis.investableCash)}
-                    compact
-                  />
-                  <MetricCard
-                    label="Actual paid"
-                    value={formatCurrency(dashboard.analysis.actualPaidSpend)}
-                    compact
-                  />
-                  <MetricCard
-                    label="Stretch room"
-                    value={formatCurrency(Math.max(0, dashboard.analysis.funding.stretchBidRoom))}
-                    compact
-                  />
-                  <MetricCard
-                    label="Effective share price"
-                    value={
-                      dashboard.analysis.funding.impliedSharePrice === null
-                        ? "--"
-                        : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
-                    }
-                    compact
-                  />
                 </div>
 
                 <div className="table-wrap admin-table-wrap">
@@ -777,302 +1075,6 @@ export function DashboardShell({
                     </tbody>
                   </table>
                 </div>
-              </article>
-
-              <article className="surface-card">
-                <div className="section-headline">
-                  <div className="team-label">
-                    {analysisDetailTeam ? (
-                      <TeamLogo
-                        teamId={analysisDetailTeam.id}
-                        teamName={analysisDetailTeam.name}
-                        size="md"
-                        decorative
-                      />
-                    ) : null}
-                    <div className="team-label__copy">
-                      <p className="eyebrow">Selected Team</p>
-                      <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
-                    </div>
-                  </div>
-                </div>
-
-                {analysisDetailTeam && analysisRow ? (
-                  <div className="stack-layout">
-                    {analysisDetailAsset && analysisDetailAsset.type !== "single_team" ? (
-                      <article className="surface-card">
-                        <div className="section-headline">
-                          <div className="team-label">
-                            <AssetLogo
-                              asset={analysisDetailAsset}
-                              teamLookup={teamLookup}
-                              size="md"
-                              decorative
-                            />
-                            <div className="team-label__copy">
-                              <p className="eyebrow">Auction Team</p>
-                              <h3>{analysisDetailAsset.label}</h3>
-                            </div>
-                          </div>
-                          {analysisAssetBudget ? (
-                            <span className="status-pill">
-                              {formatCurrency(analysisAssetBudget.targetBid)} /{" "}
-                              {formatCurrency(analysisAssetBudget.maxBid)}
-                            </span>
-                          ) : (
-                            <span className="status-pill status-pill--muted">
-                              Sold / unavailable
-                            </span>
-                          )}
-                        </div>
-                        <p className="decision-panel__note">
-                          {formatAssetMembersCompact(analysisDetailAsset)}
-                        </p>
-                      </article>
-                    ) : null}
-
-                    <article className="surface-card">
-                      <div className="section-headline">
-                        <div>
-                          <p className="eyebrow">Classification</p>
-                        </div>
-                        {analysisTeamClassification ? (
-                          <TeamClassificationBadge classification={analysisTeamClassification} />
-                        ) : (
-                          <span className="status-pill status-pill--muted">Unclassified</span>
-                        )}
-                      </div>
-                      <div className="classification-picker" role="radiogroup" aria-label="Team classification">
-                        {TEAM_CLASSIFICATION_ORDER.map((classification) => {
-                          const meta = getTeamClassificationMeta(classification);
-                          const isSelected = analysisTeamClassification === classification;
-
-                          return (
-                            <button
-                              key={classification}
-                              type="button"
-                              className={cn(
-                                "classification-option",
-                                meta && `classification-option--${meta.tone}`,
-                                isSelected && "classification-option--selected"
-                              )}
-                              onClick={() => void saveTeamClassification(classification)}
-                              disabled={isSavingClassification}
-                              aria-pressed={isSelected}
-                            >
-                              <span className="classification-option__icon" aria-hidden="true">
-                                {meta ? (
-                                  <>
-                                    <Image
-                                      className="classification-option__icon-image"
-                                      src={meta.iconSrc}
-                                      alt=""
-                                      width={20}
-                                      height={20}
-                                      unoptimized
-                                      onError={(event) => {
-                                        event.currentTarget.style.display = "none";
-                                        event.currentTarget.nextElementSibling?.removeAttribute(
-                                          "hidden"
-                                        );
-                                      }}
-                                    />
-                                    <span className="classification-option__icon-fallback" hidden>
-                                      {meta.iconLabel}
-                                    </span>
-                                  </>
-                                ) : null}
-                              </span>
-                              <span>{meta?.label ?? classification}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="button-row analysis-annotation-actions">
-                        <button
-                          type="button"
-                          className="button button-ghost button--small"
-                          onClick={() => void clearTeamClassification()}
-                          disabled={!analysisTeamClassification || isSavingClassification}
-                        >
-                          Clear classification
-                        </button>
-                      </div>
-                    </article>
-
-                    <article className="surface-card">
-                      <div className="section-headline">
-                        <div>
-                          <p className="eyebrow">Team Note</p>
-                        </div>
-                        {teamNoteInput.length > 0 ? (
-                          <span className="status-pill status-pill--muted">
-                            {teamNoteInput.length}/80
-                          </span>
-                        ) : null}
-                      </div>
-                      <label className="field-shell">
-                        <span>Short note</span>
-                        <input
-                          type="text"
-                          value={teamNoteInput}
-                          onChange={(event) => setTeamNoteInput(event.target.value)}
-                          maxLength={80}
-                          placeholder="Quick thought on this team"
-                        />
-                      </label>
-                      <div className="button-row analysis-annotation-actions">
-                        <button
-                          type="button"
-                          className="button button-primary button--small"
-                          onClick={() => void saveTeamNote()}
-                          disabled={
-                            isSavingTeamNote ||
-                            trimmedTeamNoteInput.length === 0 ||
-                            !teamNoteIsDirty
-                          }
-                        >
-                          Save note
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-ghost button--small"
-                          onClick={() => void clearTeamNote()}
-                          disabled={!analysisTeamNote || isSavingTeamNote}
-                        >
-                          Clear note
-                        </button>
-                      </div>
-                    </article>
-
-                    <div className="metric-grid">
-                      <MetricCard
-                        label="Rank / percentile"
-                        value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === analysisDetailTeam.id) + 1} / ${analysisRow.percentile}th`}
-                      />
-                      <MetricCard
-                        label="Composite score"
-                        value={analysisRow.compositeScore.toFixed(3)}
-                      />
-                      <MetricCard
-                        label="Model rating"
-                        value={analysisDetailTeam.rating.toFixed(3)}
-                      />
-                      <MetricCard
-                        label="Bid guide"
-                        value={
-                          analysisBudgetRow
-                            ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
-                            : "Sold / unavailable"
-                        }
-                        longValue={Boolean(analysisBudgetRow)}
-                      />
-                    </div>
-
-                    <div className="metric-grid">
-                      <MetricCard
-                        label="Off / Def / Tempo"
-                        value={`${analysisDetailTeam.offense.toFixed(1)} / ${analysisDetailTeam.defense.toFixed(1)} / ${analysisDetailTeam.tempo.toFixed(1)}`}
-                      />
-                      <MetricCard
-                        label="Q1 wins"
-                        value={displayNullableNumber(analysisRow.q1Wins)}
-                      />
-                      <MetricCard
-                        label="Ranked wins"
-                        value={displayNullableNumber(analysisRow.rankedWins)}
-                      />
-                      <MetricCard
-                        label="3PT / KenPom"
-                        value={`${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
-                      />
-                    </div>
-
-                    <div className="detail-grid">
-                      <article className="surface-card">
-                        <div className="section-headline">
-                          <div>
-                            <p className="eyebrow">Strengths</p>
-                            <h3>Why it scores well</h3>
-                          </div>
-                        </div>
-                        {analysisRow.strengths.length ? (
-                          <div className="list-stack">
-                            {analysisRow.strengths.map((strength) => (
-                              <div key={strength} className="list-line">
-                                {strength}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="empty-copy">
-                            No standout strengths from available scouting data.
-                          </p>
-                        )}
-                      </article>
-
-                      <article className="surface-card">
-                        <div className="section-headline">
-                          <div>
-                            <p className="eyebrow">Risks</p>
-                            <h3>What can suppress conviction</h3>
-                          </div>
-                        </div>
-                        {analysisRow.risks.length ? (
-                          <div className="list-stack">
-                            {analysisRow.risks.map((risk) => (
-                              <div key={risk} className="list-line">
-                                {risk}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="empty-copy">
-                            No material risk flags from available scouting data.
-                          </p>
-                        )}
-                      </article>
-                    </div>
-
-                    <div className="metric-grid">
-                      <MetricCard
-                        label="Sim expected gross"
-                        value={
-                          selectedSimulation
-                            ? formatCurrency(selectedSimulation.expectedGrossPayout)
-                            : "--"
-                        }
-                      />
-                      <MetricCard
-                        label="Sim confidence"
-                        value={
-                          selectedSimulation
-                            ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
-                            : "--"
-                        }
-                        longValue={Boolean(selectedSimulation)}
-                      />
-                      <MetricCard
-                        label="Conviction weight"
-                        value={
-                          analysisBudgetRow
-                            ? formatPercent(analysisBudgetRow.investableShare)
-                            : "--"
-                        }
-                      />
-                      <MetricCard
-                        label="Opening bid"
-                        value={
-                          analysisBudgetRow
-                            ? formatCurrency(analysisBudgetRow.openingBid)
-                            : "--"
-                        }
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="empty-copy">Select a team to inspect deeper analysis.</p>
-                )}
               </article>
             </section>
           ) : null}
