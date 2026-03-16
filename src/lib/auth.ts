@@ -232,6 +232,19 @@ export async function requireAuthenticatedMemberForSession(
   } satisfies AuthenticatedMember;
 }
 
+export async function requireAuthenticatedSessionMemberForSession(
+  sessionId: string,
+  requiredRole: SessionRole = "viewer"
+) {
+  const auth = await requireAuthenticatedMemberForSession(sessionId, requiredRole);
+
+  if (auth.scope !== "session" || !auth.memberId) {
+    throw new Error("Session member login is required.");
+  }
+
+  return auth;
+}
+
 export async function requirePlatformAdmin() {
   const auth = await getAuthenticatedMember();
   if (!auth) {
@@ -275,6 +288,25 @@ export async function buildAuthErrorResponse(
     const message =
       error instanceof Error ? error.message : "Authentication required.";
     const status = message === "You do not have permission to perform this action." ? 403 : 401;
+    return jsonError(message, status);
+  }
+}
+
+export async function buildSessionMemberAuthErrorResponse(
+  sessionId: string,
+  requiredRole: SessionRole = "viewer"
+) {
+  try {
+    await requireAuthenticatedSessionMemberForSession(sessionId, requiredRole);
+    return null;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Authentication required.";
+    const status =
+      message === "You do not have permission to perform this action." ||
+      message === "Session member login is required."
+        ? 403
+        : 401;
     return jsonError(message, status);
   }
 }

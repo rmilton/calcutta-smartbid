@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  useCallback,
   Dispatch,
   FormEvent,
   SetStateAction,
@@ -20,6 +21,7 @@ import {
   DataSource,
   MothershipFundingModel,
   PayoutRules,
+  SessionPresenceView,
   SessionAdminConfig,
   Syndicate
 } from "@/lib/types";
@@ -132,6 +134,21 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatWorkspaceView(view: SessionPresenceView) {
+  return (
+    {
+      auction: "Auction",
+      analysis: "Analysis",
+      bracket: "Bracket",
+      overrides: "Overrides"
+    } satisfies Record<SessionPresenceView, string>
+  )[view];
+}
+
+function formatRoleLabel(role: "admin" | "viewer") {
+  return role === "admin" ? "Operator" : "Viewer";
+}
+
 function buildSyndicateFundingDrafts(syndicates: Syndicate[]) {
   return Object.fromEntries(
     syndicates
@@ -156,6 +173,7 @@ export function SessionAdminCenter({
   const [isPending, startTransition] = useTransition();
   const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const [activeTab, setActiveTab] = useState<SessionTab>("settings");
+  const [presenceRefreshedAt, setPresenceRefreshedAt] = useState(() => new Date().toISOString());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
   const [sharedAccessCode, setSharedAccessCode] = useState("");
@@ -296,7 +314,7 @@ export function SessionAdminCenter({
     setAnalysisSourceKey(getSourceKeyForImport(config.session.analysisImport, activeAnalysisSources));
   }, [activeAnalysisSources, activeBracketSources, config]);
 
-  async function refreshConfig() {
+  const refreshConfig = useCallback(async () => {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
       cache: "no-store"
     });
@@ -306,7 +324,47 @@ export function SessionAdminCenter({
     }
     const payload = (await response.json()) as SessionAdminConfig;
     setConfig(payload);
-  }
+    setPresenceRefreshedAt(new Date().toISOString());
+  }, [config.session.id]);
+
+  const refreshPresence = useCallback(async () => {
+    const response = await fetch(`/api/admin/sessions/${config.session.id}/presence`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Unable to refresh active viewers.");
+    }
+
+    const payload = (await response.json()) as {
+      activeViewers: SessionAdminConfig["activeViewers"];
+    };
+    setConfig((current) => ({
+      ...current,
+      activeViewers: payload.activeViewers
+    }));
+    setPresenceRefreshedAt(new Date().toISOString());
+  }, [config.session.id]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshPresence().catch(() => undefined);
+      }
+    }, 30_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPresence().catch(() => undefined);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshPresence]);
 
   async function submitJson(
     url: string,
@@ -331,6 +389,7 @@ export function SessionAdminCenter({
     const payload = (await response.json()) as SessionAdminConfig | null;
     if (payload) {
       setConfig(payload);
+      setPresenceRefreshedAt(new Date().toISOString());
     } else {
       await refreshConfig();
     }
@@ -842,6 +901,40 @@ export function SessionAdminCenter({
         <section className="admin-access-layout">
           <article className="surface-card admin-pane admin-access-users">
             <form onSubmit={onSaveAccess}>
+              <section className="admin-presence-card">
+                <div className="admin-presence-card__header">
+                  <div>
+                    <p className="eyebrow">Watching now</p>
+                    <h2>{config.activeViewers.length} active viewer{config.activeViewers.length === 1 ? "" : "s"}</h2>
+                  </div>
+                  <div className="admin-presence-card__meta">
+                    <span className="status-pill">
+                      Refreshed {formatDateTime(presenceRefreshedAt)}
+                    </span>
+                  </div>
+                </div>
+                {config.activeViewers.length ? (
+                  <div className="admin-presence-list">
+                    {config.activeViewers.map((viewer) => (
+                      <div key={viewer.memberId} className="admin-presence-row">
+                        <div className="admin-presence-row__identity">
+                          <strong>{viewer.name}</strong>
+                          <span>{viewer.email}</span>
+                        </div>
+                        <div className="admin-presence-row__meta">
+                          <span className="status-pill status-pill--muted">
+                            {formatRoleLabel(viewer.role)}
+                          </span>
+                          <span>{formatWorkspaceView(viewer.currentView)}</span>
+                          <span>Seen {formatDateTime(viewer.lastSeenAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-copy">No viewers currently watching.</p>
+                )}
+              </section>
               <div className="admin-pane__header admin-pane__section-header">
                 <h2>Users</h2>
                 <div className="button-row">

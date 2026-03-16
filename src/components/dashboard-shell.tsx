@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { Route } from "next";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
@@ -181,6 +181,48 @@ export function DashboardShell({
     clearTeamNote,
     saveBracketWinner
   } = controller;
+
+  const sendPresenceHeartbeat = useCallback(async () => {
+    if (currentMember.scope !== "session" || document.visibilityState !== "visible") {
+      return;
+    }
+
+    await fetch(`/api/sessions/${sessionId}/presence`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        currentView: activeView
+      })
+    });
+  }, [activeView, currentMember.scope, sessionId]);
+
+  useEffect(() => {
+    if (currentMember.scope !== "session") {
+      return;
+    }
+
+    void sendPresenceHeartbeat();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void sendPresenceHeartbeat();
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void sendPresenceHeartbeat();
+      }
+    }, 60_000);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [currentMember.scope, sendPresenceHeartbeat]);
 
   const snapshot = dashboard.session.simulationSnapshot;
   const liveSession = useMemo(

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, Fragment, useMemo, useState, useTransition } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -83,6 +83,10 @@ function getStatusClass(active: boolean) {
 
 function formatSessionAccess(adminCount: number, viewerCount: number) {
   return `${adminCount} operator${adminCount === 1 ? "" : "s"} / ${viewerCount} viewer${viewerCount === 1 ? "" : "s"}`;
+}
+
+function formatActiveViewerCount(count: number) {
+  return `${count} active`;
 }
 
 function applyStatusFilter<T extends { active: boolean }>(items: T[], filter: StatusFilter) {
@@ -208,7 +212,7 @@ export function AdminCenter({
     () => filteredSources.filter((source) => source.purpose === "analysis"),
     [filteredSources]
   );
-  async function refreshData() {
+  const refreshData = useCallback(async () => {
     const response = await fetch("/api/admin/center", { cache: "no-store" });
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
@@ -217,7 +221,27 @@ export function AdminCenter({
 
     const payload = (await response.json()) as AdminCenterData;
     setData(payload);
-  }
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshData().catch(() => undefined);
+      }
+    }, 30_000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshData().catch(() => undefined);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshData]);
 
   async function submitJson(
     url: string,
@@ -817,6 +841,7 @@ export function AdminCenter({
                     <th>Purchases</th>
                     <th>Syndicates</th>
                     <th>Access</th>
+                    <th>Live viewers</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -846,6 +871,7 @@ export function AdminCenter({
                       <td>{session.purchaseCount}</td>
                       <td>{session.syndicateCount}</td>
                       <td>{formatSessionAccess(session.adminCount, session.viewerCount)}</td>
+                      <td>{formatActiveViewerCount(session.activeViewerCount)}</td>
                       <td>
                         <div className="admin-table-actions">
                           <Link

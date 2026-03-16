@@ -1225,4 +1225,88 @@ describe("repository bracket state", () => {
     reloadedSession = await reloadedRepository.getSession(session.id);
     expect(reloadedSession?.bracketState.winnersByGameId["south-round-of-64-1"]).toBe("south-1");
   });
+
+  it("upserts viewer presence, counts active viewers, and excludes stale or removed viewers", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const viewer = await repository.createPlatformUser({
+      name: "Viewer One",
+      email: "viewer@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    const session = await repository.createSession({
+      name: "Presence Test",
+      sharedAccessCode: "presence123",
+      accessAssignments: [
+        { platformUserId: operator.id, role: "admin" },
+        { platformUserId: viewer.id, role: "viewer" }
+      ],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {},
+      simulationIterations: 1000
+    });
+
+    const viewerMember = session.accessMembers.find((member) => member.email === viewer.email);
+    expect(viewerMember).toBeDefined();
+
+    if (!viewerMember) {
+      throw new Error("Expected viewer session member.");
+    }
+
+    await repository.recordViewerPresence(session.id, viewerMember.id, "auction");
+    await repository.recordViewerPresence(session.id, viewerMember.id, "bracket");
+
+    let config = await repository.getSessionAdminConfig(session.id);
+    expect(config.activeViewers).toHaveLength(1);
+    expect(config.activeViewers[0]).toMatchObject({
+      memberId: viewerMember.id,
+      email: "viewer@example.com",
+      currentView: "bracket"
+    });
+
+    let sessions = await repository.listSessions();
+    expect(sessions.find((entry) => entry.id === session.id)?.activeViewerCount).toBe(1);
+
+    const rawStore = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      viewerPresence: Array<{ sessionId: string; memberId: string; lastSeenAt: string }>;
+    };
+    rawStore.viewerPresence = rawStore.viewerPresence.map((entry) =>
+      entry.sessionId === session.id && entry.memberId === viewerMember.id
+        ? {
+            ...entry,
+            lastSeenAt: "2000-01-01T00:00:00.000Z"
+          }
+        : entry
+    );
+    await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
+
+    let reloadedRepository = await loadRepository();
+    config = await reloadedRepository.getSessionAdminConfig(session.id);
+    expect(config.activeViewers).toHaveLength(0);
+
+    await reloadedRepository.recordViewerPresence(session.id, viewerMember.id, "auction");
+    await reloadedRepository.updateSessionAccess(session.id, [
+      { platformUserId: operator.id, role: "admin" }
+    ]);
+
+    reloadedRepository = await loadRepository();
+    config = await reloadedRepository.getSessionAdminConfig(session.id);
+    expect(config.activeViewers).toHaveLength(0);
+
+    sessions = await reloadedRepository.listSessions();
+    expect(sessions.find((entry) => entry.id === session.id)?.activeViewerCount).toBe(0);
+  });
 });

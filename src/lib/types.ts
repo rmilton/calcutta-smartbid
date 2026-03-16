@@ -29,6 +29,7 @@ export type BracketRoundKey =
   | "championship";
 export type SessionImportMode = "legacy" | "session-imports";
 export type SessionImportStatus = "ready" | "attention";
+export type SessionPresenceView = "auction" | "analysis" | "bracket" | "overrides";
 export type TeamClassificationValue =
   | "must-have"
   | "love-at-right-price"
@@ -425,6 +426,22 @@ export interface AccessMember {
   createdAt: string;
 }
 
+export interface SessionViewerPresence {
+  sessionId: string;
+  memberId: string;
+  currentView: SessionPresenceView;
+  lastSeenAt: string;
+}
+
+export interface ActiveSessionViewer {
+  memberId: string;
+  name: string;
+  email: string;
+  role: SessionRole;
+  currentView: SessionPresenceView;
+  lastSeenAt: string;
+}
+
 export interface SyndicateCatalogEntry {
   id: string;
   name: string;
@@ -609,6 +626,7 @@ export interface AdminSessionSummary {
   overrideCount: number;
   adminCount: number;
   viewerCount: number;
+  activeViewerCount: number;
 }
 
 export interface AdminCenterData {
@@ -632,6 +650,7 @@ export interface SessionAdminConfig {
   session: AuctionSession;
   currentSharedAccessCode: string | null;
   accessMembers: AccessMember[];
+  activeViewers: ActiveSessionViewer[];
   platformUsers: PlatformUser[];
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
@@ -862,6 +881,10 @@ export const saveCsvAnalysisPortfolioSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   sharedCode: z.string().min(4).max(64)
+});
+
+export const sessionPresenceHeartbeatSchema = z.object({
+  currentView: z.enum(["auction", "analysis", "bracket", "overrides"])
 });
 
 export const updateSessionAccessSchema = z.object({

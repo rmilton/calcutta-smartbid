@@ -44,6 +44,7 @@ import { getSyndicateBrandColor } from "@/lib/syndicate-colors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   AccessMember,
+  ActiveSessionViewer,
   AnalysisSettings,
   AdminCenterData,
   AdminSessionSummary,
@@ -65,10 +66,12 @@ import {
   SessionAdminConfig,
   SessionDataSourceRef,
   SessionImportReadiness,
+  SessionPresenceView,
   SessionRole,
   SessionBracketImport,
   SessionSourceSelection,
   SessionSyndicateFundingInput,
+  SessionViewerPresence,
   StoredAuctionSession,
   StorageBackend,
   Syndicate,
@@ -91,6 +94,7 @@ import { createId, roundCurrency } from "@/lib/utils";
 
 interface SessionStore {
   sessions: StoredAuctionSession[];
+  viewerPresence: SessionViewerPresence[];
   platformUsers: PlatformUser[];
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
@@ -133,6 +137,7 @@ const builtinMockSource: SessionDataSourceRef = {
   name: "Built-in Mock Field",
   kind: "builtin"
 };
+const ACTIVE_VIEWER_WINDOW_MS = 5 * 60 * 1000;
 
 export interface SessionRepository {
   backend: StorageBackend;
@@ -140,9 +145,15 @@ export interface SessionRepository {
   listSessions(): Promise<AdminSessionSummary[]>;
   getAdminCenterData(): Promise<AdminCenterData>;
   getSessionAdminConfig(sessionId: string): Promise<SessionAdminConfig>;
+  getActiveSessionViewers(sessionId: string): Promise<ActiveSessionViewer[]>;
   getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
   getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
+  recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ): Promise<void>;
   authenticateMember(
     email: string,
     sharedCode: string
@@ -274,14 +285,16 @@ class LocalSessionRepository implements SessionRepository {
   async listSessions() {
     const store = await this.readStore();
     return store.sessions
-      .map((session) => buildAdminSessionSummary(session))
+      .map((session) => buildAdminSessionSummary(session, store.viewerPresence))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   async getAdminCenterData() {
     const store = await this.readStore();
     return {
-      sessions: await this.listSessions(),
+      sessions: store.sessions
+        .map((session) => buildAdminSessionSummary(session, store.viewerPresence))
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
       platformUsers: [...store.platformUsers].sort(sortByName),
       syndicateCatalog: [...store.syndicateCatalog].sort(sortByName),
       dataSources: [...store.dataSources].sort(sortByName)
@@ -291,7 +304,13 @@ class LocalSessionRepository implements SessionRepository {
   async getSessionAdminConfig(sessionId: string) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
+  }
+
+  async getActiveSessionViewers(sessionId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    return buildActiveSessionViewers(session.accessMembers, store.viewerPresence, session.id);
   }
 
   async getSession(sessionId: string) {
@@ -307,6 +326,37 @@ class LocalSessionRepository implements SessionRepository {
   async getAccessMember(sessionId: string, memberId: string) {
     const session = await this.requireSession(sessionId);
     return session.accessMembers.find((member) => member.id === memberId) ?? null;
+  }
+
+  async recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ) {
+    const store = await this.readStore();
+    const member = await this.getAccessMember(sessionId, memberId);
+
+    if (!member || !member.active) {
+      throw new Error("Your access to this auction is no longer active.");
+    }
+
+    const nextPresence: SessionViewerPresence = {
+      sessionId,
+      memberId,
+      currentView,
+      lastSeenAt: new Date().toISOString()
+    };
+    const existingIndex = store.viewerPresence.findIndex(
+      (entry) => entry.sessionId === sessionId && entry.memberId === memberId
+    );
+
+    if (existingIndex >= 0) {
+      store.viewerPresence[existingIndex] = nextPresence;
+    } else {
+      store.viewerPresence.push(nextPresence);
+    }
+
+    await this.writeStore(store);
   }
 
   async authenticateMember(email: string, sharedCode: string) {
@@ -496,7 +546,7 @@ class LocalSessionRepository implements SessionRepository {
     session.accessMembers = buildAccessMembers(assignments, store.platformUsers, session.accessMembers);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async rotateSessionSharedCode(sessionId: string, sharedAccessCode: string) {
@@ -506,7 +556,7 @@ class LocalSessionRepository implements SessionRepository {
     setStoredSharedAccessCode(session, sharedAccessCode);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionPayoutRules(sessionId: string, payoutRules: PayoutRules) {
@@ -514,7 +564,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyPayoutRulesMutation(session, payoutRules);
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionFunding(sessionId: string, mothershipFunding: MothershipFundingModel) {
@@ -522,7 +572,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyMothershipFundingMutation(session, mothershipFunding);
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async updateSessionAnalysisSettings(sessionId: string, analysisSettings: AnalysisSettings) {
@@ -531,7 +581,7 @@ class LocalSessionRepository implements SessionRepository {
     session.analysisSettings = normalizeAnalysisSettings(analysisSettings);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async archiveSession(
@@ -593,7 +643,7 @@ class LocalSessionRepository implements SessionRepository {
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async importSessionBracket(
@@ -626,7 +676,7 @@ class LocalSessionRepository implements SessionRepository {
         )
       );
       await this.writeStore(store);
-      return buildSessionAdminConfig(session, store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
     } catch (error) {
       store.dataImportRuns.push(
         createImportRun(
@@ -671,7 +721,7 @@ class LocalSessionRepository implements SessionRepository {
         )
       );
       await this.writeStore(store);
-      return buildSessionAdminConfig(session, store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
     } catch (error) {
       store.dataImportRuns.push(
         createImportRun(
@@ -692,7 +742,7 @@ class LocalSessionRepository implements SessionRepository {
     session.activeDataSource = resolveDataSourceRef(sourceKey, store.dataSources);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
-    return buildSessionAdminConfig(session, store);
+    return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
   async runSessionImport(sessionId: string, sourceKey?: string) {
@@ -705,7 +755,7 @@ class LocalSessionRepository implements SessionRepository {
       const run = createImportRun(session.id, resolvedSource, "success", "Import completed.");
       store.dataImportRuns.push(run);
       await this.writeStore(store);
-      return buildSessionAdminConfig(session, store);
+      return buildSessionAdminConfig(session, store, store.viewerPresence);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to import projections.";
       store.dataImportRuns.push(createImportRun(session.id, resolvedSource, "failed", message));
@@ -890,6 +940,7 @@ class LocalSessionRepository implements SessionRepository {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return {
           sessions: [],
+          viewerPresence: [],
           platformUsers: [],
           syndicateCatalog: [],
           dataSources: [],
@@ -928,6 +979,7 @@ class SupabaseSessionRepository implements SessionRepository {
       projectionsResult,
       overridesResult,
       membersResult,
+      presenceResult,
       usersResult,
       catalogResult,
       sourcesResult
@@ -942,7 +994,8 @@ class SupabaseSessionRepository implements SessionRepository {
       client.from("purchase_records").select("session_id"),
       client.from("team_projections").select("session_id"),
       client.from("projection_overrides").select("session_id"),
-      client.from("session_members").select("session_id, role, active"),
+      client.from("session_members").select("id, session_id, role, active"),
+      client.from("session_viewer_presence").select("session_id, member_id, last_seen_at"),
       client.from("platform_users").select("*").order("name", { ascending: true }),
       client.from("syndicate_catalog").select("*").order("name", { ascending: true }),
       client.from("data_sources").select("*").order("name", { ascending: true })
@@ -954,6 +1007,7 @@ class SupabaseSessionRepository implements SessionRepository {
     throwOnSupabaseError(projectionsResult.error);
     throwOnSupabaseError(overridesResult.error);
     throwOnSupabaseError(membersResult.error);
+    throwOnSupabaseError(presenceResult.error);
     throwOnSupabaseError(usersResult.error);
     throwOnSupabaseError(catalogResult.error);
     throwOnSupabaseError(sourcesResult.error);
@@ -971,6 +1025,10 @@ class SupabaseSessionRepository implements SessionRepository {
       (overridesResult.data as Array<Record<string, unknown>> | null) ?? []
     );
     const memberCounts = countMembersBySession(
+      (membersResult.data as Array<Record<string, unknown>> | null) ?? []
+    );
+    const activeViewerCounts = countActiveViewerPresenceBySession(
+      (presenceResult.data as Array<Record<string, unknown>> | null) ?? [],
       (membersResult.data as Array<Record<string, unknown>> | null) ?? []
     );
 
@@ -1010,7 +1068,8 @@ class SupabaseSessionRepository implements SessionRepository {
             syndicateCount: syndicateCounts.get(sessionId) ?? 0,
             overrideCount: overrideCounts.get(sessionId) ?? 0,
             adminCount: memberCount.adminCount,
-            viewerCount: memberCount.viewerCount
+            viewerCount: memberCount.viewerCount,
+            activeViewerCount: activeViewerCounts.get(sessionId) ?? 0
           } satisfies AdminSessionSummary;
         }
       )) as AdminSessionSummary[],
@@ -1021,15 +1080,17 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getSessionAdminConfig(sessionId: string) {
-    const [session, refs, importRuns] = await Promise.all([
+    const [session, refs, importRuns, activeViewers] = await Promise.all([
       this.requireSession(sessionId),
       this.readReferenceData(),
-      this.listImportRuns(sessionId)
+      this.listImportRuns(sessionId),
+      this.getActiveSessionViewers(sessionId)
     ]);
     return {
       session,
       currentSharedAccessCode: getStoredSharedAccessCode(session),
       accessMembers: session.accessMembers,
+      activeViewers,
       platformUsers: refs.platformUsers,
       syndicateCatalog: refs.syndicateCatalog,
       dataSources: refs.dataSources,
@@ -1218,8 +1279,71 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
-    const session = await this.requireSession(sessionId);
-    return session.accessMembers.find((member) => member.id === memberId) ?? null;
+    const result = await requireSupabaseClient()
+      .from("session_members")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("id", memberId)
+      .maybeSingle();
+
+    throwOnSupabaseError(result.error);
+
+    if (!result.data) {
+      return null;
+    }
+
+    return mapAccessMemberRow(result.data as Record<string, unknown>);
+  }
+
+  async getActiveSessionViewers(sessionId: string) {
+    const client = requireSupabaseClient();
+    const [membersResult, presenceResult] = await Promise.all([
+      client.from("session_members").select("*").eq("session_id", sessionId),
+      client
+        .from("session_viewer_presence")
+        .select("session_id, member_id, current_view, last_seen_at")
+        .eq("session_id", sessionId)
+    ]);
+
+    throwOnSupabaseError(membersResult.error);
+    throwOnSupabaseError(presenceResult.error);
+
+    return buildActiveSessionViewers(
+      mapAccessMembers(
+        (membersResult.data as Array<Record<string, unknown>> | null) ?? [],
+        []
+      ),
+      mapSessionViewerPresenceRows(
+        (presenceResult.data as Array<Record<string, unknown>> | null) ?? []
+      ),
+      sessionId
+    );
+  }
+
+  async recordViewerPresence(
+    sessionId: string,
+    memberId: string,
+    currentView: SessionPresenceView
+  ) {
+    const member = await this.getAccessMember(sessionId, memberId);
+
+    if (!member || !member.active) {
+      throw new Error("Your access to this auction is no longer active.");
+    }
+
+    const result = await requireSupabaseClient().from("session_viewer_presence").upsert(
+      {
+        session_id: sessionId,
+        member_id: memberId,
+        current_view: currentView,
+        last_seen_at: new Date().toISOString()
+      },
+      {
+        onConflict: "session_id,member_id"
+      }
+    );
+
+    throwOnSupabaseError(result.error);
   }
 
   async authenticateMember(email: string, sharedCode: string) {
@@ -3232,7 +3356,10 @@ function createImportRun(
   } satisfies DataImportRun;
 }
 
-function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSummary {
+function buildAdminSessionSummary(
+  session: StoredAuctionSession,
+  viewerPresence: SessionViewerPresence[]
+): AdminSessionSummary {
   const activeMembers = session.accessMembers.filter((member) => member.active);
   return {
     id: session.id,
@@ -3250,15 +3377,22 @@ function buildAdminSessionSummary(session: StoredAuctionSession): AdminSessionSu
     syndicateCount: session.syndicates.length,
     overrideCount: Object.keys(session.projectionOverrides).length,
     adminCount: activeMembers.filter((member) => member.role === "admin").length,
-    viewerCount: activeMembers.filter((member) => member.role === "viewer").length
+    viewerCount: activeMembers.filter((member) => member.role === "viewer").length,
+    activeViewerCount: buildActiveSessionViewers(session.accessMembers, viewerPresence, session.id)
+      .length
   };
 }
 
-function buildSessionAdminConfig(session: StoredAuctionSession, refs: ReferenceData): SessionAdminConfig {
+function buildSessionAdminConfig(
+  session: StoredAuctionSession,
+  refs: ReferenceData,
+  viewerPresence: SessionViewerPresence[]
+): SessionAdminConfig {
   return {
     session,
     currentSharedAccessCode: getStoredSharedAccessCode(session),
     accessMembers: session.accessMembers,
+    activeViewers: buildActiveSessionViewers(session.accessMembers, viewerPresence, session.id),
     platformUsers: refs.platformUsers,
     syndicateCatalog: refs.syndicateCatalog,
     dataSources: refs.dataSources,
@@ -3341,6 +3475,7 @@ function buildAdminImportReadinessFromSummaryData(args: {
 function normalizeStoreShape(store: SessionStore) {
   return {
     sessions: (store.sessions ?? []).map(normalizeSessionShape),
+    viewerPresence: mapSessionViewerPresenceRows(store.viewerPresence ?? []),
     platformUsers: (store.platformUsers ?? []).map((user) => ({
       ...user,
       email: user.email.trim().toLowerCase()
@@ -3845,21 +3980,85 @@ function mapAccessMembers(
   platformUsers: PlatformUser[]
 ) {
   return rows.map((row) => {
-    const platformUserId = row.platform_user_id ? String(row.platform_user_id) : null;
+    const accessMember = mapAccessMemberRow(row);
+    if (!accessMember.platformUserId) {
+      return accessMember;
+    }
+
     const platformUser =
-      platformUserId
-        ? platformUsers.find((candidate) => candidate.id === platformUserId) ?? null
-        : null;
+      platformUsers.find((candidate) => candidate.id === accessMember.platformUserId) ?? null;
+
     return {
-      id: String(row.id),
-      platformUserId,
-      name: platformUser?.name ?? String(row.name),
-      email: platformUser?.email ?? String(row.email),
-      role: String(row.role) as AccessMember["role"],
-      active: Boolean(row.active),
-      createdAt: String(row.created_at)
+      ...accessMember,
+      name: platformUser?.name ?? accessMember.name,
+      email: platformUser?.email ?? accessMember.email
     } satisfies AccessMember;
   });
+}
+
+function mapAccessMemberRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    platformUserId: row.platform_user_id ? String(row.platform_user_id) : null,
+    name: String(row.name),
+    email: String(row.email),
+    role: String(row.role) as AccessMember["role"],
+    active: Boolean(row.active),
+    createdAt: String(row.created_at)
+  } satisfies AccessMember;
+}
+
+function mapSessionViewerPresenceRows(
+  rows: Array<Record<string, unknown>> | SessionViewerPresence[]
+) {
+  return rows.map((row) => ({
+    sessionId: String("session_id" in row ? row.session_id : row.sessionId),
+    memberId: String("member_id" in row ? row.member_id : row.memberId),
+    currentView: String("current_view" in row ? row.current_view : row.currentView) as SessionPresenceView,
+    lastSeenAt: String("last_seen_at" in row ? row.last_seen_at : row.lastSeenAt)
+  })) satisfies SessionViewerPresence[];
+}
+
+function isPresenceActive(lastSeenAt: string, now = Date.now()) {
+  const timestamp = new Date(lastSeenAt).getTime();
+  if (Number.isNaN(timestamp)) {
+    return false;
+  }
+
+  return now - timestamp <= ACTIVE_VIEWER_WINDOW_MS;
+}
+
+function buildActiveSessionViewers(
+  accessMembers: AccessMember[],
+  viewerPresence: SessionViewerPresence[],
+  sessionId?: string,
+  now = Date.now()
+) {
+  const eligibleMembers = new Map(
+    accessMembers
+      .filter((member) => member.active && member.role === "viewer")
+      .map((member) => [member.id, member])
+  );
+
+  return viewerPresence
+    .filter((entry) => (!sessionId || entry.sessionId === sessionId) && isPresenceActive(entry.lastSeenAt, now))
+    .map((entry) => {
+      const member = eligibleMembers.get(entry.memberId);
+      if (!member) {
+        return null;
+      }
+
+      return {
+        memberId: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+        currentView: entry.currentView,
+        lastSeenAt: entry.lastSeenAt
+      } satisfies ActiveSessionViewer;
+    })
+    .filter((entry): entry is ActiveSessionViewer => entry !== null)
+    .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
 }
 
 function mapTeamProjectionRow(row: Record<string, unknown>): TeamProjection {
@@ -3983,6 +4182,36 @@ function countMembersBySession(rows: Array<Record<string, unknown>>) {
     counts.set(sessionId, current);
     return counts;
   }, new Map<string, { adminCount: number; viewerCount: number }>());
+}
+
+function countActiveViewerPresenceBySession(
+  presenceRows: Array<Record<string, unknown>>,
+  memberRows: Array<Record<string, unknown>>,
+  now = Date.now()
+) {
+  const eligibleMembers = memberRows.reduce((lookup, row) => {
+    if (!Boolean(row.active) || String(row.role) !== "viewer") {
+      return lookup;
+    }
+
+    lookup.set(`${String(row.session_id)}:${String(row.id ?? row.member_id ?? "")}`, true);
+    return lookup;
+  }, new Map<string, boolean>());
+
+  return presenceRows.reduce((counts, row) => {
+    const sessionId = String(row.session_id);
+    const memberId = String(row.member_id);
+    if (!eligibleMembers.has(`${sessionId}:${memberId}`)) {
+      return counts;
+    }
+
+    if (!isPresenceActive(String(row.last_seen_at), now)) {
+      return counts;
+    }
+
+    counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
 }
 
 async function replaceRows(

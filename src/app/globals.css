@@ -2799,6 +2799,90 @@ kbd {
   gap: 0.9rem;
 }
 
+.admin-presence-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel-muted);
+}
+
+.admin-presence-card__header,
+.admin-presence-row__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-presence-card__header h2 {
+  margin-top: 0.2rem;
+}
+
+.admin-presence-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.admin-presence-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem 1rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.admin-presence-row:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.admin-presence-row__identity {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.admin-presence-row__identity span,
+.admin-presence-row__meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.admin-presence-row__meta {
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.admin-presence-list::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.admin-presence-list::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+}
+
+@media (max-width: 720px) {
+  .admin-presence-list {
+    max-height: 16rem;
+    padding-right: 0;
+  }
+
+  .admin-presence-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .admin-presence-row__meta {
+    justify-content: flex-start;
+  }
+}
+
 .admin-access-toolbar {
   justify-content: space-between;
 }

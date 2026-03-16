@@ -250,6 +250,19 @@ create table if not exists public.csv_analysis_portfolios (
   primary key (session_id, member_id)
 );
 
+create table if not exists public.session_viewer_presence (
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  member_id text not null references public.session_members(id) on delete cascade,
+  current_view text not null check (
+    current_view in ('auction', 'analysis', 'bracket', 'overrides')
+  ),
+  last_seen_at timestamptz not null default now(),
+  primary key (session_id, member_id)
+);
+
+create index if not exists session_viewer_presence_session_last_seen_idx
+  on public.session_viewer_presence(session_id, last_seen_at desc);
+
 create table if not exists public.purchase_records (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,
