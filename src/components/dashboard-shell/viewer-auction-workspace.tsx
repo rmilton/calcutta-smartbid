@@ -19,6 +19,7 @@ import {
   formatAssetSubtitle,
   formatBreakEvenStage
 } from "@/components/dashboard-shell/shared";
+import { AssetLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
@@ -118,21 +119,32 @@ export function ViewerAuctionWorkspace({
                       </div>
                     ) : null}
                   </div>
-                  <h2
-                    className={cn(
-                      "decision-panel__hero-title",
-                      nominatedAsset &&
-                        nominatedAsset.type === "seed_bundle" &&
-                        "decision-panel__hero-title--bundle",
-                      nominatedAsset &&
-                        (nominatedAsset.type === "play_in_slot" ||
-                          nominatedAsset.label.length > 24) &&
-                        "decision-panel__hero-title--long",
-                      !nominatedAsset && "decision-panel__hero-title--waiting"
-                    )}
-                  >
-                    {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
-                  </h2>
+                  <div className="team-title-lockup">
+                    {nominatedAsset ? (
+                      <AssetLogo
+                        asset={nominatedAsset}
+                        teamLookup={teamLookup}
+                        size="lg"
+                        decorative
+                        className="team-title-lockup__logo"
+                      />
+                    ) : null}
+                    <h2
+                      className={cn(
+                        "decision-panel__hero-title",
+                        nominatedAsset &&
+                          nominatedAsset.type === "seed_bundle" &&
+                          "decision-panel__hero-title--bundle",
+                        nominatedAsset &&
+                          (nominatedAsset.type === "play_in_slot" ||
+                            nominatedAsset.label.length > 24) &&
+                          "decision-panel__hero-title--long",
+                        !nominatedAsset && "decision-panel__hero-title--waiting"
+                      )}
+                    >
+                      {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
+                    </h2>
+                  </div>
                   {nominatedAsset && nominatedAsset.type !== "single_team" ? (
                     <p className="decision-panel__note">
                       {formatAssetMembersCompact(nominatedAsset, { includeParens: false })}
@@ -288,6 +300,7 @@ export function ViewerAuctionWorkspace({
                     key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
                     sale={sale}
                     syndicateLookup={syndicateLookup}
+                    teamLookup={teamLookup}
                   />
                 ))}
               </div>
@@ -319,6 +332,7 @@ export function ViewerAuctionWorkspace({
               <ViewerOwnershipLedgerGroup
                 key={group.syndicate.id}
                 group={group}
+                teamLookup={teamLookup}
                 isMothership={group.highlight}
                 hasActiveSearch={ownershipSearch.trim().length > 0}
               />
@@ -334,10 +348,12 @@ export function ViewerAuctionWorkspace({
 
 function ViewerOwnershipLedgerGroup({
   group,
+  teamLookup,
   isMothership,
   hasActiveSearch
 }: {
   group: { syndicate: Syndicate; sales: SoldAssetSummary[] };
+  teamLookup: Map<string, TeamProjection>;
   isMothership: boolean;
   hasActiveSearch: boolean;
 }) {
@@ -367,9 +383,14 @@ function ViewerOwnershipLedgerGroup({
               className="viewer-ledger-row"
             >
               <div className="viewer-ledger-row__team">
-                <strong>{sale.asset.label}</strong>
-                <span>{formatAssetSubtitle(sale.asset, null)}</span>
-                <span>{formatAssetMembers(sale.asset)}</span>
+                <div className="team-label">
+                  <AssetLogo asset={sale.asset} teamLookup={teamLookup} size="sm" decorative />
+                  <div className="team-label__copy">
+                    <strong>{sale.asset.label}</strong>
+                    <span>{formatAssetSubtitle(sale.asset, null)}</span>
+                    <span>{formatAssetMembers(sale.asset)}</span>
+                  </div>
+                </div>
               </div>
               <div className="viewer-ledger-row__price">
                 <strong>{formatCurrency(sale.price)}</strong>

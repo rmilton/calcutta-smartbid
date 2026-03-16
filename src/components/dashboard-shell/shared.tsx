@@ -1,4 +1,5 @@
 import React from "react";
+import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 import {
   AuctionAsset,
@@ -154,12 +155,20 @@ export function ConflictRow({
 
   return (
     <div className={cn("list-row", "list-row--top-aligned", isCritical && "list-row--critical")}>
-      <div>
-        <strong>
-          {opponent?.name ?? conflict.opponentId}
-          {isOwned ? <span className="list-row__inline-note"> (you own)</span> : null}
-        </strong>
-        <span>{titleCaseStage(conflict.earliestRound)} window</span>
+      <div className="team-label">
+        <TeamLogo
+          teamId={opponent?.id ?? conflict.opponentId}
+          teamName={opponent?.name ?? conflict.opponentId}
+          size="sm"
+          decorative
+        />
+        <div className="team-label__copy">
+          <strong>
+            {opponent?.name ?? conflict.opponentId}
+            {isOwned ? <span className="list-row__inline-note"> (you own)</span> : null}
+          </strong>
+          <span>{titleCaseStage(conflict.earliestRound)} window</span>
+        </div>
       </div>
       <strong>{formatPercent(conflict.probability)}</strong>
     </div>
@@ -168,18 +177,23 @@ export function ConflictRow({
 
 export function AssetSaleRow({
   sale,
-  syndicateLookup
+  syndicateLookup,
+  teamLookup
 }: {
   sale: SoldAssetSummary;
   syndicateLookup: Map<string, Syndicate>;
+  teamLookup?: Map<string, TeamProjection>;
 }) {
   const buyer = syndicateLookup.get(sale.buyerSyndicateId);
 
   return (
     <div className="list-row">
-      <div>
-        <strong>{sale.asset.label}</strong>
-        <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
+      <div className="team-label">
+        <AssetLogo asset={sale.asset} teamLookup={teamLookup} size="sm" decorative />
+        <div className="team-label__copy">
+          <strong>{sale.asset.label}</strong>
+          <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
+        </div>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
     </div>

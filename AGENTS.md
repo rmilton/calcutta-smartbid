@@ -292,6 +292,7 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - `next lint` still uses the deprecated Next wrapper.
 - The repository still supports a local JSON backend for development only.
 - Older stored sessions may still contain legacy payout fields. The repository normalizes them on load.
+- Local team logos are manifest-backed from `public/team-logos/prototype/manifest.json`; when the tournament field changes, refresh them with `npm run logos:prototype` before wiring new teams into a session.
 - The live board still uses `remainingBankroll` as derived headroom from `projectedPot / syndicateCount`. If that business model changes, update repository math and recommendation language together.
 - Bracket view requires a complete 64-team field; incomplete imports intentionally render a bracket-unavailable state.
 - Purchase correction currently only supports undoing the most recent purchase.

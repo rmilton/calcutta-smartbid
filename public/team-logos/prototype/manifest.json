@@ -1,0 +1,692 @@
+{
+  "summary": {
+    "source": "TheSportsDB NCAA Division I Basketball Mens",
+    "fetchedAt": "2026-03-16T01:23:44.631Z",
+    "requestedCount": 68,
+    "downloadedCount": 68,
+    "missingCount": 0,
+    "failedCount": 0
+  },
+  "results": [
+    {
+      "id": "umbc",
+      "name": "UMBC",
+      "status": "downloaded",
+      "sourceTeamName": "UMBC",
+      "alternateName": "UMBC Retrievers",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/22a2kc1587216737.png",
+      "localPath": "public/team-logos/prototype/umbc.png",
+      "sizeBytes": 73914
+    },
+    {
+      "id": "howard",
+      "name": "Howard",
+      "status": "downloaded",
+      "sourceTeamName": "Howard",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/wwl7131582735701.png",
+      "localPath": "public/team-logos/prototype/howard.png",
+      "sizeBytes": 41839
+    },
+    {
+      "id": "texas",
+      "name": "Texas",
+      "status": "downloaded",
+      "sourceTeamName": "Texas",
+      "alternateName": "Texas Longhorns",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/ji7fzc1583873324.png",
+      "localPath": "public/team-logos/prototype/texas.png",
+      "sizeBytes": 11003
+    },
+    {
+      "id": "nc-state",
+      "name": "NC State",
+      "status": "downloaded",
+      "sourceTeamName": "North Carolina State",
+      "alternateName": "NC State",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/f4hbzx1641184055.png",
+      "localPath": "public/team-logos/prototype/nc-state.png",
+      "sizeBytes": 108487
+    },
+    {
+      "id": "prairie-view-am",
+      "name": "Prairie View A&M",
+      "status": "downloaded",
+      "sourceTeamName": "Prairie View A and M",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/yw1rwb1585081339.png",
+      "localPath": "public/team-logos/prototype/prairie-view-am.png",
+      "sizeBytes": 71499
+    },
+    {
+      "id": "lehigh",
+      "name": "Lehigh",
+      "status": "downloaded",
+      "sourceTeamName": "Lehigh",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/2z3bpc1583328552.png",
+      "localPath": "public/team-logos/prototype/lehigh.png",
+      "sizeBytes": 45581
+    },
+    {
+      "id": "miami-ohio",
+      "name": "Miami (Ohio)",
+      "status": "downloaded",
+      "sourceTeamName": "Miami (Ohio)",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/miami-oh.svg",
+      "localPath": "public/team-logos/prototype/miami-ohio.svg",
+      "sizeBytes": 3841
+    },
+    {
+      "id": "smu",
+      "name": "SMU",
+      "status": "downloaded",
+      "sourceTeamName": "SMU",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/smu.svg",
+      "localPath": "public/team-logos/prototype/smu.svg",
+      "sizeBytes": 5302
+    },
+    {
+      "id": "ohio-state",
+      "name": "Ohio State",
+      "status": "downloaded",
+      "sourceTeamName": "Ohio State",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/wwj5691586526939.png",
+      "localPath": "public/team-logos/prototype/ohio-state.png",
+      "sizeBytes": 50200
+    },
+    {
+      "id": "tcu",
+      "name": "TCU",
+      "status": "downloaded",
+      "sourceTeamName": "TCU",
+      "alternateName": "TCU Horned Frogs",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/nb89zd1744393527.png",
+      "localPath": "public/team-logos/prototype/tcu.png",
+      "sizeBytes": 27637
+    },
+    {
+      "id": "nebraska",
+      "name": "Nebraska",
+      "status": "downloaded",
+      "sourceTeamName": "Nebraska",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/b6fr5y1584652716.png",
+      "localPath": "public/team-logos/prototype/nebraska.png",
+      "sizeBytes": 23785
+    },
+    {
+      "id": "troy",
+      "name": "Troy",
+      "status": "downloaded",
+      "sourceTeamName": "Troy",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/3hn1vb1587214917.png",
+      "localPath": "public/team-logos/prototype/troy.png",
+      "sizeBytes": 159954
+    },
+    {
+      "id": "louisville",
+      "name": "Louisville",
+      "status": "downloaded",
+      "sourceTeamName": "Louisville",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/bd3pj81583785372.png",
+      "localPath": "public/team-logos/prototype/louisville.png",
+      "sizeBytes": 49131
+    },
+    {
+      "id": "south-florida",
+      "name": "South Florida",
+      "status": "downloaded",
+      "sourceTeamName": "South Florida",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/y43ors1585575600.png",
+      "localPath": "public/team-logos/prototype/south-florida.png",
+      "sizeBytes": 52825
+    },
+    {
+      "id": "wisconsin",
+      "name": "Wisconsin",
+      "status": "downloaded",
+      "sourceTeamName": "Wisconsin",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/mo5d721586526987.png",
+      "localPath": "public/team-logos/prototype/wisconsin.png",
+      "sizeBytes": 38833
+    },
+    {
+      "id": "high-point",
+      "name": "High Point",
+      "status": "downloaded",
+      "sourceTeamName": "High Point",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/wr7gv81582734572.png",
+      "localPath": "public/team-logos/prototype/high-point.png",
+      "sizeBytes": 43243
+    },
+    {
+      "id": "duke",
+      "name": "Duke",
+      "status": "downloaded",
+      "sourceTeamName": "Duke",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/uvm6jv1660130642.png",
+      "localPath": "public/team-logos/prototype/duke.png",
+      "sizeBytes": 44810
+    },
+    {
+      "id": "siena",
+      "name": "Siena",
+      "status": "downloaded",
+      "sourceTeamName": "Siena",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/ie6nt71585411239.png",
+      "localPath": "public/team-logos/prototype/siena.png",
+      "sizeBytes": 66898
+    },
+    {
+      "id": "vanderbilt",
+      "name": "Vanderbilt",
+      "status": "downloaded",
+      "sourceTeamName": "Vanderbilt",
+      "alternateName": "Vanderbilt Commodores",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/wv46q31586289942.png",
+      "localPath": "public/team-logos/prototype/vanderbilt.png",
+      "sizeBytes": 24291
+    },
+    {
+      "id": "mcneese",
+      "name": "McNeese",
+      "status": "downloaded",
+      "sourceTeamName": "McNeese",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/mcneese.svg",
+      "localPath": "public/team-logos/prototype/mcneese.svg",
+      "sizeBytes": 45945
+    },
+    {
+      "id": "michigan-state",
+      "name": "Michigan State",
+      "status": "downloaded",
+      "sourceTeamName": "Michigan State",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/40njp51583936723.png",
+      "localPath": "public/team-logos/prototype/michigan-state.png",
+      "sizeBytes": 47722
+    },
+    {
+      "id": "north-dakota-state",
+      "name": "North Dakota State",
+      "status": "downloaded",
+      "sourceTeamName": "North Dakota State",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/1wufue1584786240.png",
+      "localPath": "public/team-logos/prototype/north-dakota-state.png",
+      "sizeBytes": 44078
+    },
+    {
+      "id": "arkansas",
+      "name": "Arkansas",
+      "status": "downloaded",
+      "sourceTeamName": "Arkansas",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/g5gpnb1580998097.png",
+      "localPath": "public/team-logos/prototype/arkansas.png",
+      "sizeBytes": 59081
+    },
+    {
+      "id": "hawaii",
+      "name": "Hawai'i",
+      "status": "downloaded",
+      "sourceTeamName": "Hawaii",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/2xvb6f1582734387.png",
+      "localPath": "public/team-logos/prototype/hawaii.png",
+      "sizeBytes": 56558
+    },
+    {
+      "id": "north-carolina",
+      "name": "North Carolina",
+      "status": "downloaded",
+      "sourceTeamName": "North Carolina",
+      "alternateName": "North Carolina Tar Heels",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/bo1lhk1584718020.png",
+      "localPath": "public/team-logos/prototype/north-carolina.png",
+      "sizeBytes": 51659
+    },
+    {
+      "id": "vcu",
+      "name": "VCU",
+      "status": "downloaded",
+      "sourceTeamName": "VCU",
+      "alternateName": "VCU Rams",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/vp57851642618308.png",
+      "localPath": "public/team-logos/prototype/vcu.png",
+      "sizeBytes": 33329
+    },
+    {
+      "id": "michigan",
+      "name": "Michigan",
+      "status": "downloaded",
+      "sourceTeamName": "Michigan",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/xc5swi1580251073.png",
+      "localPath": "public/team-logos/prototype/michigan.png",
+      "sizeBytes": 12588
+    },
+    {
+      "id": "byu",
+      "name": "BYU",
+      "status": "downloaded",
+      "sourceTeamName": "BYU",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/br11ek1641184990.png",
+      "localPath": "public/team-logos/prototype/byu.png",
+      "sizeBytes": 28287
+    },
+    {
+      "id": "saint-marys",
+      "name": "Saint Mary's",
+      "status": "downloaded",
+      "sourceTeamName": "Saint Mary's",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/st-marys-ca.svg",
+      "localPath": "public/team-logos/prototype/saint-marys.svg",
+      "sizeBytes": 14855
+    },
+    {
+      "id": "texas-am",
+      "name": "Texas A&M",
+      "status": "downloaded",
+      "sourceTeamName": "Texas A and M",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/kez3vx1583705062.png",
+      "localPath": "public/team-logos/prototype/texas-am.png",
+      "sizeBytes": 10720
+    },
+    {
+      "id": "illinois",
+      "name": "Illinois",
+      "status": "downloaded",
+      "sourceTeamName": "Illinois",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/g8hx8o1767524265.png",
+      "localPath": "public/team-logos/prototype/illinois.png",
+      "sizeBytes": 7028
+    },
+    {
+      "id": "penn",
+      "name": "Penn",
+      "status": "downloaded",
+      "sourceTeamName": "Penn",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/penn.svg",
+      "localPath": "public/team-logos/prototype/penn.svg",
+      "sizeBytes": 11512
+    },
+    {
+      "id": "georgia",
+      "name": "Georgia",
+      "status": "downloaded",
+      "sourceTeamName": "Georgia",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/georgia.svg",
+      "localPath": "public/team-logos/prototype/georgia.svg",
+      "sizeBytes": 5631
+    },
+    {
+      "id": "saint-louis",
+      "name": "Saint Louis",
+      "status": "downloaded",
+      "sourceTeamName": "Saint Louis",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/saint-louis.svg",
+      "localPath": "public/team-logos/prototype/saint-louis.svg",
+      "sizeBytes": 12010
+    },
+    {
+      "id": "gonzaga",
+      "name": "Gonzaga",
+      "status": "downloaded",
+      "sourceTeamName": "Gonzaga",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/e5tc3a1582304403.png",
+      "localPath": "public/team-logos/prototype/gonzaga.png",
+      "sizeBytes": 98079
+    },
+    {
+      "id": "kennesaw-state",
+      "name": "Kennesaw State",
+      "status": "downloaded",
+      "sourceTeamName": "Kennesaw State",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/kennesaw-st.svg",
+      "localPath": "public/team-logos/prototype/kennesaw-state.svg",
+      "sizeBytes": 14017
+    },
+    {
+      "id": "houston",
+      "name": "Houston",
+      "status": "downloaded",
+      "sourceTeamName": "Houston",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/wrd2h11582735271.png",
+      "localPath": "public/team-logos/prototype/houston.png",
+      "sizeBytes": 8895
+    },
+    {
+      "id": "idaho",
+      "name": "Idaho",
+      "status": "downloaded",
+      "sourceTeamName": "Idaho",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/idaho.svg",
+      "localPath": "public/team-logos/prototype/idaho.svg",
+      "sizeBytes": 26701
+    },
+    {
+      "id": "kentucky",
+      "name": "Kentucky",
+      "status": "downloaded",
+      "sourceTeamName": "Kentucky",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/deo5281583328413.png",
+      "localPath": "public/team-logos/prototype/kentucky.png",
+      "sizeBytes": 15809
+    },
+    {
+      "id": "santa-clara",
+      "name": "Santa Clara",
+      "status": "downloaded",
+      "sourceTeamName": "Santa Clara",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/santa-clara.svg",
+      "localPath": "public/team-logos/prototype/santa-clara.svg",
+      "sizeBytes": 2949
+    },
+    {
+      "id": "texas-tech",
+      "name": "Texas Tech",
+      "status": "downloaded",
+      "sourceTeamName": "Texas Tech",
+      "alternateName": "Texas Tech Red Raiders",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/ch23x41583875031.png",
+      "localPath": "public/team-logos/prototype/texas-tech.png",
+      "sizeBytes": 10605
+    },
+    {
+      "id": "akron",
+      "name": "Akron",
+      "status": "downloaded",
+      "sourceTeamName": "Akron",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/7h6pzq1642618350.png",
+      "localPath": "public/team-logos/prototype/akron.png",
+      "sizeBytes": 81852
+    },
+    {
+      "id": "arizona",
+      "name": "Arizona",
+      "status": "downloaded",
+      "sourceTeamName": "Arizona",
+      "alternateName": "Arizona Wildcats",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/8gmr7p1580997650.png",
+      "localPath": "public/team-logos/prototype/arizona.png",
+      "sizeBytes": 26771
+    },
+    {
+      "id": "long-island-university",
+      "name": "Long Island University",
+      "status": "downloaded",
+      "sourceTeamName": "Long Island University",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/long-island.svg",
+      "localPath": "public/team-logos/prototype/long-island-university.svg",
+      "sizeBytes": 11835
+    },
+    {
+      "id": "virginia",
+      "name": "Virginia",
+      "status": "downloaded",
+      "sourceTeamName": "Virginia",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/virginia.svg",
+      "localPath": "public/team-logos/prototype/virginia.svg",
+      "sizeBytes": 18825
+    },
+    {
+      "id": "wright-state",
+      "name": "Wright State",
+      "status": "downloaded",
+      "sourceTeamName": "Wright State",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/wright-st.svg",
+      "localPath": "public/team-logos/prototype/wright-state.svg",
+      "sizeBytes": 48192
+    },
+    {
+      "id": "iowa-state",
+      "name": "Iowa State",
+      "status": "downloaded",
+      "sourceTeamName": "Iowa State",
+      "alternateName": "Iowa State Cyclones",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/jjzijk1583272848.png",
+      "localPath": "public/team-logos/prototype/iowa-state.png",
+      "sizeBytes": 54944
+    },
+    {
+      "id": "tennessee-state",
+      "name": "Tennessee State",
+      "status": "downloaded",
+      "sourceTeamName": "Tennessee State",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/tennessee-st.svg",
+      "localPath": "public/team-logos/prototype/tennessee-state.svg",
+      "sizeBytes": 53617
+    },
+    {
+      "id": "alabama",
+      "name": "Alabama",
+      "status": "downloaded",
+      "sourceTeamName": "Alabama",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/kswmhn1580672591.png",
+      "localPath": "public/team-logos/prototype/alabama.png",
+      "sizeBytes": 84141
+    },
+    {
+      "id": "hofstra",
+      "name": "Hofstra",
+      "status": "downloaded",
+      "sourceTeamName": "Hofstra",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/hofstra.svg",
+      "localPath": "public/team-logos/prototype/hofstra.svg",
+      "sizeBytes": 14109
+    },
+    {
+      "id": "villanova",
+      "name": "Villanova",
+      "status": "downloaded",
+      "sourceTeamName": "Villanova",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/villanova.svg",
+      "localPath": "public/team-logos/prototype/villanova.svg",
+      "sizeBytes": 2282
+    },
+    {
+      "id": "utah-state",
+      "name": "Utah State",
+      "status": "downloaded",
+      "sourceTeamName": "Utah State",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/jzecqy1587325038.png",
+      "localPath": "public/team-logos/prototype/utah-state.png",
+      "sizeBytes": 40355
+    },
+    {
+      "id": "tennessee",
+      "name": "Tennessee",
+      "status": "downloaded",
+      "sourceTeamName": "Tennessee",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/pcf2rv1586542844.png",
+      "localPath": "public/team-logos/prototype/tennessee.png",
+      "sizeBytes": 5688
+    },
+    {
+      "id": "clemson",
+      "name": "Clemson",
+      "status": "downloaded",
+      "sourceTeamName": "Clemson",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/eqeebf1581621621.png",
+      "localPath": "public/team-logos/prototype/clemson.png",
+      "sizeBytes": 40175
+    },
+    {
+      "id": "iowa",
+      "name": "Iowa",
+      "status": "downloaded",
+      "sourceTeamName": "Iowa",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/iowa.svg",
+      "localPath": "public/team-logos/prototype/iowa.svg",
+      "sizeBytes": 4663
+    },
+    {
+      "id": "st-johns",
+      "name": "St. John's",
+      "status": "downloaded",
+      "sourceTeamName": "St. John's",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/st-johns-ny.svg",
+      "localPath": "public/team-logos/prototype/st-johns.svg",
+      "sizeBytes": 7512
+    },
+    {
+      "id": "uni",
+      "name": "UNI",
+      "status": "downloaded",
+      "sourceTeamName": "UNI",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/uni.svg",
+      "localPath": "public/team-logos/prototype/uni.svg",
+      "sizeBytes": 13643
+    },
+    {
+      "id": "ucla",
+      "name": "UCLA",
+      "status": "downloaded",
+      "sourceTeamName": "UCLA",
+      "alternateName": "UCLA Bruins",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/nvlzc61581198247.png",
+      "localPath": "public/team-logos/prototype/ucla.png",
+      "sizeBytes": 61042
+    },
+    {
+      "id": "ucf",
+      "name": "UCF",
+      "status": "downloaded",
+      "sourceTeamName": "UCF",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/ucf.svg",
+      "localPath": "public/team-logos/prototype/ucf.svg",
+      "sizeBytes": 9178
+    },
+    {
+      "id": "purdue",
+      "name": "Purdue",
+      "status": "downloaded",
+      "sourceTeamName": "Purdue",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/0hni6w1641184662.png",
+      "localPath": "public/team-logos/prototype/purdue.png",
+      "sizeBytes": 20981
+    },
+    {
+      "id": "queens",
+      "name": "Queens",
+      "status": "downloaded",
+      "sourceTeamName": "Queens",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/queens-nc.svg",
+      "localPath": "public/team-logos/prototype/queens.svg",
+      "sizeBytes": 24522
+    },
+    {
+      "id": "florida",
+      "name": "Florida",
+      "status": "downloaded",
+      "sourceTeamName": "Florida",
+      "alternateName": null,
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/x5zug61581953596.png",
+      "localPath": "public/team-logos/prototype/florida.png",
+      "sizeBytes": 87369
+    },
+    {
+      "id": "kansas",
+      "name": "Kansas",
+      "status": "downloaded",
+      "sourceTeamName": "Kansas",
+      "alternateName": "Kansas Jayhawks",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/frvrc71583273135.png",
+      "localPath": "public/team-logos/prototype/kansas.png",
+      "sizeBytes": 117002
+    },
+    {
+      "id": "cal-baptist",
+      "name": "Cal Baptist",
+      "status": "downloaded",
+      "sourceTeamName": "Cal Baptist",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/california-baptist.svg",
+      "localPath": "public/team-logos/prototype/cal-baptist.svg",
+      "sizeBytes": 9492
+    },
+    {
+      "id": "uconn",
+      "name": "UConn",
+      "status": "downloaded",
+      "sourceTeamName": "Connecticut",
+      "alternateName": "UConn",
+      "badgeUrl": "https://r2.thesportsdb.com/images/media/team/badge/qevub71581687404.png",
+      "localPath": "public/team-logos/prototype/uconn.png",
+      "sizeBytes": 50795
+    },
+    {
+      "id": "furman",
+      "name": "Furman",
+      "status": "downloaded",
+      "sourceTeamName": "Furman",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/furman.svg",
+      "localPath": "public/team-logos/prototype/furman.svg",
+      "sizeBytes": 5278
+    },
+    {
+      "id": "miami-fla",
+      "name": "Miami (Fla.)",
+      "status": "downloaded",
+      "sourceTeamName": "Miami (Fla.)",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/miami-fl.svg",
+      "localPath": "public/team-logos/prototype/miami-fla.svg",
+      "sizeBytes": 3811
+    },
+    {
+      "id": "missouri",
+      "name": "Missouri",
+      "status": "downloaded",
+      "sourceTeamName": "Missouri",
+      "alternateName": null,
+      "badgeUrl": "https://www.ncaa.com/sites/default/files/images/logos/schools/bgl/missouri.svg",
+      "localPath": "public/team-logos/prototype/missouri.svg",
+      "sizeBytes": 39408
+    }
+  ]
+}

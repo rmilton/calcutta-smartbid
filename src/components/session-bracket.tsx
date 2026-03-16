@@ -9,6 +9,7 @@ import {
   BracketViewModel,
   Syndicate
 } from "@/lib/types";
+import { TeamLogo } from "@/components/team-logo";
 import { cn } from "@/lib/utils";
 
 interface SessionBracketProps {
@@ -157,7 +158,16 @@ function BracketBoard({
             ) : null}
             <div className="bracket-board__champion-summary">
               <span className="eyebrow">Champion</span>
-              <strong>{champion ? `${champion.seed}. ${champion.shortName}` : "TBD"}</strong>
+              {champion ? (
+                <div className="team-label">
+                  <TeamLogo teamId={champion.teamId} teamName={champion.name} size="sm" decorative />
+                  <div className="team-label__copy">
+                    <strong>{`${champion.seed}. ${champion.shortName}`}</strong>
+                  </div>
+                </div>
+              ) : (
+                <strong>TBD</strong>
+              )}
             </div>
           </div>
           <BracketBoardSemifinal
@@ -394,10 +404,13 @@ function BracketEntrantRow({
   const content = (
     <>
       <div className="bracket-entrant__identity">
-        <strong>
-          {team.seed}. {team.shortName}
-        </strong>
-        <span>{team.name}</span>
+        <TeamLogo teamId={team.teamId} teamName={team.name} size="sm" decorative />
+        <div className="team-label__copy">
+          <strong>
+            {team.seed}. {team.shortName}
+          </strong>
+          <span>{team.name}</span>
+        </div>
       </div>
       <div className="bracket-entrant__meta">
         {team.buyerSyndicateName ? (

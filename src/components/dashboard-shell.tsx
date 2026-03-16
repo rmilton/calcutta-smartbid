@@ -41,6 +41,7 @@ import {
 } from "@/components/dashboard-shell/use-live-room-controller";
 import { ViewerAuctionWorkspace } from "@/components/dashboard-shell/viewer-auction-workspace";
 import { SessionBracket } from "@/components/session-bracket";
+import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
@@ -729,22 +730,35 @@ export function DashboardShell({
                         >
                           <td>#{row.rank}</td>
                           <td>
-                            <strong>{row.representativeTeamName}</strong>
+                            <div className="team-label">
+                              <TeamLogo
+                                teamId={row.representativeTeamId}
+                                teamName={row.representativeTeamName}
+                                size="sm"
+                                decorative
+                              />
+                              <div className="team-label__copy">
+                                <strong>{row.representativeTeamName}</strong>
+                              </div>
+                            </div>
                           </td>
                           <td>
                             {row.asset.type === "single_team" ? (
                               <span className="team-classification-empty">Single team</span>
                             ) : (
-                              <>
-                                <strong>
-                                  {row.asset.type === "play_in_slot"
-                                    ? "Play-in team"
-                                    : row.asset.label}
-                                </strong>
-                                {row.memberSummary ? (
-                                  <div className="decision-panel__note">{row.memberSummary}</div>
-                                ) : null}
-                              </>
+                              <div className="team-label">
+                                <AssetLogo asset={row.asset} teamLookup={teamLookup} size="sm" decorative />
+                                <div className="team-label__copy">
+                                  <strong>
+                                    {row.asset.type === "play_in_slot"
+                                      ? "Play-in team"
+                                      : row.asset.label}
+                                  </strong>
+                                  {row.memberSummary ? (
+                                    <div className="decision-panel__note">{row.memberSummary}</div>
+                                  ) : null}
+                                </div>
+                              </div>
                             )}
                           </td>
                           <td>
@@ -767,9 +781,19 @@ export function DashboardShell({
 
               <article className="surface-card">
                 <div className="section-headline">
-                  <div>
-                    <p className="eyebrow">Selected Team</p>
-                    <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
+                  <div className="team-label">
+                    {analysisDetailTeam ? (
+                      <TeamLogo
+                        teamId={analysisDetailTeam.id}
+                        teamName={analysisDetailTeam.name}
+                        size="md"
+                        decorative
+                      />
+                    ) : null}
+                    <div className="team-label__copy">
+                      <p className="eyebrow">Selected Team</p>
+                      <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
+                    </div>
                   </div>
                 </div>
 
@@ -778,9 +802,17 @@ export function DashboardShell({
                     {analysisDetailAsset && analysisDetailAsset.type !== "single_team" ? (
                       <article className="surface-card">
                         <div className="section-headline">
-                          <div>
-                            <p className="eyebrow">Auction Team</p>
-                            <h3>{analysisDetailAsset.label}</h3>
+                          <div className="team-label">
+                            <AssetLogo
+                              asset={analysisDetailAsset}
+                              teamLookup={teamLookup}
+                              size="md"
+                              decorative
+                            />
+                            <div className="team-label__copy">
+                              <p className="eyebrow">Auction Team</p>
+                              <h3>{analysisDetailAsset.label}</h3>
+                            </div>
                           </div>
                           {analysisAssetBudget ? (
                             <span className="status-pill">
