@@ -174,6 +174,7 @@ describe("buildCsvProjectionFeed", () => {
     const topTeam = analysis.teams.find((team) => team.name === "Alpha");
 
     expect(topTeam).toBeDefined();
+    expect(topTeam?.threePointPct).toBeNull();
     expect(topTeam?.threePointRate).toBeCloseTo(42.8);
     expect(topTeam?.offensiveReboundPct).toBeCloseTo(33.2);
     expect(topTeam?.offensiveTwoPointPct).toBeCloseTo(55.1);

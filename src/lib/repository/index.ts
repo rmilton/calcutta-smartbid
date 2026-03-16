@@ -4105,51 +4105,6 @@ function buildActiveSessionViewers(
     .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
 }
 
-function mapTeamProjectionRow(row: Record<string, unknown>): TeamProjection {
-  const scouting = {
-    netRank: numberOrUndefined(row.net_rank),
-    kenpomRank: numberOrUndefined(row.kenpom_rank),
-    threePointPct: numberOrUndefined(row.three_point_pct),
-    rankedWins: numberOrUndefined(row.ranked_wins),
-    quadWins:
-      row.quad1_wins !== null ||
-      row.quad2_wins !== null ||
-      row.quad3_wins !== null ||
-      row.quad4_wins !== null
-        ? {
-            q1: Number(row.quad1_wins ?? 0),
-            q2: Number(row.quad2_wins ?? 0),
-            q3: Number(row.quad3_wins ?? 0),
-            q4: Number(row.quad4_wins ?? 0)
-          }
-        : undefined,
-    ats:
-      row.ats_wins !== null || row.ats_losses !== null || row.ats_pushes !== null
-        ? {
-            wins: Number(row.ats_wins ?? 0),
-            losses: Number(row.ats_losses ?? 0),
-            pushes: Number(row.ats_pushes ?? 0)
-          }
-        : undefined,
-    offenseStyle: String(row.offense_style ?? "").trim() || undefined,
-    defenseStyle: String(row.defense_style ?? "").trim() || undefined
-  };
-
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    shortName: String(row.short_name),
-    region: String(row.region),
-    seed: Number(row.seed),
-    rating: Number(row.rating),
-    offense: Number(row.offense),
-    defense: Number(row.defense),
-    tempo: Number(row.tempo),
-    source: String(row.source),
-    scouting: Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined
-  };
-}
-
 function serializeTeamProjectionRow(sessionId: string, team: TeamProjection) {
   return {
     id: team.id,
@@ -4264,35 +4219,6 @@ function deserializeTeamProjectionScouting(
   };
 
   return Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined;
-}
-
-function serializeTeamProjectionRow(sessionId: string, team: TeamProjection) {
-  return {
-    id: team.id,
-    session_id: sessionId,
-    name: team.name,
-    short_name: team.shortName,
-    region: team.region,
-    seed: team.seed,
-    rating: team.rating,
-    offense: team.offense,
-    defense: team.defense,
-    tempo: team.tempo,
-    net_rank: team.scouting?.netRank ?? null,
-    kenpom_rank: team.scouting?.kenpomRank ?? null,
-    three_point_pct: team.scouting?.threePointPct ?? null,
-    ranked_wins: team.scouting?.rankedWins ?? null,
-    quad1_wins: team.scouting?.quadWins?.q1 ?? null,
-    quad2_wins: team.scouting?.quadWins?.q2 ?? null,
-    quad3_wins: team.scouting?.quadWins?.q3 ?? null,
-    quad4_wins: team.scouting?.quadWins?.q4 ?? null,
-    ats_wins: team.scouting?.ats?.wins ?? null,
-    ats_losses: team.scouting?.ats?.losses ?? null,
-    ats_pushes: team.scouting?.ats?.pushes ?? null,
-    offense_style: team.scouting?.offenseStyle ?? null,
-    defense_style: team.scouting?.defenseStyle ?? null,
-    source: team.source
-  };
 }
 
 function countRowsBySession(rows: Array<Record<string, unknown>>) {

@@ -33,6 +33,7 @@ vi.mock("@/components/dashboard-shell/use-live-room-controller", () => ({
 }));
 
 vi.mock("@/lib/funding", () => ({
+  deriveFundingStatus: () => "safe",
   deriveMothershipFundingSnapshot: () => ({
     baseBidRoom: 0,
     stretchBidRoom: 0,
@@ -64,7 +65,8 @@ vi.mock("@/lib/engine/recommendations", () => ({
 }));
 
 vi.mock("@/lib/payouts", () => ({
-  getBreakEvenStage: () => null
+  getBreakEvenStage: () => null,
+  getCumulativeStagePayouts: () => []
 }));
 
 vi.mock("@/components/dashboard-shell/operator-auction-workspace", () => ({
@@ -440,6 +442,9 @@ describe("DashboardShell analysis hero", () => {
     expect(markup).toContain("Nate Silver projection");
     expect(markup).toContain("80.3%");
     expect(markup).toContain("8.1%");
+    expect(markup).toContain("Bid scenario");
+    expect(markup).toContain("Additional money by round");
+    expect(markup).not.toContain("Break-even round");
     expect(markup).toContain("Quick thought on this team");
     expect(markup).toContain("Limited scouting data increases uncertainty");
     expect(markup).not.toContain("Session ranking and bid guidance");
@@ -671,5 +676,6 @@ describe("DashboardShell analysis hero", () => {
     );
 
     expect(markup).not.toContain("Nate Silver projection");
+    expect(markup).not.toContain("Bid scenario");
   });
 });

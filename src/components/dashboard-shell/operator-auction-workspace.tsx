@@ -14,7 +14,6 @@ import {
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
-  AssetSaleRow,
   ConflictRow,
   MetricCard,
   formatAssetMembers,
@@ -83,26 +82,17 @@ interface OperatorAuctionWorkspaceProps {
 export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
   const {
     dashboard,
-    recommendation,
-    notice,
     error,
     selectedAssetId,
     bidInputValue,
-    parsedBidInputValue,
-    buyerId,
     currentBid,
-    isUndoingPurchase,
     teamSelectRef,
     bidInputRef,
     onAssetChange,
     onBidInputChange,
     onBidBlur,
     onBidKeyDown,
-    onBuyerChange,
-    onUndoPurchase,
-    onRecordPurchase,
-    lastPurchaseTeamName,
-    lastPurchaseBuyerName,
+    recommendation,
     signalLabel,
     nominatedAsset,
     nominatedTeam,
@@ -112,13 +102,9 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     likelyRound2Matchup,
     hasOwnedRoundOneOpponent,
     hasOwnedLikelyRoundTwoOpponent,
-    callHeadline,
-    callSupportText,
-    callDetailText,
     breakEvenStage,
     targetBidDisplay,
     maxBidDisplay,
-    filteredRationale,
     ownershipConflicts,
     teamLookup,
     forcedPassConflictTeamId,
@@ -130,128 +116,11 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     onToggleSyndicate,
     onExpandAll,
     onCollapseAll,
-    recentSales,
-    syndicateLookup,
     focusFundingImpliedSharePrice
   } = props;
 
   return (
     <section className="auction-layout">
-      <article className="surface-card control-panel auction-controls">
-        <div className="section-headline auction-controls__headline">
-          <div>
-            <p className="eyebrow">Live Controls</p>
-          </div>
-          <div className="shortcut-legend">
-            <div className="shortcut-legend__row">
-              <kbd>/</kbd>
-              <span>Focus team</span>
-            </div>
-            <div className="shortcut-legend__row">
-              <kbd>B</kbd>
-              <span>Focus bid</span>
-            </div>
-            <div className="shortcut-legend__row">
-              <kbd>↵</kbd>
-              <span>Save board</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="auction-controls__bar">
-          <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
-            <span>Active team</span>
-            <AssetCombobox
-              assets={dashboard.availableAssets}
-              soldAssets={dashboard.soldAssets}
-              teamLookup={teamLookup}
-              value={selectedAssetId}
-              inputRef={teamSelectRef}
-              onChange={onAssetChange}
-            />
-          </label>
-
-          <label className="field-shell auction-controls__field auction-controls__field--bid">
-            <span>Current bid</span>
-            <div className="live-bid-field">
-              <input
-                ref={bidInputRef}
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={bidInputValue}
-                onChange={(event) => onBidInputChange(event.target.value)}
-                onBlur={onBidBlur}
-                onKeyDown={onBidKeyDown}
-                onFocus={(event) => event.target.select()}
-                onClick={(event) => event.currentTarget.select()}
-              />
-            </div>
-          </label>
-
-          <div className="auction-controls__field auction-controls__field--winner">
-            <span className="auction-controls__label">Winner</span>
-            <div className="auction-controls__winner-list" role="group" aria-label="Winner">
-              {dashboard.ledger.map((syndicate) => {
-                const isSelected = buyerId === syndicate.id;
-                return (
-                  <button
-                    key={syndicate.id}
-                    type="button"
-                    className={cn(
-                      "button button-secondary auction-controls__winner-button",
-                      isSelected && "auction-controls__winner-button--selected"
-                    )}
-                    aria-pressed={isSelected}
-                    onClick={() => onBuyerChange(syndicate.id)}
-                  >
-                    {syndicate.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="auction-controls__footer">
-          <div className="auction-controls__history">
-            {dashboard.lastPurchase ? (
-              <p>
-                Last sale: <strong>{lastPurchaseTeamName ?? dashboard.lastPurchase.teamId}</strong> to{" "}
-                <strong>
-                  {lastPurchaseBuyerName ?? dashboard.lastPurchase.buyerSyndicateId}
-                </strong>{" "}
-                for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
-              </p>
-            ) : (
-              <p>No purchases recorded yet.</p>
-            )}
-            <button
-              type="button"
-              className="button button-secondary button--small auction-controls__undo"
-              data-live-bid-blur-ignore="true"
-              disabled={!dashboard.lastPurchase || isUndoingPurchase}
-              onClick={onUndoPurchase}
-            >
-              {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="button button-accent auction-controls__purchase"
-            data-live-bid-blur-ignore="true"
-            disabled={parsedBidInputValue <= 0 || !selectedAssetId}
-            onClick={onRecordPurchase}
-          >
-            Record purchase
-          </button>
-        </div>
-
-        {notice ? <p className="notice-text">{notice}</p> : null}
-        {error ? <p className="error-text">{error}</p> : null}
-      </article>
-
       <section className="operator-board-layout">
         <div className="operator-board-layout__main">
           <article className="surface-card decision-panel decision-panel--combined">
@@ -371,85 +240,38 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             </div>
           </article>
 
-          <article className="surface-card decision-context">
-            <div className="decision-context__overview">
-              <div className="decision-panel__callout decision-context__callout">
-                <p className="eyebrow">Call</p>
-                <h3>{callHeadline}</h3>
-                <p>{callSupportText}</p>
-                {callDetailText ? <p className="call-conflict">{callDetailText}</p> : null}
-              </div>
-
-              <div className="decision-context__summary-grid">
-                <MetricCard
-                  label="Break-even round"
-                  value={formatBreakEvenStage(breakEvenStage)}
-                  compact
-                  tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                />
-                <MetricCard
-                  label="Simulated net"
-                  value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
-                  compact
-                  tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                />
-                <MetricCard
-                  label="Target bid"
-                  value={targetBidDisplay}
-                  compact
-                  tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
-                />
-                <MetricCard
-                  label="Max bid"
-                  value={maxBidDisplay}
-                  compact
-                  tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
-                />
+          <article className="surface-card decision-context decision-context--compact">
+            <div className="section-headline">
+              <div>
+                <p className="eyebrow">Decision Snapshot</p>
+                <h3>Payback and bid guardrails</h3>
               </div>
             </div>
-
-            <div className="decision-context__columns">
-              <section className="decision-context__section">
-                <div className="section-headline section-headline--compact">
-                  <div>
-                    <p className="eyebrow">Rationale</p>
-                  </div>
-                </div>
-                {filteredRationale.length ? (
-                  <div className="list-stack">
-                    {filteredRationale.map((line) => (
-                      <div key={line} className="list-line">
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="empty-copy">Choose a team to unlock simulation-backed rationale.</p>
-                )}
-              </section>
-
-              <section className="decision-context__section">
-                <div className="section-headline section-headline--compact">
-                  <div>
-                    <p className="eyebrow">Ownership Conflicts</p>
-                  </div>
-                </div>
-                {ownershipConflicts.length ? (
-                  <div className="list-stack">
-                    {ownershipConflicts.slice(0, 4).map((conflict) => (
-                      <ConflictRow
-                        key={conflict.opponentId}
-                        conflict={conflict}
-                        teamLookup={teamLookup}
-                        isOwned
-                        isCritical={conflict.opponentId === forcedPassConflictTeamId}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="empty-copy">No immediate portfolio collision flags.</p>
-                )}
-              </section>
+            <div className="decision-context__summary-grid">
+              <MetricCard
+                label="Payback round"
+                value={formatBreakEvenStage(breakEvenStage)}
+                compact
+                tooltip="The earliest tournament round where modeled cumulative payout clears the current bid."
+              />
+              <MetricCard
+                label="Wins to payback"
+                value={formatBreakEvenWins(breakEvenStage)}
+                compact
+                tooltip="Approximate number of wins needed from here to hit the payback round."
+              />
+              <MetricCard
+                label="Target bid"
+                value={targetBidDisplay}
+                compact
+                tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
+              />
+              <MetricCard
+                label="Max bid"
+                value={maxBidDisplay}
+                compact
+                tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
+              />
             </div>
           </article>
 
@@ -540,6 +362,99 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         </div>
 
         <aside className="operator-board-layout__side">
+          <article className="surface-card control-panel auction-controls auction-controls--compact">
+            <div className="auction-controls__headline-simple">
+              <p className="eyebrow">Live Bid Entry</p>
+            </div>
+            <div className="auction-controls__bar auction-controls__bar--compact">
+              <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
+                <span>Team name</span>
+                <AssetCombobox
+                  assets={dashboard.availableAssets}
+                  soldAssets={dashboard.soldAssets}
+                  teamLookup={teamLookup}
+                  value={selectedAssetId}
+                  inputRef={teamSelectRef}
+                  onChange={onAssetChange}
+                />
+              </label>
+
+              <label className="field-shell auction-controls__field auction-controls__field--bid">
+                <span>Bid amount</span>
+                <div className="live-bid-field">
+                  <input
+                    ref={bidInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={bidInputValue}
+                    onChange={(event) => onBidInputChange(event.target.value)}
+                    onBlur={onBidBlur}
+                    onKeyDown={onBidKeyDown}
+                    onFocus={(event) => event.target.select()}
+                    onClick={(event) => event.currentTarget.select()}
+                  />
+                </div>
+              </label>
+            </div>
+            {error ? <p className="error-text">{error}</p> : null}
+          </article>
+
+          <article className="surface-card">
+            <div className="section-headline">
+              <div>
+                <p className="eyebrow">Ownership Conflicts</p>
+                <h3>Where current holdings collide</h3>
+              </div>
+            </div>
+            {ownershipConflicts.length ? (
+              <div className="list-stack">
+                {ownershipConflicts.slice(0, 4).map((conflict) => (
+                  <ConflictRow
+                    key={conflict.opponentId}
+                    conflict={conflict}
+                    teamLookup={teamLookup}
+                    isOwned
+                    isCritical={conflict.opponentId === forcedPassConflictTeamId}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="empty-copy">No immediate portfolio collision flags.</p>
+            )}
+          </article>
+
+          <article className="surface-card">
+            <div className="section-headline">
+              <div>
+                <p className="eyebrow">Live Room</p>
+                <h3>At-a-glance status</h3>
+              </div>
+            </div>
+            <div className="mini-grid">
+              <MetricCard
+                label="Mothership spend"
+                value={formatCurrency(dashboard.focusSyndicate.spend)}
+                compact
+              />
+              <MetricCard
+                label="Sold teams"
+                value={`${dashboard.soldAssets.length}`}
+                compact
+              />
+              <MetricCard
+                label="Base room now"
+                value={formatCurrency(projectedBaseRoom)}
+                compact
+              />
+              <MetricCard
+                label="Stretch room now"
+                value={formatCurrency(projectedStretchRoom)}
+                compact
+              />
+            </div>
+          </article>
+
           <OperatorSyndicateBoardCard
             holdings={operatorSyndicateHoldings}
             focusSyndicateId={dashboard.focusSyndicate.id}
@@ -549,33 +464,31 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             onExpandAll={onExpandAll}
             onCollapseAll={onCollapseAll}
           />
-
-          <article className="surface-card">
-            <div className="section-headline">
-              <div>
-                <p className="eyebrow">Recent Sales</p>
-                <h3>Latest auction activity</h3>
-              </div>
-            </div>
-            {recentSales.length ? (
-              <div className="list-stack">
-                {recentSales.map((sale) => (
-                  <AssetSaleRow
-                    key={`${sale.asset.id}-${sale.price}`}
-                    sale={sale}
-                    syndicateLookup={syndicateLookup}
-                    teamLookup={teamLookup}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="empty-copy">No sales have been recorded yet.</p>
-            )}
-          </article>
         </aside>
       </section>
     </section>
   );
+}
+
+function formatBreakEvenWins(stage: Stage | "negativeReturn" | null) {
+  if (stage === null) {
+    return "--";
+  }
+
+  if (stage === "negativeReturn") {
+    return "No path";
+  }
+
+  const winsByStage: Record<Stage, number> = {
+    roundOf64: 1,
+    roundOf32: 2,
+    sweet16: 3,
+    elite8: 4,
+    finalFour: 5,
+    champion: 6
+  };
+  const wins = winsByStage[stage];
+  return `${wins} win${wins === 1 ? "" : "s"}`;
 }
 
 function OperatorSyndicateBoardCard({

@@ -4,6 +4,7 @@ import Image from "next/image";
 import type { Route } from "next";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatBidInputText, parseBidInputValue } from "@/lib/bid-input";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import {
@@ -15,7 +16,7 @@ import {
   orderSyndicateBoard
 } from "@/lib/live-room";
 import { buildBidRecommendation, computeOwnershipExposure } from "@/lib/engine/recommendations";
-import { getBreakEvenStage } from "@/lib/payouts";
+import { getBreakEvenStage, getCumulativeStagePayouts } from "@/lib/payouts";
 import {
   AuctionAsset,
   AuctionDashboard,
@@ -120,6 +121,7 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const router = useRouter();
   const [isAnalysisNoteFocused, setIsAnalysisNoteFocused] = useState(false);
+  const [analysisBreakEvenBidInput, setAnalysisBreakEvenBidInput] = useState("");
   const availableViews = viewerMode ? viewerViews : editorViews;
   const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const controller = useLiveRoomController({
@@ -498,6 +500,49 @@ export function DashboardShell({
         return false;
     }
   });
+  const hasAnalysisBreakEvenBidInput = analysisBreakEvenBidInput.trim().length > 0;
+  const analysisBreakEvenBid = hasAnalysisBreakEvenBidInput
+    ? parseBidInputValue(analysisBreakEvenBidInput)
+    : 0;
+  const cumulativeStagePayouts = useMemo(
+    () => getCumulativeStagePayouts(dashboard.session.payoutRules),
+    [dashboard.session.payoutRules]
+  );
+  const analysisBreakEvenStage =
+    analysisDetailTeam && hasAnalysisBreakEvenBidInput
+      ? getBreakEvenStage(analysisBreakEvenBid, dashboard.session.payoutRules)
+      : null;
+  const analysisBreakEvenProgression = useMemo(() => {
+    if (!analysisDetailTeam || !hasAnalysisBreakEvenBidInput) {
+      return [];
+    }
+
+    const breakEvenIndex = cumulativeStagePayouts.findIndex(
+      ({ payout }) => payout >= analysisBreakEvenBid
+    );
+    if (breakEvenIndex < 0) {
+      return [];
+    }
+
+    return cumulativeStagePayouts.slice(breakEvenIndex).map((entry, index) => {
+      const previousPayout =
+        index === 0 ? analysisBreakEvenBid : cumulativeStagePayouts[breakEvenIndex + index - 1]!.payout;
+      return {
+        stage: entry.stage,
+        netProfit: entry.payout - analysisBreakEvenBid,
+        additionalFromPreviousRound: entry.payout - previousPayout
+      };
+    });
+  }, [
+    analysisBreakEvenBid,
+    analysisDetailTeam,
+    cumulativeStagePayouts,
+    hasAnalysisBreakEvenBidInput
+  ]);
+  const analysisBreakEvenShortfall =
+    analysisBreakEvenStage === "negativeReturn" && hasAnalysisBreakEvenBidInput
+      ? Math.max(0, analysisBreakEvenBid - (cumulativeStagePayouts.at(-1)?.payout ?? 0))
+      : null;
   const breakEvenStage = selectedTeam
     ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
@@ -566,6 +611,11 @@ export function DashboardShell({
       ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
+
+  useEffect(() => {
+    setAnalysisBreakEvenBidInput("");
+  }, [analysisDetailTeam?.id]);
+
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
   const ownershipGroups = useMemo(
     () =>
@@ -957,6 +1007,67 @@ export function DashboardShell({
                               );
                             })}
                           </div>
+                          {!viewerMode ? (
+                            <div className="analysis-break-even-calculator">
+                              <label className="analysis-break-even-calculator__input">
+                                <span>Bid scenario</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="off"
+                                  value={analysisBreakEvenBidInput}
+                                  onChange={(event) =>
+                                    setAnalysisBreakEvenBidInput(
+                                      formatBidInputText(event.target.value)
+                                    )
+                                  }
+                                  placeholder="Enter team price"
+                                />
+                              </label>
+                              <div className="analysis-break-even-calculator__ladder">
+                                <div className="analysis-break-even-calculator__summary">
+                                  <span>Additional money by round</span>
+                                  <p>
+                                    {hasAnalysisBreakEvenBidInput
+                                      ? `Break-even ${formatBreakEvenStage(analysisBreakEvenStage)} at ${formatCurrency(analysisBreakEvenBid)}`
+                                      : "Enter a value to map payout progression by round."}
+                                  </p>
+                                  {analysisBreakEvenShortfall !== null ? (
+                                    <p>
+                                      Champion payout still falls short by{" "}
+                                      {formatCurrency(analysisBreakEvenShortfall)}.
+                                    </p>
+                                  ) : null}
+                                </div>
+                                {analysisBreakEvenProgression.length ? (
+                                  <div className="analysis-round-ladder analysis-break-even-calculator__strip">
+                                    {analysisBreakEvenProgression.map((entry) => (
+                                      <div
+                                        key={`analysis-break-even-${entry.stage}`}
+                                        className="analysis-round-ladder__step analysis-break-even-calculator__step"
+                                      >
+                                        <div className="analysis-round-ladder__labels">
+                                          <span className="analysis-round-ladder__short">
+                                            {formatStageShortLabel(entry.stage)}
+                                          </span>
+                                          <span className="analysis-round-ladder__value">
+                                            {formatSignedCurrency(entry.netProfit)}
+                                          </span>
+                                        </div>
+                                        <span className="analysis-round-ladder__caption">
+                                          {titleCaseStage(entry.stage)}
+                                        </span>
+                                        <p className="analysis-break-even-calculator__delta">
+                                          {formatSignedCurrency(entry.additionalFromPreviousRound)}{" "}
+                                          from previous round
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -1360,4 +1471,29 @@ export function DashboardShell({
       <AppFooter variant="live" />
     </main>
   );
+}
+
+function formatSignedCurrency(value: number) {
+  if (value > 0) {
+    return `+${formatCurrency(value)}`;
+  }
+
+  if (value < 0) {
+    return `-${formatCurrency(Math.abs(value))}`;
+  }
+
+  return formatCurrency(0);
+}
+
+function formatStageShortLabel(stage: string) {
+  const labels: Record<string, string> = {
+    roundOf64: "R64",
+    roundOf32: "R32",
+    sweet16: "S16",
+    elite8: "E8",
+    finalFour: "F4",
+    champion: "Champ"
+  };
+
+  return labels[stage] ?? stage;
 }

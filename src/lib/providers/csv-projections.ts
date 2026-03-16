@@ -307,14 +307,6 @@ function parseAndRankRows(csvText: string) {
     "offensive 2 point percentage",
     "offensive 2pt percentage"
   ]);
-  const offensiveTwoPointSecondary = getOptionalHeaderIndexAtOccurrence(headerLookup, [
-    "offensive two point percentage",
-    "offensive 2 point percentage",
-    "offensive 2pt percentage",
-    "offensive 2pt",
-    "off 2pt",
-    "off 2pt percentage"
-  ], 1);
   const defensiveTwoPointPrimary = getOptionalHeaderIndex(headerLookup, [
     "defensive two point percentage",
     "opponent two point percentage",
@@ -357,17 +349,7 @@ function parseAndRankRows(csvText: string) {
       "adj em",
       "kenpom ranking"
     ]),
-    threePointPct:
-      explicitThreePointPct ??
-      offensiveTwoPointSecondary ??
-      getOptionalHeaderIndex(headerLookup, [
-        "three point rate",
-        "3 point rate",
-        "3pt rate",
-        "3par",
-        "offensive 3 point rate",
-        "offensive 3pt rate"
-      ]),
+    threePointPct: explicitThreePointPct,
     threePointRate: getOptionalHeaderIndex(headerLookup, [
       "three point rate",
       "3 point rate",
