@@ -1,361 +1,334 @@
-import { deriveMothershipFundingSnapshot, deriveFundingStatus } from "@/lib/funding";
+import React from "react";
 import { RoundMatchup, ViewerOwnershipGroup } from "@/lib/live-room";
 import {
   AuctionDashboard,
   BidRecommendation,
+  MatchupConflict,
   SoldAssetSummary,
-  Syndicate
+  Stage,
+  Syndicate,
+  TeamProjection
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
+  AssetSaleRow,
+  ConflictRow,
   MetricCard,
   formatAssetMembers,
-  formatAssetSubtitle
+  formatAssetMembersCompact,
+  formatAssetSubtitle,
+  formatBreakEvenStage
 } from "@/components/dashboard-shell/shared";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
   recommendation: BidRecommendation | null;
-  stoplightLabels: Record<BidRecommendation["stoplight"], string>;
-  fundingStatusLabels: Record<BidRecommendation["fundingStatus"], string>;
+  signalLabel: string | null;
+  currentBid: number;
   nominatedMatchup: RoundMatchup | null;
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
   hasOwnedLikelyRoundTwoOpponent: boolean;
-  forcedPassConflictName: string | null;
+  callHeadline: string;
+  callSupportText: string;
+  callDetailText: string | null;
+  breakEvenStage: Stage | "negativeReturn" | null;
+  targetBidDisplay: string;
+  maxBidDisplay: string;
+  filteredRationale: string[];
+  ownershipConflicts: MatchupConflict[];
+  teamLookup: Map<string, TeamProjection>;
+  forcedPassConflictTeamId: string | null;
   ownershipSearch: string;
   onOwnershipSearchChange: (value: string) => void;
   ownershipGroups: ViewerOwnershipGroup[];
   soldFeed: SoldAssetSummary[];
+  syndicateLookup: Map<string, Syndicate>;
 }
 
 export function ViewerAuctionWorkspace({
   dashboard,
   recommendation,
-  stoplightLabels,
-  fundingStatusLabels,
+  signalLabel,
+  currentBid,
   nominatedMatchup,
   likelyRound2Matchup,
   hasOwnedRoundOneOpponent,
   hasOwnedLikelyRoundTwoOpponent,
-  forcedPassConflictName,
+  callHeadline,
+  callSupportText,
+  callDetailText,
+  breakEvenStage,
+  targetBidDisplay,
+  maxBidDisplay,
+  filteredRationale,
+  ownershipConflicts,
+  teamLookup,
+  forcedPassConflictTeamId,
   ownershipSearch,
   onOwnershipSearchChange,
   ownershipGroups,
-  soldFeed
+  soldFeed,
+  syndicateLookup
 }: ViewerAuctionWorkspaceProps) {
   const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
+  const nominatedTeamClassification =
+    (nominatedTeam && dashboard.session.teamClassifications[nominatedTeam.id]?.classification) ||
+    null;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
-  const viewerTargetMaxDisplay = recommendation
-    ? recommendation.forcedPassConflictTeamId
-      ? "Pass"
-      : `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
-    : "--";
-  const focusFunding = deriveMothershipFundingSnapshot(
-    dashboard.session.mothershipFunding,
-    dashboard.focusSyndicate.spend
-  );
 
   return (
     <section className="viewer-layout">
-      <section className="decision-grid">
-        <article className="surface-card viewer-board viewer-board--spotlight">
-          <p className="eyebrow">Live Decision Board</p>
-          <div className="viewer-bid-hero viewer-bid-hero--team">
-            <div className="viewer-bid-hero__pulse">
-              <span className="pulse-dot" />
-              <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
+      <section className="operator-board-layout">
+        <div className="operator-board-layout__main">
+          <article className="surface-card decision-panel decision-panel--combined">
+            <div className="decision-panel__header">
+              <p className="eyebrow">Live Decision Board</p>
+              {signalLabel ? (
+                <div
+                  className={cn(
+                    "signal-pill",
+                    recommendation && `signal-pill--${recommendation.stoplight}`
+                  )}
+                >
+                  {signalLabel}
+                </div>
+              ) : null}
             </div>
-            <strong className={cn(!nominatedAsset && "viewer-bid-hero__title--waiting")}>
-              {nominatedAsset ? nominatedAsset.label : "Waiting for next team"}
-            </strong>
-            <p className="viewer-board__subcopy">
-              {nominatedAsset
-                ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-                : "The next active team will take over this board as soon as the operator makes a nomination."}
-            </p>
-            {nominatedMatchup ? (
-              <p className="viewer-board__matchup">
-                Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                {nominatedMatchup.opponent.name}
-                {hasOwnedRoundOneOpponent ? (
-                  <span className="viewer-board__matchup-owned">you own</span>
-                ) : null}
-              </p>
-            ) : null}
-            {likelyRound2Matchup ? (
-              <p className="viewer-board__path">
-                Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                {likelyRound2Matchup.opponent.name} (
-                {formatPercent(likelyRound2Matchup.probability ?? 0)})
-                {hasOwnedLikelyRoundTwoOpponent ? (
-                  <span className="viewer-board__matchup-owned">you own</span>
-                ) : null}
-              </p>
-            ) : null}
-            {nominatedAsset ? <p className="viewer-note">{formatAssetMembers(nominatedAsset)}</p> : null}
-            {nominatedTeam &&
-            dashboard.session.teamClassifications[nominatedTeam.id]?.classification ? (
-              <div className="viewer-bid-hero__classification">
-                <TeamClassificationBadge
-                  classification={dashboard.session.teamClassifications[nominatedTeam.id].classification}
-                />
-              </div>
-            ) : null}
-            {nominatedTeamNote ? <p className="viewer-note">{nominatedTeamNote}</p> : null}
-          </div>
 
-          <div className="viewer-board__call">
-            <p className="eyebrow">Call</p>
-            <h3>
-              {recommendation
-                ? recommendation.forcedPassConflictTeamId
-                  ? "Pass"
-                  : recommendation.stoplight === "buy"
-                    ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-                    : recommendation.stoplight === "caution"
-                      ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-                      : `Pass above ${formatCurrency(recommendation.maxBid)}`
-                : "Waiting for the next nomination"}
-            </h3>
-            <p>
-              {recommendation
-                ? recommendation.forcedPassConflictTeamId
-                  ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
-                  : fundingStatusLabels[recommendation.fundingStatus]
-                : "The operator's live recommendation will appear here when a team is active."}
-            </p>
-          </div>
-
-          <div className="metric-grid viewer-board__metrics">
-            <MetricCard
-              label="Target / max"
-              value={viewerTargetMaxDisplay}
-              longValue={Boolean(recommendation)}
-            />
-            <MetricCard
-              label="Stoplight"
-              value={recommendation ? stoplightLabels[recommendation.stoplight] : "Idle"}
-            />
-            <MetricCard
-              label="Funding status"
-              value={
-                recommendation
-                  ? fundingStatusLabels[recommendation.fundingStatus]
-                  : fundingStatusLabels[
-                      deriveFundingStatus(
-                        dashboard.focusSyndicate.spend,
-                        dashboard.session.mothershipFunding
-                      )
-                    ]
-              }
-            />
-            <MetricCard
-              label="Effective share price"
-              value={
-                focusFunding.impliedSharePrice === null
-                  ? "--"
-                  : formatCurrency(focusFunding.impliedSharePrice)
-              }
-            />
-            <MetricCard label="Teams remaining to sell" value={`${dashboard.availableAssets.length}`} />
-            <MetricCard
-              label="Underlying teams remaining"
-              value={`${dashboard.availableTeams.length}`}
-            />
-            <MetricCard
-              label="Mothership total spent"
-              value={formatCurrency(dashboard.focusSyndicate.spend)}
-            />
-          </div>
-        </article>
-
-        <SyndicateBoardCard
-          syndicates={[
-            dashboard.focusSyndicate,
-            ...dashboard.ledger.filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
-          ]}
-          focusSyndicateId={dashboard.focusSyndicate.id}
-          focusFunding={focusFunding}
-        />
-      </section>
-
-      <section className="detail-grid detail-grid--balanced">
-        <article className="surface-card">
-          <div className="section-headline">
-            <div>
-              <p className="eyebrow">Ownership Ledger</p>
-              <h3>Syndicate Holdings</h3>
-            </div>
-            <div className="viewer-ledger-search">
-              <input
-                type="search"
-                value={ownershipSearch}
-                onChange={(event) => onOwnershipSearchChange(event.target.value)}
-                placeholder="Filter by team name"
-              />
-            </div>
-          </div>
-          {ownershipGroups.length ? (
-            <div className="viewer-ledger">
-              {ownershipGroups.map((group) => (
-                <ViewerOwnershipLedgerGroup
-                  key={group.syndicate.id}
-                  group={group}
-                  isMothership={group.highlight}
-                  hasActiveSearch={ownershipSearch.trim().length > 0}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="empty-copy">No matching teams in current syndicate holdings.</p>
-          )}
-        </article>
-
-        <aside className="viewer-layout__side">
-          {recommendation ? (
-            <article className="surface-card viewer-guidance-card">
-              <div className="section-headline">
-                <div>
-                  <p className="eyebrow">Live Guidance</p>
-                  <h3>What Mothership should keep in view</h3>
+            <div
+              className={cn(
+                "decision-panel__hero",
+                nominatedAsset
+                  ? "decision-panel__hero--active"
+                  : "decision-panel__hero--waiting"
+              )}
+            >
+              <div className="decision-panel__hero-topline">
+                <div className="decision-panel__hero-content">
+                  <div className="decision-panel__hero-pulse">
+                    <span className={cn("pulse-dot", !nominatedAsset && "pulse-dot--muted")} />
+                    <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
+                    {nominatedTeamClassification ? (
+                      <div className="decision-panel__classification">
+                        <TeamClassificationBadge classification={nominatedTeamClassification} />
+                      </div>
+                    ) : null}
+                  </div>
+                  <h2
+                    className={cn(
+                      "decision-panel__hero-title",
+                      nominatedAsset &&
+                        nominatedAsset.type === "seed_bundle" &&
+                        "decision-panel__hero-title--bundle",
+                      nominatedAsset &&
+                        (nominatedAsset.type === "play_in_slot" ||
+                          nominatedAsset.label.length > 24) &&
+                        "decision-panel__hero-title--long",
+                      !nominatedAsset && "decision-panel__hero-title--waiting"
+                    )}
+                  >
+                    {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
+                  </h2>
+                  {nominatedAsset && nominatedAsset.type !== "single_team" ? (
+                    <p className="decision-panel__note">
+                      {formatAssetMembersCompact(nominatedAsset, { includeParens: false })}
+                    </p>
+                  ) : (
+                    <p className="decision-panel__subcopy">
+                      {nominatedAsset
+                        ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
+                        : "The next active team will take over this board when the operator makes a nomination."}
+                    </p>
+                  )}
+                </div>
+                <div className="decision-panel__hero-stat">
+                  <span className="insight-label">
+                    Current bid
+                    <button
+                      type="button"
+                      className="tooltip-hint"
+                      aria-label="Current bid explanation"
+                    >
+                      ?
+                      <span className="tooltip-content">
+                        The live price currently on the board for this team. Break-even, bid range,
+                        and recommendation context all update against this number.
+                      </span>
+                    </button>
+                  </span>
+                  <strong>{formatCurrency(currentBid)}</strong>
                 </div>
               </div>
-              <div className="list-stack">
-                {recommendation.rationale.slice(0, 3).map((line) => (
-                  <div key={line} className="list-line">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            </article>
-          ) : null}
+              {nominatedMatchup ? (
+                <p className="decision-panel__matchup">
+                  Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
+                  {nominatedMatchup.opponent.name}
+                  {hasOwnedRoundOneOpponent ? (
+                    <span className="decision-panel__matchup-owned">you own</span>
+                  ) : null}
+                </p>
+              ) : null}
+              {likelyRound2Matchup ? (
+                <p className="decision-panel__path">
+                  Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
+                  {likelyRound2Matchup.opponent.name} (
+                  {formatPercent(likelyRound2Matchup.probability ?? 0)})
+                  {hasOwnedLikelyRoundTwoOpponent ? (
+                    <span className="decision-panel__matchup-owned">you own</span>
+                  ) : null}
+                </p>
+              ) : null}
+              {nominatedTeamNote ? (
+                <div className="decision-panel__annotation">
+                  <span className="decision-panel__note">{nominatedTeamNote}</span>
+                </div>
+              ) : null}
+            </div>
+          </article>
 
+          <article className="surface-card decision-context">
+            <div className="decision-context__overview">
+              <div className="decision-panel__callout decision-context__callout">
+                <p className="eyebrow">Call</p>
+                <h3>{callHeadline}</h3>
+                <p>{callSupportText}</p>
+                {callDetailText ? <p className="call-conflict">{callDetailText}</p> : null}
+              </div>
+
+              <div className="decision-context__summary-grid">
+                <MetricCard
+                  label="Break-even round"
+                  value={formatBreakEvenStage(breakEvenStage)}
+                  compact
+                  tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
+                />
+                <MetricCard
+                  label="Simulated net"
+                  value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
+                  compact
+                  tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
+                />
+                <MetricCard
+                  label="Target bid"
+                  value={targetBidDisplay}
+                  compact
+                  tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining buying room."
+                />
+                <MetricCard
+                  label="Max bid"
+                  value={maxBidDisplay}
+                  compact
+                  tooltip="The highest bid the model can justify after funding room and portfolio overlap penalties are applied."
+                />
+              </div>
+            </div>
+
+            <div className="decision-context__columns">
+              <section className="decision-context__section">
+                <div className="section-headline section-headline--compact">
+                  <div>
+                    <p className="eyebrow">Rationale</p>
+                  </div>
+                </div>
+                {filteredRationale.length ? (
+                  <div className="list-stack">
+                    {filteredRationale.map((line) => (
+                      <div key={line} className="list-line">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-copy">Choose a team to unlock simulation-backed rationale.</p>
+                )}
+              </section>
+
+              <section className="decision-context__section">
+                <div className="section-headline section-headline--compact">
+                  <div>
+                    <p className="eyebrow">Ownership Conflicts</p>
+                  </div>
+                </div>
+                {ownershipConflicts.length ? (
+                  <div className="list-stack">
+                    {ownershipConflicts.slice(0, 4).map((conflict) => (
+                      <ConflictRow
+                        key={conflict.opponentId}
+                        conflict={conflict}
+                        teamLookup={teamLookup}
+                        isOwned
+                        isCritical={conflict.opponentId === forcedPassConflictTeamId}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="empty-copy">No immediate portfolio collision flags.</p>
+                )}
+              </section>
+            </div>
+          </article>
+        </div>
+
+        <aside className="operator-board-layout__side viewer-layout__side">
           <article className="surface-card">
             <div className="section-headline">
               <div>
-                <p className="eyebrow">Sold Teams</p>
-                <h3>Most recent sales first</h3>
+                <p className="eyebrow">Recent Sales</p>
+                <h3>Latest auction activity</h3>
               </div>
             </div>
             {soldFeed.length ? (
               <div className="list-stack">
                 {soldFeed.map((sale) => (
-                  <ViewerSoldAssetRow
+                  <AssetSaleRow
                     key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
                     sale={sale}
-                    buyerName={
-                      dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
-                        ?.name ?? sale.buyerSyndicateId
-                    }
+                    syndicateLookup={syndicateLookup}
                   />
                 ))}
               </div>
             ) : (
-              <p className="empty-copy">No teams have sold yet.</p>
+              <p className="empty-copy">No sales have been recorded yet.</p>
             )}
           </article>
         </aside>
       </section>
+
+      <article className="surface-card">
+        <div className="section-headline">
+          <div>
+            <p className="eyebrow">Ownership Ledger</p>
+            <h3>Syndicate Holdings</h3>
+          </div>
+          <div className="viewer-ledger-search">
+            <input
+              type="search"
+              value={ownershipSearch}
+              onChange={(event) => onOwnershipSearchChange(event.target.value)}
+              placeholder="Filter by team name"
+            />
+          </div>
+        </div>
+        {ownershipGroups.length ? (
+          <div className="viewer-ledger">
+            {ownershipGroups.map((group) => (
+              <ViewerOwnershipLedgerGroup
+                key={group.syndicate.id}
+                group={group}
+                isMothership={group.highlight}
+                hasActiveSearch={ownershipSearch.trim().length > 0}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="empty-copy">No matching teams in current syndicate holdings.</p>
+        )}
+      </article>
     </section>
-  );
-}
-
-function SyndicateBoardCard({
-  syndicates,
-  focusSyndicateId,
-  focusFunding
-}: {
-  syndicates: Syndicate[];
-  focusSyndicateId: string;
-  focusFunding: ReturnType<typeof deriveMothershipFundingSnapshot>;
-}) {
-  return (
-    <article className="surface-card syndicate-board-card">
-      <div className="section-headline">
-        <div>
-          <p className="eyebrow">Syndicate Board</p>
-          <h3>Spend, room, and EV</h3>
-        </div>
-      </div>
-      <div className="syndicate-board-frame">
-        <div className="syndicate-board">
-          {syndicates.map((syndicate) => {
-            const isFocusSyndicate = syndicate.id === focusSyndicateId;
-
-            return (
-              <div
-                key={syndicate.id}
-                className={cn(
-                  "syndicate-row syndicate-row--compact",
-                  isFocusSyndicate && "syndicate-row--focus"
-                )}
-              >
-                <div className="syndicate-row__title">
-                  <span className="syndicate-dot" style={{ backgroundColor: syndicate.color }} />
-                  <div>
-                    <strong>{syndicate.name}</strong>
-                    <span>{syndicate.ownedTeamIds.length} teams owned</span>
-                  </div>
-                </div>
-                <div>
-                  <span>Spend</span>
-                  <strong>{formatCurrency(syndicate.spend)}</strong>
-                </div>
-                <div>
-                  <span>{isFocusSyndicate ? "Base room" : "Est. room"}</span>
-                  <strong>
-                    {formatCurrency(
-                      isFocusSyndicate
-                        ? focusFunding.baseBidRoom
-                        : syndicate.estimatedRemainingBudget
-                    )}
-                  </strong>
-                </div>
-                <div>
-                  <span>{isFocusSyndicate ? "Portfolio EV" : "Est. budget"}</span>
-                  <strong>
-                    {formatCurrency(
-                      isFocusSyndicate
-                        ? syndicate.portfolioExpectedValue
-                        : syndicate.estimatedBudget
-                    )}
-                  </strong>
-                </div>
-                {syndicate.id !== focusSyndicateId && syndicate.estimateExceeded ? (
-                  <div className="syndicate-row__flag">
-                    <span>Room read</span>
-                    <strong>Estimate exceeded</strong>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ViewerSoldAssetRow({
-  sale,
-  buyerName
-}: {
-  sale: SoldAssetSummary;
-  buyerName: string;
-}) {
-  return (
-    <div className="list-row">
-      <div>
-        <strong>{sale.asset.label}</strong>
-        <span>{formatAssetMembers(sale.asset)}</span>
-        <span>To {buyerName}</span>
-      </div>
-      <strong>{formatCurrency(sale.price)}</strong>
-    </div>
   );
 }
 

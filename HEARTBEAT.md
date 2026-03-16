@@ -41,6 +41,7 @@ As of `2026-03-15`:
   - in-room `Bracket` workspace with ownership markers and winner advancement
   - in-room `Analysis` workspace backed by the same recommendation payload as `Auction`
   - consolidated `Auction` workspace with live decision board, syndicate board, Mothership position, and decision context
+  - viewer `Auction` now uses the same live decision board, call, rationale, ownership-conflict, recent-sales, and ownership-ledger structure as the operator board without exposing controls
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
   - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
   - extracted live-room controller and dedicated operator/viewer auction workspace components
@@ -91,7 +92,7 @@ Current product surfaces and their roles:
   - one unresolved play-in team
   - one regional `13-16` package
 - viewer state must always derive from the same persisted session truth as operator state
-- viewer mode intentionally does not display current bid; it centers the active team and room outcomes instead
+- viewer mode is read-only, but it does display the live current bid and the same Mothership decision context as the operator surface
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
 - Mothership is the fixed recommendation lens for every session

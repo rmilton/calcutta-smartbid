@@ -130,7 +130,7 @@ p {
   box-shadow: var(--shadow);
 }
 
-.surface-card:not(.marketing-copy):not(.auth-card):not(.form-section):not(.session-hero):not(.control-panel):not(.decision-panel):not(.callout-panel):not(.viewer-board) {
+.surface-card:not(.marketing-copy):not(.auth-card):not(.form-section):not(.session-hero):not(.control-panel):not(.decision-panel):not(.callout-panel) {
   padding: 1.6rem;
 }
 
@@ -246,8 +246,7 @@ p {
 .session-hero__copy > p:not(.eyebrow),
 .auth-card__header > p:not(.eyebrow),
 .form-section__header > p:not(.eyebrow),
-.section-headline > p,
-.viewer-board__subcopy {
+.section-headline > p {
   color: var(--muted);
   line-height: 1.6;
 }
@@ -530,14 +529,12 @@ p {
 .form-section h3,
 .section-headline h2,
 .section-headline h3,
-.callout-panel h3,
-.viewer-board h2 {
+.callout-panel h3 {
   font-family: var(--font-display);
   letter-spacing: -0.03em;
 }
 
-.auth-card h2,
-.viewer-board h2 {
+.auth-card h2 {
   font-size: 2rem;
 }
 
@@ -900,21 +897,6 @@ kbd {
   color: var(--ink);
 }
 
-.decision-grid,
-.detail-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.decision-grid {
-  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
-}
-
-.decision-grid--operator {
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-  align-items: start;
-}
-
 .operator-board-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
@@ -1083,13 +1065,11 @@ kbd {
   background: var(--panel-muted);
 }
 
-.decision-panel__callout h3,
-.viewer-board__call h3 {
+.decision-panel__callout h3 {
   font-size: clamp(1.45rem, 2.1vw, 1.9rem);
 }
 
-.decision-panel__callout p,
-.viewer-board__call p {
+.decision-panel__callout p {
   color: var(--muted-strong);
   line-height: 1.55;
 }
@@ -1138,9 +1118,7 @@ kbd {
 }
 
 .decision-panel__matchup,
-.viewer-board__matchup,
-.decision-panel__path,
-.viewer-board__path {
+.decision-panel__path {
   margin-top: 0.65rem;
   color: var(--muted-strong);
   font: 600 0.82rem/1.4 var(--font-mono);
@@ -1148,13 +1126,11 @@ kbd {
   text-transform: uppercase;
 }
 
-.decision-panel__path,
-.viewer-board__path {
+.decision-panel__path {
   color: var(--muted);
 }
 
-.decision-panel__matchup-owned,
-.viewer-board__matchup-owned {
+.decision-panel__matchup-owned {
   margin-left: 0.45rem;
   color: var(--danger);
 }
@@ -1194,8 +1170,7 @@ kbd {
 }
 
 .decision-stat span,
-.decision-panel__hero-pulse span,
-.viewer-bid-hero__pulse span {
+.decision-panel__hero-pulse span {
   color: var(--muted);
   font-size: 0.82rem;
   text-transform: uppercase;
@@ -1251,19 +1226,6 @@ kbd {
 
 .metric-card--long-value strong {
   font-size: clamp(1.1rem, 1.45vw, 1.3rem);
-}
-
-.detail-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.detail-grid--balanced {
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-}
-
-.detail-grid--operator {
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-  align-items: start;
 }
 
 .section-headline--compact {
@@ -2187,66 +2149,9 @@ kbd {
   color: var(--muted);
 }
 
-.viewer-board {
-  display: grid;
-  gap: 1rem;
-  padding: 1.75rem;
-}
-
 .viewer-layout__side {
   align-content: start;
   grid-auto-rows: max-content;
-}
-
-.viewer-board__metrics {
-  margin-top: 0.25rem;
-}
-
-.viewer-board__call {
-  display: grid;
-  gap: 0.5rem;
-  padding: 1rem 1.1rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
-  background: var(--panel-muted);
-}
-
-.viewer-bid-hero {
-  position: relative;
-  overflow: hidden;
-  margin: 1.25rem 0;
-  padding: 1.5rem;
-  border-radius: var(--radius-xl);
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
-}
-
-.viewer-bid-hero--team {
-  display: grid;
-  gap: 0.6rem;
-  justify-items: center;
-  margin: 0;
-  padding: 2.25rem 1.75rem 2rem;
-  text-align: center;
-  background:
-    radial-gradient(
-      circle at top,
-      color-mix(in srgb, var(--accent) 16%, transparent),
-      transparent 58%
-    ),
-    color-mix(in srgb, var(--accent) 6%, var(--panel));
-}
-
-.viewer-bid-hero__pulse {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 0.7rem;
-  align-items: center;
-}
-
-.viewer-bid-hero--team .viewer-bid-hero__pulse {
-  justify-content: center;
 }
 
 .pulse-dot {
@@ -2272,61 +2177,6 @@ kbd {
   inset: -14px;
   border-color: color-mix(in srgb, var(--accent) 12%, transparent);
   animation-delay: 0.4s;
-}
-
-.viewer-bid-hero strong {
-  position: relative;
-  z-index: 1;
-  display: block;
-  margin-top: 0.8rem;
-  font-size: clamp(3.5rem, 7vw, 5.4rem);
-  line-height: 0.92;
-  letter-spacing: -0.06em;
-  text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-.viewer-bid-hero--team strong {
-  max-width: 14ch;
-  margin-left: auto;
-  margin-right: auto;
-  font-size: clamp(3.25rem, 6.8vw, 5.8rem);
-  line-height: 0.96;
-}
-
-.viewer-bid-hero__title--waiting {
-  max-width: none;
-  font-size: clamp(2.4rem, 5vw, 4.2rem);
-  white-space: nowrap;
-}
-
-.viewer-bid-hero p {
-  position: relative;
-  z-index: 1;
-  margin-top: 0.85rem;
-  color: var(--muted-strong);
-  line-height: 1.55;
-}
-
-.viewer-bid-hero__classification {
-  position: relative;
-  z-index: 1;
-}
-
-.viewer-bid-hero .viewer-note {
-  position: relative;
-  z-index: 1;
-  margin-top: 0.85rem;
-  max-width: 34rem;
-}
-
-.viewer-bid-hero--team p {
-  max-width: 34rem;
-  margin: 0;
-  font-size: 1.02rem;
-}
-
-.viewer-bid-hero--team .viewer-note {
-  margin-top: 0.85rem;
 }
 
 .viewer-ledger,
@@ -2424,23 +2274,6 @@ kbd {
 .viewer-ledger-row__team,
 .viewer-ledger-row__price {
   min-width: 0;
-}
-
-.viewer-guidance-card {
-  align-self: start;
-  padding: 1.25rem;
-}
-
-.viewer-guidance-card .section-headline {
-  margin-bottom: 0.8rem;
-}
-
-.viewer-guidance-card .list-stack {
-  gap: 0.65rem;
-}
-
-.viewer-guidance-card .list-line {
-  padding: 0.8rem 0.9rem;
 }
 
 .admin-shell--dense {
@@ -2992,8 +2825,6 @@ kbd {
   .marketing-hero,
   .auction-layout,
   .viewer-layout,
-  .decision-grid,
-  .detail-grid,
   .admin-summary-grid,
   .admin-card-grid--three,
   .admin-grid,
@@ -3025,8 +2856,6 @@ kbd {
     justify-self: stretch;
   }
 
-  .decision-grid--operator,
-  .detail-grid--operator,
   .operator-board-layout {
     grid-template-columns: 1fr;
   }
@@ -3075,10 +2904,6 @@ kbd {
     justify-content: flex-start;
   }
 
-  .viewer-bid-hero strong {
-    font-size: 3.8rem;
-  }
-
   .decision-panel__hero {
     padding: 1.2rem 1.05rem 1.1rem;
   }
@@ -3103,15 +2928,6 @@ kbd {
   .decision-panel .decision-panel__hero-title--waiting {
     font-size: clamp(2.1rem, 8vw, 3rem);
   }
-
-  .viewer-bid-hero--team {
-    padding: 1.75rem 1.25rem 1.5rem;
-  }
-
-  .viewer-bid-hero--team strong {
-    max-width: none;
-  }
-
   .viewer-ledger-group__header,
   .viewer-ledger-row {
     align-items: flex-start;
