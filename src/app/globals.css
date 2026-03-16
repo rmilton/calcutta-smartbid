@@ -1332,8 +1332,7 @@ kbd {
   margin-top: 0.5rem;
   font-size: 1.5rem;
   letter-spacing: -0.03em;
-  line-height: 1.2;
-  white-space: normal;
+  line-height: 1.05;
   overflow-wrap: anywhere;
   word-break: break-word;
   font-variant-numeric: tabular-nums;
@@ -1365,7 +1364,6 @@ kbd {
 .metric-card {
   padding: 1rem;
   min-width: 0;
-  overflow: hidden;
 }
 
 .metric-card--compact strong {

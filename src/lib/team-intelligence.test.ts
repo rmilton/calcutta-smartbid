@@ -125,78 +125,63 @@ describe("buildTeamIntelligence", () => {
     expect(selected?.row.risks).toContain("Limited scouting data increases uncertainty");
   });
 
-  it("surfaces concise peer-comparison strengths for standout profile stats", () => {
-    const peerTeams: TeamProjection[] = [
+  it("does not add the uncertainty fallback when sparse data still yields a clear strength", () => {
+    const teamsWithPartialSignals: TeamProjection[] = [
       {
-        id: "houston-like",
-        name: "Houston Like",
-        shortName: "HOU",
-        region: "South",
+        id: "duke",
+        name: "Duke",
+        shortName: "DUKE",
+        region: "East",
         seed: 1,
-        rating: 92,
-        offense: 121,
-        defense: 93,
+        rating: 0.98,
+        offense: 128,
+        defense: 91,
         tempo: 66,
         source: "test",
         scouting: {
-          kenpomRank: 4,
-          threePointPct: 37.2,
-          effectiveFieldGoalPct: 56.2,
-          offensiveReboundPct: 35.5,
-          offensiveTwoPointPct: 57.4
+          kenpomRank: 1,
+          quadWins: { q1: 12, q2: 8, q3: 7, q4: 7 }
         }
       },
       {
-        id: "peer-a",
-        name: "Peer A",
-        shortName: "PA",
-        region: "East",
-        seed: 3,
-        rating: 91.5,
-        offense: 119.8,
-        defense: 94.1,
-        tempo: 66.4,
+        id: "houston",
+        name: "Houston",
+        shortName: "HOU",
+        region: "Midwest",
+        seed: 1,
+        rating: 0.97,
+        offense: 127,
+        defense: 90,
+        tempo: 65,
         source: "test",
         scouting: {
-          kenpomRank: 7,
-          threePointPct: 36.6,
-          effectiveFieldGoalPct: 54.9,
-          offensiveReboundPct: 30.4,
-          offensiveTwoPointPct: 53.4
+          kenpomRank: 9,
+          quadWins: { q1: 8, q2: 7, q3: 6, q4: 6 }
         }
       },
       {
-        id: "peer-b",
-        name: "Peer B",
-        shortName: "PB",
+        id: "florida",
+        name: "Florida",
+        shortName: "FLA",
         region: "West",
-        seed: 4,
-        rating: 90.9,
-        offense: 119.1,
-        defense: 95.3,
-        tempo: 65.9,
+        seed: 1,
+        rating: 0.96,
+        offense: 125,
+        defense: 92,
+        tempo: 68,
         source: "test",
         scouting: {
-          kenpomRank: 10,
-          threePointPct: 35.9,
-          effectiveFieldGoalPct: 54.1,
-          offensiveReboundPct: 29.7,
-          offensiveTwoPointPct: 52.8
+          kenpomRank: 15,
+          quadWins: { q1: 6, q2: 6, q3: 5, q4: 5 }
         }
       }
     ];
 
-    const intelligence = buildTeamIntelligence(peerTeams, "houston-like");
+    const intelligence = buildTeamIntelligence(teamsWithPartialSignals, "duke");
     const selected = intelligence.selected;
 
     expect(selected).not.toBeNull();
-    expect(
-      selected?.row.strengths.some((entry) => entry.includes("Offensive rebounding edge"))
-    ).toBe(true);
-    expect(
-      selected?.row.strengths.some((entry) =>
-        entry.includes("Interior scoring efficiency edge")
-      )
-    ).toBe(true);
+    expect(selected?.row.strengths).toContain("High-end Quad 1 resume");
+    expect(selected?.row.risks).not.toContain("Limited scouting data increases uncertainty");
   });
 });
