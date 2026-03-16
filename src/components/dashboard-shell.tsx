@@ -34,6 +34,7 @@ import {
   formatBreakEvenStage,
   formatAssetMembersCompact
 } from "@/components/dashboard-shell/shared";
+import { AppFooter } from "@/components/app-footer";
 import {
   useLiveRoomController,
   WorkspaceView
@@ -1277,6 +1278,7 @@ export function DashboardShell({
           {activeView === "bracket" ? bracketWorkspace : null}
         </>
       )}
+      <AppFooter variant="live" />
     </main>
   );
 }

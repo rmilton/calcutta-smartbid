@@ -1,4 +1,5 @@
 import { SessionAdminCenter } from "@/components/session-admin-center";
+import { AppFooter } from "@/components/app-footer";
 import { requirePlatformAdminPage } from "@/lib/auth";
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { getSessionRepository } from "@/lib/repository";
@@ -20,6 +21,7 @@ export default async function SessionAdminPage({ params }: PageProps) {
           mothershipSyndicateName={getConfiguredMothershipSyndicateName()}
         />
       </section>
+      <AppFooter />
     </main>
   );
 }

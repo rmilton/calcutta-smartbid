@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AppFooter } from "@/components/app-footer";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { requireAuthenticatedPageSession } from "@/lib/auth";
 import { getSessionRepository } from "@/lib/repository";
@@ -55,6 +56,7 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
               </Link>
             </div>
           </section>
+          <AppFooter variant="live" />
         </main>
       );
     }
@@ -77,6 +79,7 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
               </Link>
             </div>
           </section>
+          <AppFooter variant="live" />
         </main>
       );
     }

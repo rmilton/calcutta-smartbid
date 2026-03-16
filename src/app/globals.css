@@ -123,6 +123,60 @@ p {
   padding: 1.5rem 0 3rem;
 }
 
+.app-footer {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.app-footer__headline,
+.app-footer__detail {
+  margin: 0;
+}
+
+.app-footer__detail {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.app-footer--signature {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.app-footer--signature .app-footer__headline {
+  color: var(--muted-strong);
+  font: 600 0.78rem/1.2 var(--font-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.app-footer--signature .app-footer__detail {
+  max-width: 56rem;
+  font-size: 0.95rem;
+}
+
+.app-footer--live {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+  text-align: left;
+}
+
+.app-footer--live .app-footer__headline {
+  color: var(--muted-strong);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.app-footer--live .app-footer__detail {
+  max-width: 72rem;
+  font-size: 0.88rem;
+}
+
 .surface-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
@@ -3508,6 +3562,11 @@ kbd {
     padding: 1rem;
   }
 
+  .app-footer--live {
+    justify-items: center;
+    text-align: center;
+  }
+
   .minimal-auth-card {
     padding: 1.4rem;
     border-radius: 24px;
@@ -3527,8 +3586,18 @@ kbd {
   padding: 2rem;
 }
 
-.minimal-landing__panel {
+.minimal-landing__content {
   width: min(100%, 460px);
+  display: grid;
+  gap: 1.5rem;
+}
+
+.minimal-landing__panel {
+  width: 100%;
+}
+
+.minimal-landing__footer {
+  margin-top: 0;
 }
 
 .minimal-auth-card {

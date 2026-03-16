@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { AppFooter } from "@/components/app-footer";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -1502,6 +1503,7 @@ export function AdminCenter({
           </div>
         ) : null}
       </section>
+      <AppFooter />
     </main>
   );
 }
