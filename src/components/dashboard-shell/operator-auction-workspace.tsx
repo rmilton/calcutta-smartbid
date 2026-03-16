@@ -23,6 +23,7 @@ import {
   formatAssetSubtitle,
   formatBreakEvenStage
 } from "@/components/dashboard-shell/shared";
+import { AssetLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface OperatorAuctionWorkspaceProps {
@@ -163,6 +164,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             <AssetCombobox
               assets={dashboard.availableAssets}
               soldAssets={dashboard.soldAssets}
+              teamLookup={teamLookup}
               value={selectedAssetId}
               inputRef={teamSelectRef}
               onChange={onAssetChange}
@@ -286,21 +288,32 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                       </div>
                     ) : null}
                   </div>
-                  <h2
-                    className={cn(
-                      "decision-panel__hero-title",
-                      nominatedAsset &&
-                        nominatedAsset.type === "seed_bundle" &&
-                        "decision-panel__hero-title--bundle",
-                      nominatedAsset &&
-                        (nominatedAsset.type === "play_in_slot" ||
-                          nominatedAsset.label.length > 24) &&
-                        "decision-panel__hero-title--long",
-                      !nominatedAsset && "decision-panel__hero-title--waiting"
-                    )}
-                  >
-                    {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
-                  </h2>
+                  <div className="team-title-lockup">
+                    {nominatedAsset ? (
+                      <AssetLogo
+                        asset={nominatedAsset}
+                        teamLookup={teamLookup}
+                        size="lg"
+                        decorative
+                        className="team-title-lockup__logo"
+                      />
+                    ) : null}
+                    <h2
+                      className={cn(
+                        "decision-panel__hero-title",
+                        nominatedAsset &&
+                          nominatedAsset.type === "seed_bundle" &&
+                          "decision-panel__hero-title--bundle",
+                        nominatedAsset &&
+                          (nominatedAsset.type === "play_in_slot" ||
+                            nominatedAsset.label.length > 24) &&
+                          "decision-panel__hero-title--long",
+                        !nominatedAsset && "decision-panel__hero-title--waiting"
+                      )}
+                    >
+                      {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
+                    </h2>
+                  </div>
                   {nominatedAsset && nominatedAsset.type !== "single_team" ? (
                     <p className="decision-panel__note">
                       {formatAssetMembersCompact(nominatedAsset, { includeParens: false })}
@@ -551,6 +564,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     key={`${sale.asset.id}-${sale.price}`}
                     sale={sale}
                     syndicateLookup={syndicateLookup}
+                    teamLookup={teamLookup}
                   />
                 ))}
               </div>
@@ -679,9 +693,12 @@ function OperatorSyndicateBoardCard({
                               key={`${syndicate.id}-${sale.asset.id}-${sale.price}-${index}`}
                               className="syndicate-owned-item"
                             >
-                              <div>
-                                <strong>{sale.asset.label}</strong>
-                                <span>{subtitle}</span>
+                              <div className="team-label">
+                                <AssetLogo asset={sale.asset} teamLookup={teamLookup} size="sm" decorative />
+                                <div className="team-label__copy">
+                                  <strong>{sale.asset.label}</strong>
+                                  <span>{subtitle}</span>
+                                </div>
                               </div>
                               <strong>{formatCurrency(sale.price)}</strong>
                             </div>
@@ -705,12 +722,14 @@ function OperatorSyndicateBoardCard({
 function AssetCombobox({
   assets,
   soldAssets,
+  teamLookup,
   value,
   inputRef,
   onChange
 }: {
   assets: AuctionAsset[];
   soldAssets: SoldAssetSummary[];
+  teamLookup: Map<string, TeamProjection>;
   value: string;
   inputRef: RefObject<HTMLInputElement | null>;
   onChange: (assetId: string) => void;
@@ -844,6 +863,13 @@ function AssetCombobox({
                   }}
                   onMouseEnter={() => setHighlightIndex(index)}
                 >
+                  <AssetLogo
+                    asset={asset}
+                    teamLookup={teamLookup}
+                    size="sm"
+                    decorative
+                    className="combobox__logo"
+                  />
                   <span className="combobox__seed">{formatAssetSeed(asset)}</span>
                   <span className="combobox__name">{asset.label}</span>
                   <span className="combobox__region">{asset.region}</span>

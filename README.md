@@ -92,6 +92,25 @@ Optional for local development only (skip login flow):
 
 If you use bypass mode, restart `npm run dev` after updating `.env.local`.
 
+### Local team logos
+
+Team logos are stored locally and rendered from the checked-in manifest under:
+
+- `public/team-logos/prototype/manifest.json`
+- `public/team-logos/prototype/*`
+
+The current checked-in set covers the official 2026 men's tournament field announced on March 15, 2026, which is `68` teams once the First Four are included.
+
+To refresh the logo set for a new field:
+
+```bash
+npm run logos:prototype
+```
+
+That script reads [scripts/team-logo-prototype-input.json](/Users/llewis/Code/side-projects/calcutta-smartbid/scripts/team-logo-prototype-input.json), downloads logos into `public/team-logos/prototype/`, and rewrites the manifest. The runtime logo lookup is manifest-backed, so new file extensions and NCAA fallback SVGs are picked up automatically without app code changes.
+
+The logo smoke check is now covered by [src/lib/team-logos.test.ts](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/team-logos.test.ts), which verifies that every requested team resolves to a local file on disk.
+
 ## Product surfaces
 
 - `Landing/login`

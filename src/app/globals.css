@@ -652,6 +652,94 @@ kbd {
   cursor: text;
 }
 
+.team-label {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.team-label__copy {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.team-label__copy > * {
+  margin: 0;
+}
+
+.team-title-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.team-title-lockup__logo {
+  flex-shrink: 0;
+}
+
+.team-logo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 86%, var(--panel-muted));
+  border: 1px solid color-mix(in srgb, var(--line-strong) 82%, transparent);
+}
+
+.team-logo--xs {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.team-logo--sm {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+.team-logo--md {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.team-logo--lg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.team-logo__image {
+  object-fit: contain;
+  padding: 0.12rem;
+}
+
+.team-logo__fallback {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.team-logo-stack {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.team-logo-stack__item {
+  margin-left: -0.45rem;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+.team-logo-stack__item:first-child {
+  margin-left: 0;
+}
+
 .combobox__list {
   position: absolute;
   top: calc(100% + 4px);
@@ -677,6 +765,10 @@ kbd {
   cursor: pointer;
   font-size: 0.85rem;
   transition: background 0.08s;
+}
+
+.combobox__logo {
+  flex-shrink: 0;
 }
 
 .combobox__item--highlighted {
@@ -1266,6 +1358,13 @@ kbd {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
+}
+
+.list-row .team-label,
+.syndicate-owned-item .team-label,
+.viewer-ledger-row .team-label,
+.section-headline .team-label {
+  flex: 1;
 }
 
 .list-row--top-aligned {
@@ -1916,7 +2015,10 @@ kbd {
   border-right: 0.35rem solid var(--bracket-owner-accent);
 }
 
-.bracket-board__region--mirrored .bracket-entrant__identity,
+.bracket-board__region--mirrored .bracket-entrant__identity {
+  justify-content: flex-end;
+}
+
 .bracket-board__region--mirrored .bracket-entrant__meta {
   justify-items: end;
 }
@@ -2115,7 +2217,12 @@ kbd {
   border-style: dashed;
 }
 
-.bracket-entrant__identity,
+.bracket-entrant__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .bracket-entrant__meta {
   display: grid;
   gap: 0.2rem;
