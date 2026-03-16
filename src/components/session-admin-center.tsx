@@ -327,16 +327,35 @@ export function SessionAdminCenter({
     setPresenceRefreshedAt(new Date().toISOString());
   }, [config.session.id]);
 
+  const refreshPresence = useCallback(async () => {
+    const response = await fetch(`/api/admin/sessions/${config.session.id}/presence`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? "Unable to refresh active viewers.");
+    }
+
+    const payload = (await response.json()) as {
+      activeViewers: SessionAdminConfig["activeViewers"];
+    };
+    setConfig((current) => ({
+      ...current,
+      activeViewers: payload.activeViewers
+    }));
+    setPresenceRefreshedAt(new Date().toISOString());
+  }, [config.session.id]);
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void refreshConfig().catch(() => undefined);
+        void refreshPresence().catch(() => undefined);
       }
     }, 30_000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshConfig().catch(() => undefined);
+        void refreshPresence().catch(() => undefined);
       }
     };
 
@@ -345,7 +364,7 @@ export function SessionAdminCenter({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [refreshConfig]);
+  }, [refreshPresence]);
 
   async function submitJson(
     url: string,

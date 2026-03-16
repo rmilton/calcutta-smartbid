@@ -145,6 +145,7 @@ export interface SessionRepository {
   listSessions(): Promise<AdminSessionSummary[]>;
   getAdminCenterData(): Promise<AdminCenterData>;
   getSessionAdminConfig(sessionId: string): Promise<SessionAdminConfig>;
+  getActiveSessionViewers(sessionId: string): Promise<ActiveSessionViewer[]>;
   getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
   getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
@@ -306,6 +307,12 @@ class LocalSessionRepository implements SessionRepository {
     return buildSessionAdminConfig(session, store, store.viewerPresence);
   }
 
+  async getActiveSessionViewers(sessionId: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    return buildActiveSessionViewers(session.accessMembers, store.viewerPresence, session.id);
+  }
+
   async getSession(sessionId: string) {
     const store = await this.readStore();
     return store.sessions.find((session) => session.id === sessionId) ?? null;
@@ -327,8 +334,7 @@ class LocalSessionRepository implements SessionRepository {
     currentView: SessionPresenceView
   ) {
     const store = await this.readStore();
-    const session = findSession(store.sessions, sessionId);
-    const member = session.accessMembers.find((candidate) => candidate.id === memberId) ?? null;
+    const member = await this.getAccessMember(sessionId, memberId);
 
     if (!member || !member.active) {
       throw new Error("Your access to this auction is no longer active.");
@@ -1074,26 +1080,17 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getSessionAdminConfig(sessionId: string) {
-    const [session, refs, importRuns, viewerPresenceResult] = await Promise.all([
+    const [session, refs, importRuns, activeViewers] = await Promise.all([
       this.requireSession(sessionId),
       this.readReferenceData(),
       this.listImportRuns(sessionId),
-      requireSupabaseClient()
-        .from("session_viewer_presence")
-        .select("session_id, member_id, current_view, last_seen_at")
-        .eq("session_id", sessionId)
+      this.getActiveSessionViewers(sessionId)
     ]);
-    throwOnSupabaseError(viewerPresenceResult.error);
     return {
       session,
       currentSharedAccessCode: getStoredSharedAccessCode(session),
       accessMembers: session.accessMembers,
-      activeViewers: buildActiveSessionViewers(
-        session.accessMembers,
-        mapSessionViewerPresenceRows(
-          (viewerPresenceResult.data as Array<Record<string, unknown>> | null) ?? []
-        )
-      ),
+      activeViewers,
       platformUsers: refs.platformUsers,
       syndicateCatalog: refs.syndicateCatalog,
       dataSources: refs.dataSources,
@@ -1282,8 +1279,45 @@ class SupabaseSessionRepository implements SessionRepository {
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
-    const session = await this.requireSession(sessionId);
-    return session.accessMembers.find((member) => member.id === memberId) ?? null;
+    const result = await requireSupabaseClient()
+      .from("session_members")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("id", memberId)
+      .maybeSingle();
+
+    throwOnSupabaseError(result.error);
+
+    if (!result.data) {
+      return null;
+    }
+
+    return mapAccessMemberRow(result.data as Record<string, unknown>);
+  }
+
+  async getActiveSessionViewers(sessionId: string) {
+    const client = requireSupabaseClient();
+    const [membersResult, presenceResult] = await Promise.all([
+      client.from("session_members").select("*").eq("session_id", sessionId),
+      client
+        .from("session_viewer_presence")
+        .select("session_id, member_id, current_view, last_seen_at")
+        .eq("session_id", sessionId)
+    ]);
+
+    throwOnSupabaseError(membersResult.error);
+    throwOnSupabaseError(presenceResult.error);
+
+    return buildActiveSessionViewers(
+      mapAccessMembers(
+        (membersResult.data as Array<Record<string, unknown>> | null) ?? [],
+        []
+      ),
+      mapSessionViewerPresenceRows(
+        (presenceResult.data as Array<Record<string, unknown>> | null) ?? []
+      ),
+      sessionId
+    );
   }
 
   async recordViewerPresence(
@@ -1291,8 +1325,7 @@ class SupabaseSessionRepository implements SessionRepository {
     memberId: string,
     currentView: SessionPresenceView
   ) {
-    const session = await this.requireSession(sessionId);
-    const member = session.accessMembers.find((candidate) => candidate.id === memberId) ?? null;
+    const member = await this.getAccessMember(sessionId, memberId);
 
     if (!member || !member.active) {
       throw new Error("Your access to this auction is no longer active.");
@@ -3947,21 +3980,32 @@ function mapAccessMembers(
   platformUsers: PlatformUser[]
 ) {
   return rows.map((row) => {
-    const platformUserId = row.platform_user_id ? String(row.platform_user_id) : null;
+    const accessMember = mapAccessMemberRow(row);
+    if (!accessMember.platformUserId) {
+      return accessMember;
+    }
+
     const platformUser =
-      platformUserId
-        ? platformUsers.find((candidate) => candidate.id === platformUserId) ?? null
-        : null;
+      platformUsers.find((candidate) => candidate.id === accessMember.platformUserId) ?? null;
+
     return {
-      id: String(row.id),
-      platformUserId,
-      name: platformUser?.name ?? String(row.name),
-      email: platformUser?.email ?? String(row.email),
-      role: String(row.role) as AccessMember["role"],
-      active: Boolean(row.active),
-      createdAt: String(row.created_at)
+      ...accessMember,
+      name: platformUser?.name ?? accessMember.name,
+      email: platformUser?.email ?? accessMember.email
     } satisfies AccessMember;
   });
+}
+
+function mapAccessMemberRow(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    platformUserId: row.platform_user_id ? String(row.platform_user_id) : null,
+    name: String(row.name),
+    email: String(row.email),
+    role: String(row.role) as AccessMember["role"],
+    active: Boolean(row.active),
+    createdAt: String(row.created_at)
+  } satisfies AccessMember;
 }
 
 function mapSessionViewerPresenceRows(
