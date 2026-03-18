@@ -138,6 +138,16 @@ function buildSyndicate(id: string, name: string, color: string): Syndicate {
 }
 
 describe("ViewerAuctionWorkspace", () => {
+  const payoutRules = {
+    roundOf64: 1,
+    roundOf32: 1.5,
+    sweet16: 2.5,
+    elite8: 3,
+    finalFour: 4,
+    champion: 4,
+    projectedPot: 220000
+  } as const;
+
   it("renders the simplified viewer surface with the shared decision-board structure", () => {
     const team = buildTeam("team-arizona", "Arizona", 4);
     const conflictTeam = buildTeam("team-duke", "Duke", 1);
@@ -186,6 +196,7 @@ describe("ViewerAuctionWorkspace", () => {
     } satisfies BidRecommendation;
     const dashboard = {
       session: {
+        payoutRules,
         teamClassifications: {
           [team.id]: {
             teamId: team.id,
@@ -211,6 +222,7 @@ describe("ViewerAuctionWorkspace", () => {
       createElement(ViewerAuctionWorkspace, {
         dashboard,
         currentBid: 500,
+        breakEvenStage: null,
         nominatedMatchup: {
           opponent: {
             teamId: conflictTeam.id,
@@ -263,6 +275,7 @@ describe("ViewerAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Live Decision Board");
+    expect(markup).toContain("Nate Silver Path");
     expect(markup).toContain("Current bid");
     expect(markup).toContain("Recent Sales");
     expect(markup).toContain("Ownership Ledger");
@@ -284,6 +297,7 @@ describe("ViewerAuctionWorkspace", () => {
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
       session: {
+        payoutRules,
         teamClassifications: {},
         teamNotes: {}
       },
@@ -297,6 +311,7 @@ describe("ViewerAuctionWorkspace", () => {
       createElement(ViewerAuctionWorkspace, {
         dashboard,
         currentBid: 0,
+        breakEvenStage: null,
         nominatedMatchup: null,
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
@@ -326,6 +341,7 @@ describe("ViewerAuctionWorkspace", () => {
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
       session: {
+        payoutRules,
         teamClassifications: {},
         teamNotes: {}
       },
@@ -339,6 +355,7 @@ describe("ViewerAuctionWorkspace", () => {
       createElement(ViewerAuctionWorkspace, {
         dashboard,
         currentBid: 0,
+        breakEvenStage: null,
         nominatedMatchup: null,
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
@@ -356,5 +373,73 @@ describe("ViewerAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("decision-panel__hero-topline--stacked");
+  });
+
+  it("renders Nate Silver round reach probabilities on the viewer board", () => {
+    const team = {
+      ...buildTeam("team-houston", "Houston", 1),
+      nateSilverProjection: {
+        seed: "1",
+        roundOf64: 1,
+        roundOf32: 0.914,
+        sweet16: 0.429,
+        elite8: 0.133,
+        finalFour: 0.045,
+        championshipGame: 0.017,
+        champion: 0.005
+      }
+    } satisfies TeamProjection;
+    const asset = buildAsset("asset-houston", "Houston", team.id, team.seed);
+    const mothership = buildSyndicate("focus", "Mothership", "#111111");
+    const dashboard = {
+      session: {
+        payoutRules: {
+          ...payoutRules
+        },
+        teamClassifications: {},
+        teamNotes: {}
+      },
+      nominatedAsset: asset,
+      nominatedTeam: team,
+      focusSyndicate: mothership,
+      ledger: [mothership]
+    } as unknown as AuctionDashboard;
+
+    const markup = renderToStaticMarkup(
+      createElement(ViewerAuctionWorkspace, {
+        dashboard,
+        currentBid: 8000,
+        breakEvenStage: "sweet16",
+        nominatedMatchup: null,
+        likelyRound2Matchup: null,
+        hasOwnedRoundOneOpponent: false,
+        hasOwnedLikelyRoundTwoOpponent: false,
+        filteredRationale: [],
+        ownershipConflicts: [],
+        teamLookup: new Map([[team.id, team]]),
+        forcedPassConflictTeamId: null,
+        ownershipSearch: "",
+        onOwnershipSearchChange: () => undefined,
+        ownershipGroups: [],
+        soldFeed: [],
+        syndicateLookup: new Map([[mothership.id, mothership]])
+      })
+    );
+
+    expect(markup).toContain("Round return odds against the projected pot");
+    expect(markup).toContain("Payout if reached");
+    expect(markup).toContain("91.4%");
+    expect(markup).toContain("42.9%");
+    expect(markup).toContain("13.3%");
+    expect(markup).toContain("4.5%");
+    expect(markup).toContain("1.7%");
+    expect(markup).toContain("0.5%");
+    expect(markup).toContain("$2,200");
+    expect(markup).toContain("$5,500");
+    expect(markup).toContain("$11,000");
+    expect(markup).toContain("$17,600");
+    expect(markup).toContain("$26,400");
+    expect(markup).toContain("$35,200");
+    expect(markup).toContain("Clears by Sweet 16");
   });
 });

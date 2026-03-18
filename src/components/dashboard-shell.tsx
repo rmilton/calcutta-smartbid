@@ -660,6 +660,7 @@ export function DashboardShell({
           <ViewerAuctionWorkspace
             dashboard={dashboard}
             currentBid={currentBid}
+            breakEvenStage={breakEvenStage}
             nominatedMatchup={matchupSummary.nominatedMatchup}
             likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
             hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}

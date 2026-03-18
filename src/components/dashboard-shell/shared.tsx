@@ -1,9 +1,12 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
+import { getCumulativeStagePayouts } from "@/lib/payouts";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 import {
   AuctionAsset,
   MatchupConflict,
+  NateSilverProjection,
+  PayoutRules,
   SoldAssetSummary,
   Stage,
   Syndicate,
@@ -55,6 +58,140 @@ export function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
   }
 
   return titleCaseStage(stage);
+}
+
+type NateSilverColumn = {
+  key: "roundOf32" | "sweet16" | "elite8" | "finalFour" | "championshipGame" | "champion";
+  label: string;
+  payoutStage: Stage;
+};
+
+const nateSilverColumns: readonly NateSilverColumn[] = [
+  {
+    key: "roundOf32",
+    label: "Round of 32",
+    payoutStage: "roundOf64"
+  },
+  {
+    key: "sweet16",
+    label: "Sweet 16",
+    payoutStage: "roundOf32"
+  },
+  {
+    key: "elite8",
+    label: "Elite 8",
+    payoutStage: "sweet16"
+  },
+  {
+    key: "finalFour",
+    label: "Final Four",
+    payoutStage: "elite8"
+  },
+  {
+    key: "championshipGame",
+    label: "Championship",
+    payoutStage: "finalFour"
+  },
+  {
+    key: "champion",
+    label: "Champion",
+    payoutStage: "champion"
+  }
+] as const;
+
+export function NateSilverDecisionBoard({
+  nominatedAsset,
+  nominatedTeam,
+  currentBid,
+  breakEvenStage,
+  payoutRules
+}: {
+  nominatedAsset: AuctionAsset | null;
+  nominatedTeam: TeamProjection | null;
+  currentBid: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
+  payoutRules: PayoutRules;
+}) {
+  const nateSilver = nominatedTeam?.nateSilverProjection ?? null;
+  const hasNateSilverProjection = nateSilverColumns.some(
+    ({ key }) => getNateSilverProbability(nateSilver, key) !== null
+  );
+  const payoutLookup = useMemo(
+    () =>
+      new Map(getCumulativeStagePayouts(payoutRules).map(({ stage, payout }) => [stage, payout])),
+    [payoutRules]
+  );
+  const breakEvenLabel =
+    breakEvenStage === null
+      ? "Awaiting bid"
+      : breakEvenStage === "negativeReturn"
+        ? "Above modeled return"
+        : `Clears by ${formatBreakEvenStage(breakEvenStage)}`;
+  const isSingleTeamAsset = nominatedAsset?.type === "single_team";
+
+  return (
+    <section className="nate-silver-panel">
+      <div className="nate-silver-panel__header">
+        <div>
+          <p className="eyebrow">Nate Silver Path</p>
+          <h3>Round return odds against the projected pot</h3>
+        </div>
+        <div className="nate-silver-panel__meta">
+          <span className="status-pill status-pill--muted">{breakEvenLabel}</span>
+        </div>
+      </div>
+
+      {!nominatedTeam ? (
+        <p className="empty-copy">Select an active team to unlock the Nate Silver round board.</p>
+      ) : !isSingleTeamAsset ? (
+        <p className="empty-copy">
+          Nate Silver round odds are shown for single-team nominations. Bundle and play-in
+          packages still use the main recommendation model above.
+        </p>
+      ) : !hasNateSilverProjection ? (
+        <p className="empty-copy">
+          Nate Silver round data is not loaded for this team yet. Import analysis data with the
+          Nate Silver columns to populate this board.
+        </p>
+      ) : (
+        <>
+          <div className="nate-silver-board" aria-label="Nate Silver round reach board">
+            {nateSilverColumns.map(({ key, label, payoutStage }) => {
+              const probability = getNateSilverProbability(nateSilver, key);
+              const payoutValue = payoutLookup.get(payoutStage) ?? null;
+              const clearsBid = payoutValue !== null && payoutValue >= currentBid;
+
+              return (
+                <article
+                  key={key}
+                  className={cn(
+                    "nate-silver-board__cell",
+                    clearsBid && "nate-silver-board__cell--clears-bid"
+                  )}
+                >
+                  <div className="nate-silver-board__topline">
+                    <span className="nate-silver-board__label">{label}</span>
+                  </div>
+                  <strong className="nate-silver-board__probability">
+                    {probability === null ? "--" : formatPercent(probability)}
+                  </strong>
+                  <div className="nate-silver-board__metric">
+                    <span>Payout if reached</span>
+                    <strong>{payoutValue === null ? "--" : formatCurrency(payoutValue)}</strong>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <p className="nate-silver-panel__footnote">
+            Payout values are aligned to the round that unlocks the payout. Reaching the Round of 32
+            triggers the first payout, Sweet 16 triggers the next, and so on.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
 export function formatAssetSeed(asset: AuctionAsset) {
@@ -198,4 +335,27 @@ export function AssetSaleRow({
       <strong>{formatCurrency(sale.price)}</strong>
     </div>
   );
+}
+
+function getNateSilverProbability(projection: NateSilverProjection | null, key: NateSilverColumn["key"]) {
+  if (!projection) {
+    return null;
+  }
+
+  switch (key) {
+    case "roundOf32":
+      return projection.roundOf32;
+    case "sweet16":
+      return projection.sweet16;
+    case "elite8":
+      return projection.elite8;
+    case "finalFour":
+      return projection.finalFour;
+    case "championshipGame":
+      return projection.championshipGame;
+    case "champion":
+      return projection.champion;
+    default:
+      return null;
+  }
 }

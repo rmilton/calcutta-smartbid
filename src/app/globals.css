@@ -1302,7 +1302,7 @@ kbd {
   color: var(--danger);
 }
 
-.operator-nate-silver-panel {
+.nate-silver-panel {
   display: grid;
   gap: 0.9rem;
   margin-top: 1rem;
@@ -1317,31 +1317,31 @@ kbd {
     );
 }
 
-.operator-nate-silver-panel__header {
+.nate-silver-panel__header {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: flex-start;
 }
 
-.operator-nate-silver-panel__header h3 {
+.nate-silver-panel__header h3 {
   font-size: 1.15rem;
 }
 
-.operator-nate-silver-panel__meta {
+.nate-silver-panel__meta {
   display: flex;
   gap: 0.55rem;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-.operator-nate-silver-board {
+.nate-silver-board {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
-.operator-nate-silver-board__cell {
+.nate-silver-board__cell {
   display: grid;
   gap: 0.55rem;
   min-width: 0;
@@ -1351,7 +1351,7 @@ kbd {
   background: color-mix(in srgb, var(--panel-muted) 90%, white);
 }
 
-.operator-nate-silver-board__cell--clears-bid {
+.nate-silver-board__cell--clears-bid {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
   background:
@@ -1362,27 +1362,27 @@ kbd {
     );
 }
 
-.operator-nate-silver-board__topline {
+.nate-silver-board__topline {
   display: grid;
   gap: 0.18rem;
 }
 
-.operator-nate-silver-board__metric span,
-.operator-nate-silver-board__note {
+.nate-silver-board__metric span,
+.nate-silver-board__note {
   color: var(--muted);
   font: 600 0.7rem/1.25 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.operator-nate-silver-board__label {
+.nate-silver-board__label {
   color: var(--muted-strong);
   font: 600 0.78rem/1.3 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.operator-nate-silver-board__probability {
+.nate-silver-board__probability {
   display: block;
   font-size: clamp(1.1rem, 1.6vw, 1.45rem);
   line-height: 1;
@@ -1390,12 +1390,12 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.operator-nate-silver-board__metric {
+.nate-silver-board__metric {
   display: grid;
   gap: 0.18rem;
 }
 
-.operator-nate-silver-board__metric strong {
+.nate-silver-board__metric strong {
   display: block;
   margin-top: 0;
   font-size: 0.98rem;
@@ -1404,13 +1404,13 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.operator-nate-silver-board__note {
+.nate-silver-board__note {
   text-transform: none;
   letter-spacing: 0.02em;
   line-height: 1.45;
 }
 
-.operator-nate-silver-panel__footnote {
+.nate-silver-panel__footnote {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.55;
@@ -3823,15 +3823,15 @@ kbd {
     flex-wrap: wrap;
   }
 
-  .operator-nate-silver-panel__header {
+  .nate-silver-panel__header {
     flex-direction: column;
   }
 
-  .operator-nate-silver-panel__meta {
+  .nate-silver-panel__meta {
     justify-content: flex-start;
   }
 
-  .operator-nate-silver-board {
+  .nate-silver-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
