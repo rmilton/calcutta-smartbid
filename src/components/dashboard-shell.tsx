@@ -655,19 +655,11 @@ export function DashboardShell({
         ) : (
           <ViewerAuctionWorkspace
             dashboard={dashboard}
-            recommendation={recommendation}
-            signalLabel={recommendation ? stoplightLabels[recommendation.stoplight] : null}
             currentBid={currentBid}
             nominatedMatchup={matchupSummary.nominatedMatchup}
             likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
             hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
             hasOwnedLikelyRoundTwoOpponent={matchupSummary.hasOwnedLikelyRoundTwoOpponent}
-            callHeadline={callHeadline}
-            callSupportText={callSupportText}
-            callDetailText={callDetailText}
-            breakEvenStage={breakEvenStage}
-            targetBidDisplay={targetBidDisplay}
-            maxBidDisplay={maxBidDisplay}
             filteredRationale={filteredRationale}
             ownershipConflicts={ownershipConflicts}
             teamLookup={teamLookup}

@@ -150,8 +150,6 @@ describe("ViewerAuctionWorkspace", () => {
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {
         dashboard,
-        recommendation,
-        signalLabel: "Keep bidding",
         currentBid: 500,
         nominatedMatchup: {
           opponent: {
@@ -180,13 +178,6 @@ describe("ViewerAuctionWorkspace", () => {
         },
         hasOwnedRoundOneOpponent: true,
         hasOwnedLikelyRoundTwoOpponent: false,
-        callHeadline: "Bid through $2,783",
-        callSupportText: "Model supports buying here",
-        callDetailText:
-          "The live price remains below target, and the main ownership collision risk does not arrive until the Sweet 16.",
-        breakEvenStage: "roundOf64",
-        targetBidDisplay: "$2,783",
-        maxBidDisplay: "$3,647",
         filteredRationale: recommendation.rationale,
         ownershipConflicts,
         teamLookup: new Map([
@@ -213,12 +204,14 @@ describe("ViewerAuctionWorkspace", () => {
 
     expect(markup).toContain("Live Decision Board");
     expect(markup).toContain("Current bid");
-    expect(markup).toContain("Bid through $2,783");
     expect(markup).toContain("Recent Sales");
     expect(markup).toContain("Ownership Ledger");
     expect(markup).toContain("Round 1 Matchup: 1-seed Duke");
     expect(markup).toContain("Most likely Round 2: 5-seed Oregon (76.5%)");
-    expect(markup).toContain("Keep bidding");
+    expect(markup).toContain("Hide");
+    expect(markup).toContain("1 team");
+    expect(markup).not.toContain("Keep bidding");
+    expect(markup).not.toContain("$1,200");
     expect(markup).not.toContain("Syndicate Board");
     expect(markup).not.toContain("Funding status");
     expect(markup).not.toContain("Teams remaining to sell");
