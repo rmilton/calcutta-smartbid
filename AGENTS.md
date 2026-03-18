@@ -192,7 +192,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - Session purchases are the owned-position truth for live recommendation math.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - `Auction` and `Analysis` must stay consistent for the same selected team because they read from the same analysis payload.
-- The UI still says `team`, but the live nomination model can represent grouped auction teams such as play-ins and regional `13-16` packages.
+- The UI still says `team`, but the live selection model can represent grouped auction teams such as play-ins and regional `13-16` packages.
 - Bracket structure and team analysis are separate session inputs and should not be collapsed back into one import flow.
 - `Bracket` must stay consistent with session purchases and imported field structure.
 - The active-team control must stay fast and low-friction under live auction use.
@@ -235,18 +235,19 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 5. Log in as a session member with assigned email plus shared code.
 6. Confirm the live board loads in the expected role.
 7. Change `Active Team for Bidding` and confirm the board updates automatically.
-8. If a grouped `13-16` or play-in team is nominated, confirm the member schools are visible on the board.
+8. If a grouped `13-16` or play-in team is selected, confirm the member schools are visible on the board.
 9. Open `Bracket` and confirm the full field renders for a bracket-ready session.
 10. Change current bid and confirm it persists.
 11. Open `Analysis` and confirm the selected team shows the same `target bid` and `max bid` as `Auction`.
 12. Confirm grouped teams show their package context in `Analysis`.
 13. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
 14. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
-15. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
-16. Advance a bracket winner and confirm the change persists after refresh.
-17. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
-18. Archive a session and confirm it is hidden until archived sessions are shown.
-19. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
+15. After recording a purchase, confirm the board waits for the operator's next selection instead of auto-selecting the next team.
+16. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
+17. Advance a bracket winner and confirm the change persists after refresh.
+18. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
+19. Archive a session and confirm it is hidden until archived sessions are shown.
+20. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
 
 ## Test Commands
 

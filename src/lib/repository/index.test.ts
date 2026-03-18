@@ -900,6 +900,32 @@ describe("repository purchases", () => {
     ).toEqual([]);
   });
 
+  it("keeps the live board awaiting selection after a purchase is reloaded", async () => {
+    const { repository, session } = await createBaselineSession();
+    const [team] = session.projections;
+    const buyer = session.syndicates.find((candidate) => candidate.name === "Riverboat");
+
+    expect(team).toBeDefined();
+    expect(buyer).toBeDefined();
+
+    if (!team || !buyer) {
+      throw new Error("Expected baseline session data.");
+    }
+
+    await repository.recordPurchase(session.id, {
+      teamId: team.id,
+      buyerSyndicateId: buyer.id,
+      price: 4200
+    });
+
+    const reloadedDashboard = await repository.getDashboard(session.id);
+
+    expect(reloadedDashboard.session.liveState.nominatedAssetId).toBeNull();
+    expect(reloadedDashboard.session.liveState.nominatedTeamId).toBeNull();
+    expect(reloadedDashboard.nominatedAsset).toBeNull();
+    expect(reloadedDashboard.nominatedTeam).toBeNull();
+  });
+
   it("rejects undoing an older purchase once a newer one exists", async () => {
     const { repository, session } = await createBaselineSession();
     const [firstTeam, secondTeam] = session.projections;

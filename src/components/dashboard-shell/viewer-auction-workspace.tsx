@@ -118,7 +118,7 @@ export function ViewerAuctionWorkspace({
                 <div className="decision-panel__hero-content">
                   <div className="decision-panel__hero-pulse">
                     <span className={cn("pulse-dot", !nominatedAsset && "pulse-dot--muted")} />
-                    <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
+                    <span>{nominatedAsset ? "Active team" : "Awaiting selection"}</span>
                     {nominatedTeamClassification ? (
                       <div className="decision-panel__classification">
                         <TeamClassificationBadge classification={nominatedTeamClassification} />
@@ -148,7 +148,7 @@ export function ViewerAuctionWorkspace({
                         !nominatedAsset && "decision-panel__hero-title--waiting"
                       )}
                     >
-                      {nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}
+                      {nominatedAsset ? nominatedAsset.label : "Waiting for selection"}
                     </h2>
                   </div>
                   {nominatedAsset && nominatedAsset.type !== "single_team" ? (
@@ -159,7 +159,7 @@ export function ViewerAuctionWorkspace({
                     <p className="decision-panel__subcopy">
                       {nominatedAsset
                         ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-                        : "The next active team will take over this board when the operator makes a nomination."}
+                        : "The next active team will take over this board when the operator makes a selection."}
                     </p>
                   )}
                 </div>

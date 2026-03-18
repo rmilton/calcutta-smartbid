@@ -2766,12 +2766,12 @@ function applyPurchaseMutation(
     session.liveState.nominatedAssetId ??
     session.liveState.nominatedTeamId;
   if (!assetId) {
-    throw new Error("No team is currently nominated.");
+    throw new Error("No active team is currently selected.");
   }
 
   const asset = auctionAssets.find((candidate) => candidate.id === assetId) ?? null;
   if (!asset) {
-    throw new Error("The nominated team is missing from the tournament field.");
+    throw new Error("The selected team is missing from the tournament field.");
   }
 
   if (session.purchases.some((purchase) => (purchase.assetId ?? purchase.teamId) === asset.id)) {
@@ -3767,6 +3767,7 @@ function normalizeLiveState(
   projections: TeamProjection[],
   purchases: PurchaseRecord[]
 ) {
+  const shouldDefaultNomination = liveState === undefined;
   const purchasedAssetIds = purchases
     .map((purchase) => purchase.assetId ?? purchase.teamId)
     .filter((assetId) => auctionAssets.some((asset) => asset.id === assetId));
@@ -3798,7 +3799,7 @@ function normalizeLiveState(
     const matchingAsset =
       auctionAssets.find((asset) => asset.projectionIds.includes(normalized.nominatedTeamId!)) ?? null;
     normalized.nominatedAssetId = matchingAsset?.id ?? null;
-  } else {
+  } else if (shouldDefaultNomination) {
     normalized.nominatedAssetId = auctionAssets[0]?.id ?? null;
     normalized.nominatedTeamId = auctionAssets[0]
       ? resolveRepresentativeProjectionId(auctionAssets[0], projections)
