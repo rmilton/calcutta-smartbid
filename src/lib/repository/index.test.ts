@@ -1,3 +1,4 @@
+import { randomBytes, scryptSync } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -843,7 +844,7 @@ describe("repository funding model", () => {
   });
 });
 
-describe("repository live state", () => {
+describe("repository authentication", () => {
   beforeEach(async () => {
     storeFile = path.join(
       os.tmpdir(),
@@ -872,6 +873,150 @@ describe("repository live state", () => {
     expect(dashboard.session.liveState.nominatedTeamId).toBeNull();
     expect(dashboard.nominatedAsset).toBeNull();
     expect(dashboard.nominatedTeam).toBeNull();
+  });
+  it("authenticates session members regardless of shared code casing", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const viewer = await repository.createPlatformUser({
+      name: "Viewer",
+      email: "viewer@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    const session = await repository.createSession({
+      name: "Auth Test",
+      sharedAccessCode: "march18",
+      accessAssignments: [
+        { platformUserId: operator.id, role: "admin" },
+        { platformUserId: viewer.id, role: "viewer" }
+      ],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {},
+      simulationIterations: 1000
+    });
+
+    const result = await repository.authenticateMember("viewer@example.com", "March18");
+
+    expect(result.sessionId).toBe(session.id);
+    expect(result.member.email).toBe("viewer@example.com");
+    expect(result.member.role).toBe("viewer");
+  });
+
+  it("keeps mixed-case legacy shared-code hashes login-compatible", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const viewer = await repository.createPlatformUser({
+      name: "Viewer",
+      email: "viewer@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    const session = await repository.createSession({
+      name: "Legacy Auth Test",
+      sharedAccessCode: "March18",
+      accessAssignments: [
+        { platformUserId: operator.id, role: "admin" },
+        { platformUserId: viewer.id, role: "viewer" }
+      ],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {},
+      simulationIterations: 1000
+    });
+
+    const rawStore = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      sessions: Array<{
+        id: string;
+        sharedAccessCodePlaintext: string;
+        sharedAccessCodeCiphertext: string;
+        sharedAccessCodeHash: string;
+      }>;
+    };
+    const rawSession = rawStore.sessions.find((candidate) => candidate.id === session.id);
+
+    expect(rawSession).toBeDefined();
+    if (!rawSession) {
+      throw new Error("Expected legacy auth session.");
+    }
+
+    const salt = randomBytes(16).toString("hex");
+    rawSession.sharedAccessCodePlaintext = "";
+    rawSession.sharedAccessCodeCiphertext = "";
+    rawSession.sharedAccessCodeHash = `${salt}:${scryptSync("March18", salt, 64).toString("hex")}`;
+    await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
+
+    const reloadedRepository = await loadRepository();
+    const result = await reloadedRepository.authenticateMember("viewer@example.com", "March18");
+
+    expect(result.sessionId).toBe(session.id);
+    expect(result.member.email).toBe("viewer@example.com");
+  });
+
+  it("rejects duplicate shared codes that differ only by case", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    await repository.createSession({
+      name: "Primary Auth Test",
+      sharedAccessCode: "march18",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {},
+      simulationIterations: 1000
+    });
+
+    await expect(
+      repository.createSession({
+        name: "Duplicate Auth Test",
+        sharedAccessCode: "March18",
+        accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+        catalogSyndicateIds: [mothership.id, riverboat.id],
+        payoutRules: {
+          ...getDefaultPayoutRules(),
+          projectedPot: 100000
+        },
+        analysisSettings: {},
+        simulationIterations: 1000
+      })
+    ).rejects.toThrow(
+      "Shared code is already in use by another session. Use a different code, or permanently delete the archived session that already uses it."
+    );
   });
 });
 describe("repository purchases", () => {
