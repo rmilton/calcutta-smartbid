@@ -37,7 +37,7 @@ export function buildBidRecommendation(
     teamResults.reduce((total, result) => total + result.expectedGrossPayout, 0)
   );
   const openingBid = roundCurrency(budgetRows.reduce((total, row) => total + row.openingBid, 0));
-  const targetBid = roundCurrency(budgetRows.reduce((total, row) => total + row.targetBid, 0));
+  const rawTargetBid = roundCurrency(budgetRows.reduce((total, row) => total + row.targetBid, 0));
   const baseMaxBid = roundCurrency(budgetRows.reduce((total, row) => total + row.maxBid, 0));
   const baseBudgetHeadroom = deriveBudgetHeadroom(
     session.mothershipFunding.budgetBase,
@@ -61,7 +61,9 @@ export function buildBidRecommendation(
       0,
       0.22
     );
-  const maxBid = roundCurrency(Math.max(0, baseMaxBid * conflictPenaltyMultiplier));
+  const unconstrainedMaxBid = roundCurrency(Math.max(0, baseMaxBid * conflictPenaltyMultiplier));
+  const maxBid = stretchBudgetHeadroom < 0 ? roundCurrency(Math.min(unconstrainedMaxBid, currentBid)) : unconstrainedMaxBid;
+  const targetBid = stretchBudgetHeadroom < 0 ? roundCurrency(Math.min(rawTargetBid, maxBid)) : rawTargetBid;
   const expectedNetValue = roundCurrency(
     expectedGrossPayout - currentBid - ownershipExposure.overlapScore * 850
   );
@@ -77,6 +79,11 @@ export function buildBidRecommendation(
   if (hasBudgetWindow && buyThreshold > 0 && currentBid <= buyThreshold && expectedNetValue > 0) {
     stoplight = "buy";
   } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
+    stoplight = "caution";
+  }
+  if (stretchBudgetHeadroom < 0) {
+    stoplight = "pass";
+  } else if (baseBudgetHeadroom < 0 && stoplight === "buy") {
     stoplight = "caution";
   }
   if (forcedPassConflict) {
