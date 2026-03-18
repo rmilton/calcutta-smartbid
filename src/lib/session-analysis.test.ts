@@ -162,6 +162,21 @@ describe("session analysis classifications", () => {
     expect(analysis.budgetRows.every((row) => row.targetBid > 0)).toBe(true);
   });
 
+  it("stores planned budget allocation as the bankroll-weighted share of the remaining board", () => {
+    const session = buildSession();
+    const focus = session.syndicates[0];
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const plannedTotal = analysis.budgetRows.reduce(
+      (total, row) => total + row.plannedBudgetAllocation,
+      0
+    );
+
+    expect(Math.abs(plannedTotal - analysis.investableCash)).toBeLessThanOrEqual(
+      analysis.budgetRows.length
+    );
+    expect(analysis.budgetRows.every((row) => row.plannedBudgetAllocation > 0)).toBe(true);
+  });
+
   it("anchors top-team bid guidance to simulated value, not just bankroll share", () => {
     const session = buildSession();
     const focus = session.syndicates[0];

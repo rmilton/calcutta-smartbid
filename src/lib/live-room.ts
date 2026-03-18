@@ -9,6 +9,7 @@ import {
   Syndicate,
   TeamProjection
 } from "@/lib/types";
+import { roundCurrency } from "@/lib/utils";
 
 export interface RoundMatchup {
   opponent: BracketGameTeam;
@@ -142,18 +143,78 @@ export function deriveProjectedFinalPot({
   liveBid: number;
 }) {
   const currentSpend = ledger.reduce((total, syndicate) => total + syndicate.spend, 0);
-  const budgetLookup = new Map(budgetRows.map((row) => [row.teamId, row]));
   const projectedRemainingSpend = availableAssets.reduce((total, asset) => {
-    const estimatedClosePrice = asset.projectionIds.reduce(
-      (assetTotal, projectionId) => assetTotal + (budgetLookup.get(projectionId)?.targetBid ?? 0),
-      0
+    return (
+      total +
+      deriveProjectedAssetClose({
+        ledger,
+        availableAssets,
+        budgetRows,
+        asset,
+        liveAssetId,
+        liveBid
+      })
     );
-    const liveBidFloor = asset.id === liveAssetId ? liveBid : 0;
-
-    return total + Math.max(liveBidFloor, estimatedClosePrice);
   }, 0);
 
-  return currentSpend + projectedRemainingSpend;
+  return roundCurrency(currentSpend + projectedRemainingSpend);
+}
+
+export function deriveProjectedAssetClose({
+  ledger,
+  availableAssets,
+  budgetRows,
+  asset,
+  liveAssetId,
+  liveBid
+}: {
+  ledger: Syndicate[];
+  availableAssets: AuctionDashboard["availableAssets"];
+  budgetRows: AnalysisBudgetRow[];
+  asset: AuctionDashboard["availableAssets"][number];
+  liveAssetId: string;
+  liveBid: number;
+}) {
+  const budgetLookup = new Map(budgetRows.map((row) => [row.teamId, row]));
+  const roomEstimatedRemainingBudget = ledger.reduce((total, syndicate) => {
+    const explicitRemaining =
+      typeof syndicate.estimatedRemainingBudget === "number" &&
+      Number.isFinite(syndicate.estimatedRemainingBudget)
+        ? syndicate.estimatedRemainingBudget
+        : syndicate.estimatedBudget - syndicate.spend;
+
+    return total + Math.max(0, explicitRemaining);
+  }, 0);
+  const plannedRemainingAllocation = availableAssets.reduce(
+    (total, candidateAsset) =>
+      total +
+      candidateAsset.projectionIds.reduce(
+        (assetTotal, projectionId) =>
+          assetTotal + (budgetLookup.get(projectionId)?.plannedBudgetAllocation ?? 0),
+        0
+      ),
+    0
+  );
+  const allocationScale =
+    roomEstimatedRemainingBudget > 0 && plannedRemainingAllocation > 0
+      ? roomEstimatedRemainingBudget / plannedRemainingAllocation
+      : 0;
+  const plannedAllocation = asset.projectionIds.reduce(
+    (assetTotal, projectionId) =>
+      assetTotal + (budgetLookup.get(projectionId)?.plannedBudgetAllocation ?? 0),
+    0
+  );
+  const targetBidFallback = asset.projectionIds.reduce(
+    (assetTotal, projectionId) => assetTotal + (budgetLookup.get(projectionId)?.targetBid ?? 0),
+    0
+  );
+  const estimatedClosePrice =
+    plannedAllocation > 0 && allocationScale > 0
+      ? plannedAllocation * allocationScale
+      : targetBidFallback;
+  const liveBidFloor = asset.id === liveAssetId ? liveBid : 0;
+
+  return roundCurrency(Math.max(liveBidFloor, estimatedClosePrice));
 }
 
 export function buildViewerOwnershipGroups(

@@ -667,6 +667,7 @@ p {
 .shortcut-legend {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.45rem 0.75rem;
   margin-bottom: 0.25rem;
 }
@@ -677,6 +678,14 @@ p {
   gap: 0.5rem;
   font-size: 0.75rem;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.auction-controls__clear-active {
+  min-height: 1.9rem;
+  padding: 0.28rem 0.68rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
   white-space: nowrap;
 }
 
@@ -1085,7 +1094,7 @@ kbd {
 
 .decision-panel__hero {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   display: grid;
   gap: 0.7rem;
   margin-top: 1.2rem;
@@ -1148,6 +1157,8 @@ kbd {
 }
 
 .decision-panel__hero-bid-guide {
+  position: relative;
+  z-index: 3;
   display: grid;
   gap: 0.35rem;
   justify-self: end;
@@ -1184,11 +1195,27 @@ kbd {
   letter-spacing: 0.12em;
 }
 
+.decision-panel__hero-bid-line > span:first-child {
+  white-space: nowrap;
+}
+
+.decision-panel__hero-bid-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .decision-panel__hero-bid-line strong {
   color: var(--foreground);
   font-size: 0.96rem;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+.decision-panel__hero-bid-value .tooltip-hint {
+  flex-shrink: 0;
 }
 
 .decision-panel__hero--waiting {
@@ -4371,11 +4398,13 @@ kbd {
   line-height: 1.35;
   letter-spacing: normal;
   text-transform: none;
+  white-space: normal;
+  overflow-wrap: break-word;
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, 4px);
   transition: opacity 130ms ease, transform 130ms ease;
-  z-index: 40;
+  z-index: 120;
 }
 
 .tooltip-hint:hover .tooltip-content,
