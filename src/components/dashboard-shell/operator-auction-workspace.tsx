@@ -1,11 +1,13 @@
 import type { FocusEvent, KeyboardEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RoundMatchup } from "@/lib/live-room";
+import { getCumulativeStagePayouts } from "@/lib/payouts";
 import {
   AuctionAsset,
   AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
+  NateSilverProjection,
   SoldAssetSummary,
   Stage,
   Syndicate,
@@ -79,6 +81,39 @@ interface OperatorAuctionWorkspaceProps {
   syndicateLookup: Map<string, Syndicate>;
   focusFundingImpliedSharePrice: number | null;
 }
+
+const operatorNateSilverColumns = [
+  {
+    key: "roundOf32",
+    label: "Round of 32",
+    payoutStage: "roundOf64"
+  },
+  {
+    key: "sweet16",
+    label: "Sweet 16",
+    payoutStage: "roundOf32"
+  },
+  {
+    key: "elite8",
+    label: "Elite 8",
+    payoutStage: "sweet16"
+  },
+  {
+    key: "finalFour",
+    label: "Final Four",
+    payoutStage: "elite8"
+  },
+  {
+    key: "championshipGame",
+    label: "Championship",
+    payoutStage: "finalFour"
+  },
+  {
+    key: "champion",
+    label: "Champion",
+    payoutStage: "champion"
+  }
+] as const;
 
 export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
   const {
@@ -369,6 +404,14 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 </div>
               ) : null}
             </div>
+
+            <NateSilverDecisionBoard
+              nominatedAsset={nominatedAsset}
+              nominatedTeam={nominatedTeam}
+              currentBid={currentBid}
+              breakEvenStage={breakEvenStage}
+              payoutRules={dashboard.session.payoutRules}
+            />
           </article>
 
           <article className="surface-card decision-context">
@@ -576,6 +619,133 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
       </section>
     </section>
   );
+}
+
+function NateSilverDecisionBoard({
+  nominatedAsset,
+  nominatedTeam,
+  currentBid,
+  breakEvenStage,
+  payoutRules
+}: {
+  nominatedAsset: AuctionAsset | null;
+  nominatedTeam: TeamProjection | null;
+  currentBid: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
+  payoutRules: AuctionDashboard["session"]["payoutRules"];
+}) {
+  const nateSilver = nominatedTeam?.nateSilverProjection ?? null;
+  const hasNateSilverProjection = operatorNateSilverColumns.some(
+    ({ key }) => getNateSilverProbability(nateSilver, key) !== null
+  );
+  const payoutLookup = useMemo(
+    () =>
+      new Map(getCumulativeStagePayouts(payoutRules).map(({ stage, payout }) => [stage, payout])),
+    [payoutRules]
+  );
+  const breakEvenLabel =
+    breakEvenStage === null
+      ? "Awaiting bid"
+      : breakEvenStage === "negativeReturn"
+        ? "Above modeled return"
+        : `Clears by ${formatBreakEvenStage(breakEvenStage)}`;
+  const isSingleTeamAsset = nominatedAsset?.type === "single_team";
+
+  return (
+    <section className="operator-nate-silver-panel">
+      <div className="operator-nate-silver-panel__header">
+        <div>
+          <p className="eyebrow">Nate Silver Path</p>
+          <h3>Round return odds against the projected pot</h3>
+        </div>
+        <div className="operator-nate-silver-panel__meta">
+          <span className="status-pill">Projected pot · {formatCurrency(payoutRules.projectedPot)}</span>
+          <span className="status-pill status-pill--muted">{breakEvenLabel}</span>
+        </div>
+      </div>
+
+      {!nominatedTeam ? (
+        <p className="empty-copy">
+          Select an active team to unlock the Nate Silver round board.
+        </p>
+      ) : !isSingleTeamAsset ? (
+        <p className="empty-copy">
+          Nate Silver round odds are shown for single-team nominations. Bundle and play-in
+          packages still use the main recommendation model above.
+        </p>
+      ) : !hasNateSilverProjection ? (
+        <p className="empty-copy">
+          Nate Silver round data is not loaded for this team yet. Import analysis data with the
+          Nate Silver columns to populate this board.
+        </p>
+      ) : (
+        <>
+          <div className="operator-nate-silver-board" aria-label="Nate Silver round reach board">
+            {operatorNateSilverColumns.map(({ key, label, payoutStage, note }) => {
+              const probability = getNateSilverProbability(nateSilver, key);
+              const payoutValue = payoutLookup.get(payoutStage) ?? null;
+              const clearsBid = payoutValue !== null && payoutValue >= currentBid;
+
+              return (
+                <article
+                  key={key}
+                  className={cn(
+                    "operator-nate-silver-board__cell",
+                    clearsBid && "operator-nate-silver-board__cell--clears-bid"
+                  )}
+                >
+                  <div className="operator-nate-silver-board__topline">
+                    <span className="operator-nate-silver-board__label">{label}</span>
+                  </div>
+                  <strong className="operator-nate-silver-board__probability">
+                    {probability === null ? "--" : formatPercent(probability)}
+                  </strong>
+                  <div className="operator-nate-silver-board__metric">
+                    <span>Pot if reached</span>
+                    <strong>{payoutValue === null ? "--" : formatCurrency(payoutValue)}</strong>
+                  </div>
+                  {note ? <p className="operator-nate-silver-board__note">{note}</p> : null}
+                </article>
+              );
+            })}
+          </div>
+
+          <p className="operator-nate-silver-panel__footnote">
+            Pot values are aligned to the round that unlocks the payout. Reaching the Round of 32
+            triggers the first payout, Sweet 16 triggers the next, and so on.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+function getNateSilverProbability(
+  projection: NateSilverProjection | null,
+  key: (typeof operatorNateSilverColumns)[number]["key"]
+) {
+  if (!projection) {
+    return null;
+  }
+
+  switch (key) {
+    case "roundOf64":
+      return projection.roundOf64;
+    case "roundOf32":
+      return projection.roundOf32;
+    case "sweet16":
+      return projection.sweet16;
+    case "elite8":
+      return projection.elite8;
+    case "finalFour":
+      return projection.finalFour;
+    case "championshipGame":
+      return projection.championshipGame;
+    case "champion":
+      return projection.champion;
+    default:
+      return null;
+  }
 }
 
 function OperatorSyndicateBoardCard({
