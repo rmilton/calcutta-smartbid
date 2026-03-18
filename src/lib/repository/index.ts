@@ -13,7 +13,7 @@ import {
   normalizeMothershipFunding,
   normalizeSyndicateEstimate
 } from "@/lib/funding";
-import { buildAuctionAssets } from "@/lib/auction-assets";
+import { buildAuctionAssets, findAuctionAssetForPurchase } from "@/lib/auction-assets";
 import {
   getConfiguredMothershipSyndicateName,
   getConfiguredStorageBackend
@@ -1256,7 +1256,9 @@ class SupabaseSessionRepository implements SessionRepository {
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
         (row) => {
           const storedId = String(row.team_id);
-          const matchingAsset = rawAuctionAssets.find((asset) => asset.id === storedId) ?? null;
+          const matchingAsset = findAuctionAssetForPurchase(rawAuctionAssets, {
+            teamId: storedId
+          });
 
           return {
             id: String(row.id),
@@ -3769,8 +3771,8 @@ function normalizeLiveState(
 ) {
   const shouldDefaultNomination = liveState === undefined;
   const purchasedAssetIds = purchases
-    .map((purchase) => purchase.assetId ?? purchase.teamId)
-    .filter((assetId) => auctionAssets.some((asset) => asset.id === assetId));
+    .map((purchase) => findAuctionAssetForPurchase(auctionAssets, purchase)?.id ?? null)
+    .filter((assetId): assetId is string => assetId !== null);
   const purchasedProjectionIds = purchases.flatMap(
     (purchase) => purchase.projectionIds ?? [purchase.teamId]
   );
