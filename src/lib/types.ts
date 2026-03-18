@@ -910,8 +910,7 @@ export const updateSessionAccessSchema = z.object({
         active: z.boolean().default(true)
       })
     )
-    .min(1)
-    .max(40)
+    .min(1, "Select at least one user for this session.")
 });
 
 export const importSessionAccessCsvSchema = z.object({
