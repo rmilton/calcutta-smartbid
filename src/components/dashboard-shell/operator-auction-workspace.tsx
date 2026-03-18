@@ -21,6 +21,7 @@ import {
   NateSilverDecisionBoard,
   formatAssetMembersCompact,
   formatAssetMembers,
+  formatAssetSeed,
   formatAssetSubtitle,
   formatBreakEvenStage
 } from "@/components/dashboard-shell/shared";
@@ -183,8 +184,8 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     : "--";
   const auctionCompleteAverageSeed = auctionCompleteSummary?.averageSeed;
   const roomBiggestSaleBuyer = auctionCompleteSummary?.roomBiggestSale
-    ? syndicateLookup.get(auctionCompleteSummary.roomBiggestSale.buyerSyndicateId)?.name ??
-      auctionCompleteSummary.roomBiggestSale.buyerSyndicateId
+    ? syndicateLookup.get(auctionCompleteSummary.roomBiggestSale.sale.buyerSyndicateId)?.name ??
+      auctionCompleteSummary.roomBiggestSale.sale.buyerSyndicateId
     : null;
 
   return (
