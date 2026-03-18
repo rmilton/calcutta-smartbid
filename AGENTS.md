@@ -34,7 +34,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - `TypeScript`
 - `Supabase` for production persistence and data
 - `Vercel` for production hosting
-- `Vitest` for simulation/provider tests
+- `Vitest` for unit and component coverage
 
 ## First Places To Read
 
@@ -265,6 +265,16 @@ npm run lint
 npm run test
 npm run build
 ```
+
+Focused live-room coverage:
+
+```bash
+npm run test -- --run src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
+```
+
+Fixture note:
+
+- `AuctionDashboard` test fixtures should always include `availableAssets` and `soldAssets`. They are required dashboard contract fields and should not rely on workspace-local fallbacks.
 
 ## Safe Parallelization
 
