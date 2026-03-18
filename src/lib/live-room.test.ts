@@ -2,6 +2,7 @@ import {
   buildOperatorSyndicateHoldings,
   buildViewerOwnershipGroups,
   deriveAuctionMatchups,
+  deriveProjectedFinalPot,
   filterRecommendationRationale,
   getFirstRoundMatchup,
   getLikelyRound2Matchup,
@@ -246,6 +247,34 @@ describe("live room helpers", () => {
     );
 
     expect(lines).toEqual(["This team still has live upside."]);
+  });
+
+  it("derives projected final pot from current spend plus remaining asset closes", () => {
+    const remainingAsset = buildAsset("asset-d", "Delta", "team-d", 6);
+
+    expect(
+      deriveProjectedFinalPot({
+        ledger: [focusSyndicate, otherSyndicate],
+        availableAssets: [remainingAsset],
+        budgetRows: [
+          {
+            teamId: "team-d",
+            teamName: "Delta",
+            classification: null,
+            rank: 1,
+            percentile: 0.4,
+            convictionScore: 0.5,
+            investableShare: 0.05,
+            openingBid: 700,
+            targetBid: 1800,
+            maxBid: 2400,
+            tier: "depth"
+          }
+        ],
+        liveAssetId: remainingAsset.id,
+        liveBid: 2200
+      })
+    ).toBe(4300);
   });
 
   it("derives shared matchup state for the nominated team", () => {

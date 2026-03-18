@@ -10,11 +10,14 @@ const payoutStageOrder: Stage[] = [
   "champion"
 ];
 
-export function getCumulativeStagePayouts(payoutRules: PayoutRules) {
+export function getCumulativeStagePayouts(
+  payoutRules: PayoutRules,
+  projectedPot = payoutRules.projectedPot
+) {
   let runningPayout = 0;
 
   return payoutStageOrder.map((stage) => {
-    runningPayout += payoutRules.projectedPot * (payoutRules[stage] / 100);
+    runningPayout += projectedPot * (payoutRules[stage] / 100);
     return {
       stage,
       payout: roundCurrency(runningPayout)
@@ -24,10 +27,11 @@ export function getCumulativeStagePayouts(payoutRules: PayoutRules) {
 
 export function getBreakEvenStage(
   currentBid: number,
-  payoutRules: PayoutRules
+  payoutRules: PayoutRules,
+  projectedPot = payoutRules.projectedPot
 ): Stage | "negativeReturn" {
   const normalizedBid = Math.max(0, roundCurrency(currentBid));
-  const match = getCumulativeStagePayouts(payoutRules).find(
+  const match = getCumulativeStagePayouts(payoutRules, projectedPot).find(
     ({ payout }) => payout >= normalizedBid
   );
 

@@ -396,10 +396,17 @@ describe("ViewerAuctionWorkspace", () => {
       }
     } satisfies TeamProjection;
     const asset = buildAsset("asset-houston", "Houston", team.id, team.seed);
-    const mothership = buildSyndicate("focus", "Mothership", "#111111");
+    const mothership = {
+      ...buildSyndicate("focus", "Mothership", "#111111"),
+      spend: 212000,
+      estimatedRemainingBudget: 8000
+    };
     const dashboard = {
       availableAssets: [asset],
       soldAssets: [],
+      analysis: {
+        budgetRows: []
+      },
       session: {
         payoutRules: {
           ...payoutRules
@@ -434,7 +441,7 @@ describe("ViewerAuctionWorkspace", () => {
       })
     );
 
-    expect(markup).toContain("Round return odds against the projected pot");
+    expect(markup).toContain("Round return odds against the projected final pot");
     expect(markup).toContain("Payout if reached");
     expect(markup).toContain("91.4%");
     expect(markup).toContain("42.9%");
@@ -448,7 +455,8 @@ describe("ViewerAuctionWorkspace", () => {
     expect(markup).toContain("$17,600");
     expect(markup).toContain("$26,400");
     expect(markup).toContain("$35,200");
-    expect(markup).toContain("Clears by Sweet 16");
+    expect(markup).toContain("Needs Elite 8");
+    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(3);
   });
 
   it("renders an auction-complete viewer board without cost or equity summaries", () => {

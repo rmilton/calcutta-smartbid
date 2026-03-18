@@ -2,6 +2,7 @@ import type { FocusEvent, KeyboardEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildOwnedAuctionCompleteAssets,
+  deriveProjectedFinalPot,
   findLeadingAuctionRegion,
   RoundMatchup,
   summarizeAuctionProgress
@@ -28,7 +29,7 @@ import {
   formatAssetMembers,
   formatAssetSeed,
   formatAssetSubtitle,
-  formatBreakEvenStage
+  formatBreakEvenReachRound
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
@@ -142,16 +143,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         nominatedAsset.type === "play_in_slot" ||
         nominatedAsset.label.length > 24)
   );
-  const resolvedCallHeadline =
-    nominatedAsset ? signalLabel ?? "Decision window open" : "Waiting on nomination";
-  const resolvedCallSupportText =
-    (nominatedAsset
-      ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
-      : "Set an active team to unlock guidance.");
-  const resolvedCallDetailText =
-    (forcedPassConflictTeamId
-      ? "This team overlaps with an owned position, so the sheet is flagging a pass."
-      : null);
   const auctionCompleteSummary = useMemo(
     () =>
       auctionProgress.isAuctionComplete
@@ -170,6 +161,23 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     ? syndicateLookup.get(auctionCompleteSummary.roomBiggestSale.sale.buyerSyndicateId)?.name ??
       auctionCompleteSummary.roomBiggestSale.sale.buyerSyndicateId
     : null;
+  const projectedFinalPot = useMemo(
+    () =>
+      deriveProjectedFinalPot({
+        ledger: dashboard.ledger ?? [],
+        availableAssets: dashboard.availableAssets ?? [],
+        budgetRows: dashboard.analysis?.budgetRows ?? [],
+        liveAssetId: selectedAssetId,
+        liveBid: currentBid
+      }),
+    [
+      currentBid,
+      dashboard.analysis,
+      dashboard.availableAssets,
+      dashboard.ledger,
+      selectedAssetId
+    ]
+  );
 
   return (
     <section className="auction-layout">
@@ -528,6 +536,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 currentBid={currentBid}
                 breakEvenStage={breakEvenStage}
                 payoutRules={dashboard.session.payoutRules}
+                projectedPot={projectedFinalPot}
               />
             )}
           </article>
@@ -690,44 +699,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
               </>
             ) : (
               <>
-                <div className="decision-context__overview">
-                  <div className="decision-panel__callout decision-context__callout">
-                    <p className="eyebrow">Call</p>
-                    <h3>{resolvedCallHeadline}</h3>
-                    <p>{resolvedCallSupportText}</p>
-                    {resolvedCallDetailText ? (
-                      <p className="call-conflict">{resolvedCallDetailText}</p>
-                    ) : null}
-                  </div>
-
-                  <div className="decision-context__summary-grid">
-                    <MetricCard
-                      label="Break-even round"
-                      value={formatBreakEvenStage(breakEvenStage)}
-                      compact
-                      tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                    />
-                    <MetricCard
-                      label="Simulated net"
-                      value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
-                      compact
-                      tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                    />
-                    <MetricCard
-                      label="Target bid"
-                      value={targetBidDisplay}
-                      compact
-                      tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
-                    />
-                    <MetricCard
-                      label="Max bid"
-                      value={maxBidDisplay}
-                      compact
-                      tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
-                    />
-                  </div>
-                </div>
-
                 <div className="decision-context__columns">
                   <section className="decision-context__section">
                     <div className="section-headline section-headline--compact">
@@ -892,12 +863,12 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   <MetricCard
                     label="Target bid"
                     value={targetBidDisplay}
-                    tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
+                    tooltip="The model's normal buy price for this team based on conviction. Funding pressure is shown separately in the budget-room and stoplight signals."
                   />
                   <MetricCard
                     label="Max bid"
                     value={maxBidDisplay}
-                    tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
+                    tooltip="The highest bid the model can justify from its value model after portfolio-overlap penalties. Funding pressure is shown separately in the budget-room and stoplight signals."
                   />
                   <MetricCard
                     label="Base budget room"
@@ -1202,17 +1173,13 @@ function OperatorSyndicateBoardCard({
   onCollapseAll: () => void;
 }) {
   const currentSpend = holdings.reduce((total, { syndicate }) => total + syndicate.spend, 0);
-  const budgetLookup = new Map(budgetRows.map((row) => [row.teamId, row]));
-  const projectedRemainingSpend = availableAssets.reduce((total, asset) => {
-    const estimatedClosePrice = asset.projectionIds.reduce(
-      (assetTotal, projectionId) => assetTotal + (budgetLookup.get(projectionId)?.targetBid ?? 0),
-      0
-    );
-    const liveBidFloor = asset.id === liveAssetId ? liveBid : 0;
-
-    return total + Math.max(liveBidFloor, estimatedClosePrice);
-  }, 0);
-  const projectedFinalPot = currentSpend + projectedRemainingSpend;
+  const projectedFinalPot = deriveProjectedFinalPot({
+    ledger: holdings.map(({ syndicate }) => syndicate),
+    availableAssets,
+    budgetRows,
+    liveAssetId,
+    liveBid
+  });
 
   return (
     <article className="surface-card syndicate-board-card syndicate-board-card--operator">

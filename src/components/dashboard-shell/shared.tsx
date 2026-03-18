@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
-import { getCumulativeStagePayouts } from "@/lib/payouts";
+import { getBreakEvenStage, getCumulativeStagePayouts } from "@/lib/payouts";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 import {
   AuctionAsset,
@@ -60,6 +60,14 @@ export function formatBreakEvenStage(stage: Stage | "negativeReturn" | null) {
   return titleCaseStage(stage);
 }
 
+export function formatBreakEvenReachRound(stage: Stage | "negativeReturn" | null) {
+  if (stage === null || stage === "negativeReturn") {
+    return formatBreakEvenStage(stage);
+  }
+
+  return nateSilverColumns.find((column) => column.payoutStage === stage)?.label ?? formatBreakEvenStage(stage);
+}
+
 type NateSilverColumn = {
   key: "roundOf32" | "sweet16" | "elite8" | "finalFour" | "championshipGame" | "champion";
   label: string;
@@ -104,37 +112,52 @@ export function NateSilverDecisionBoard({
   nominatedTeam,
   currentBid,
   breakEvenStage,
-  payoutRules
+  payoutRules,
+  projectedPot
 }: {
   nominatedAsset: AuctionAsset | null;
   nominatedTeam: TeamProjection | null;
   currentBid: number;
   breakEvenStage: Stage | "negativeReturn" | null;
   payoutRules: PayoutRules;
+  projectedPot?: number;
 }) {
   const nateSilver = nominatedTeam?.nateSilverProjection ?? null;
   const hasNateSilverProjection = nateSilverColumns.some(
     ({ key }) => getNateSilverProbability(nateSilver, key) !== null
   );
+  const effectiveBreakEvenStage =
+    projectedPot === undefined
+      ? breakEvenStage
+      : getBreakEvenStage(currentBid, payoutRules, projectedPot);
   const payoutLookup = useMemo(
     () =>
-      new Map(getCumulativeStagePayouts(payoutRules).map(({ stage, payout }) => [stage, payout])),
-    [payoutRules]
+      new Map(
+        getCumulativeStagePayouts(payoutRules, projectedPot).map(({ stage, payout }) => [
+          stage,
+          payout
+        ])
+      ),
+    [payoutRules, projectedPot]
   );
   const breakEvenLabel =
-    breakEvenStage === null
+    effectiveBreakEvenStage === null
       ? "Awaiting bid"
-      : breakEvenStage === "negativeReturn"
+      : effectiveBreakEvenStage === "negativeReturn"
         ? "Above modeled return"
-        : `Clears by ${formatBreakEvenStage(breakEvenStage)}`;
+        : `Needs ${formatBreakEvenReachRound(effectiveBreakEvenStage)}`;
   const isSingleTeamAsset = nominatedAsset?.type === "single_team";
+  const breakEvenCoverageIndex =
+    effectiveBreakEvenStage === null || effectiveBreakEvenStage === "negativeReturn"
+      ? -1
+      : nateSilverColumns.findIndex((column) => column.payoutStage === effectiveBreakEvenStage);
 
   return (
     <section className="nate-silver-panel">
       <div className="nate-silver-panel__header">
         <div>
           <p className="eyebrow">Nate Silver Path</p>
-          <h3>Round return odds against the projected pot</h3>
+          <h3>Round return odds against the projected final pot</h3>
         </div>
         <div className="nate-silver-panel__meta">
           <span className="status-pill status-pill--muted">{breakEvenLabel}</span>
@@ -156,10 +179,10 @@ export function NateSilverDecisionBoard({
       ) : (
         <>
           <div className="nate-silver-board" aria-label="Nate Silver round reach board">
-            {nateSilverColumns.map(({ key, label, payoutStage }) => {
+            {nateSilverColumns.map(({ key, label, payoutStage }, index) => {
               const probability = getNateSilverProbability(nateSilver, key);
               const payoutValue = payoutLookup.get(payoutStage) ?? null;
-              const clearsBid = payoutValue !== null && payoutValue >= currentBid;
+              const clearsBid = breakEvenCoverageIndex >= 0 && index <= breakEvenCoverageIndex;
 
               return (
                 <article
