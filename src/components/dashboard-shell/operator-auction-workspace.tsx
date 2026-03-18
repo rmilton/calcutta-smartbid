@@ -957,6 +957,10 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             holdings={operatorSyndicateHoldings}
             focusSyndicateId={dashboard.focusSyndicate.id}
             teamLookup={teamLookup}
+            availableAssets={dashboard.availableAssets}
+            budgetRows={dashboard.analysis.budgetRows}
+            liveAssetId={selectedAssetId}
+            liveBid={currentBid}
             expandedSyndicateIds={expandedSyndicateIds}
             onToggleSyndicate={onToggleSyndicate}
             onExpandAll={onExpandAll}
@@ -1176,6 +1180,10 @@ function OperatorSyndicateBoardCard({
   holdings,
   focusSyndicateId,
   teamLookup,
+  availableAssets,
+  budgetRows,
+  liveAssetId,
+  liveBid,
   expandedSyndicateIds,
   onToggleSyndicate,
   onExpandAll,
@@ -1184,16 +1192,27 @@ function OperatorSyndicateBoardCard({
   holdings: Array<{ syndicate: Syndicate; sales: SoldAssetSummary[] }>;
   focusSyndicateId: string;
   teamLookup: Map<string, TeamProjection>;
+  availableAssets: AuctionAsset[];
+  budgetRows: AuctionDashboard["analysis"]["budgetRows"];
+  liveAssetId: string;
+  liveBid: number;
   expandedSyndicateIds: string[];
   onToggleSyndicate: (syndicateId: string) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
 }) {
   const currentSpend = holdings.reduce((total, { syndicate }) => total + syndicate.spend, 0);
-  const projectedFinalPot = holdings.reduce(
-    (total, { syndicate }) => total + Math.max(syndicate.spend, syndicate.estimatedBudget),
-    0
-  );
+  const budgetLookup = new Map(budgetRows.map((row) => [row.teamId, row]));
+  const projectedRemainingSpend = availableAssets.reduce((total, asset) => {
+    const estimatedClosePrice = asset.projectionIds.reduce(
+      (assetTotal, projectionId) => assetTotal + (budgetLookup.get(projectionId)?.targetBid ?? 0),
+      0
+    );
+    const liveBidFloor = asset.id === liveAssetId ? liveBid : 0;
+
+    return total + Math.max(liveBidFloor, estimatedClosePrice);
+  }, 0);
+  const projectedFinalPot = currentSpend + projectedRemainingSpend;
 
   return (
     <article className="surface-card syndicate-board-card syndicate-board-card--operator">
