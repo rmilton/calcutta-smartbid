@@ -280,7 +280,7 @@ describe("recommendations", () => {
     expect(recommendation?.stoplight).toBe("caution");
   });
 
-  it("forces a pass once bidding moves beyond stretch funding", () => {
+  it("keeps value-led guidance once bidding moves beyond stretch funding", () => {
     const baseSession = buildSession();
     const session = {
       ...baseSession,
@@ -322,10 +322,10 @@ describe("recommendations", () => {
 
     expect(recommendation?.fundingStatus).toBe("above-plan");
     expect(recommendation?.stretchBudgetHeadroom).toBeLessThan(0);
-    expect(recommendation?.targetBid).toBe(session.liveState.currentBid);
-    expect(recommendation?.maxBid).toBe(session.liveState.currentBid);
-    expect(recommendation?.valueGap).toBe(0);
-    expect(recommendation?.stoplight).toBe("pass");
+    expect(recommendation?.targetBid).toBeGreaterThan(session.liveState.currentBid);
+    expect(recommendation?.maxBid).toBeGreaterThan(session.liveState.currentBid);
+    expect(recommendation?.valueGap).toBeGreaterThan(0);
+    expect(recommendation?.stoplight).toBe("caution");
   });
 
   it("forces a pass when an owned Round of 64 collision is guaranteed", () => {
