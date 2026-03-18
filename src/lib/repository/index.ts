@@ -3204,12 +3204,12 @@ function ensureUniqueSessionSharedCode(
   sharedAccessCode: string,
   excludeSessionId?: string
 ) {
-  const normalized = sharedAccessCode.trim();
+  const normalized = normalizeSharedCode(sharedAccessCode);
   if (
     sessions.some(
       (candidate) =>
         candidate.id !== excludeSessionId &&
-        getStoredSharedAccessCode(candidate)?.trim() === normalized
+        normalizeSharedCode(getStoredSharedAccessCode(candidate) ?? "") === normalized
     )
   ) {
     throw new Error(

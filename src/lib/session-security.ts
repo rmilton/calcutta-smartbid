@@ -40,8 +40,13 @@ export function verifySharedCode(sharedCode: string, storedHash: string) {
     return false;
   }
 
-  const hash = scryptSync(normalizeSharedCode(sharedCode), salt, 64).toString("hex");
-  return timingSafeEqual(Buffer.from(hash), Buffer.from(stored));
+  const normalizedHash = scryptSync(normalizeSharedCode(sharedCode), salt, 64).toString("hex");
+  if (timingSafeEqual(Buffer.from(normalizedHash), Buffer.from(stored))) {
+    return true;
+  }
+
+  const legacyHash = scryptSync(sharedCode.trim(), salt, 64).toString("hex");
+  return timingSafeEqual(Buffer.from(legacyHash), Buffer.from(stored));
 }
 
 export function encryptSharedCode(sharedCode: string) {
