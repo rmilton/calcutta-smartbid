@@ -31,7 +31,7 @@ Additional project context lives in:
 - [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including the auction-complete recap board once every asset is sold
 - [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, including the read-only auction-complete rooting guide without spend/equity summaries
 - [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives, asset-formatting helpers, and shared auction-complete asset row rendering
-- [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors and matchup helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
+- [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors, auction-progress helpers, and shared auction-complete summary helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
 
 ## Run locally
 
@@ -42,6 +42,24 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+## Testing
+
+Full project checks:
+
+```bash
+npm run lint
+npm run test
+npm run build
+```
+
+Live-room refactors are usually fastest to validate with the focused suites:
+
+```bash
+npm run test -- --run src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
+```
+
+When building `AuctionDashboard` fixtures in tests, include both `availableAssets` and `soldAssets`. They are part of the runtime dashboard contract, not optional fallback fields.
 
 For production-like local work, prefer `.env.local` with:
 

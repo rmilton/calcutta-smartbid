@@ -28,6 +28,23 @@ export interface ViewerOwnershipGroup {
   highlight: boolean;
 }
 
+export interface AuctionProgressSummary {
+  totalAuctionAssets: number;
+  soldAssetCount: number;
+  availableAssetCount: number;
+  remainingAssetsLabel: string;
+  isAuctionComplete: boolean;
+}
+
+export interface AuctionRegionLeader {
+  region: string;
+  count: number;
+}
+
+interface OwnedAuctionCompleteAsset {
+  sale: SoldAssetSummary;
+}
+
 export function orderSyndicateBoard(ledger: Syndicate[], focusSyndicateId: string) {
   return [...ledger].sort((left, right) => {
     if (left.id === focusSyndicateId) {
@@ -38,6 +55,61 @@ export function orderSyndicateBoard(ledger: Syndicate[], focusSyndicateId: strin
     }
     return 0;
   });
+}
+
+export function summarizeAuctionProgress(
+  dashboard: Pick<AuctionDashboard, "availableAssets" | "soldAssets" | "session">
+): AuctionProgressSummary {
+  const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
+  const soldAssetCount = dashboard.soldAssets.length;
+  const availableAssetCount = dashboard.availableAssets.length;
+
+  return {
+    totalAuctionAssets,
+    soldAssetCount,
+    availableAssetCount,
+    remainingAssetsLabel: `${availableAssetCount} ${
+      availableAssetCount === 1 ? "Team" : "Teams"
+    } Remaining`,
+    isAuctionComplete: totalAuctionAssets > 0 && soldAssetCount >= totalAuctionAssets
+  };
+}
+
+export function buildOwnedAuctionCompleteAssets<T extends OwnedAuctionCompleteAsset>({
+  soldAssets,
+  focusSyndicateId,
+  summarizeSale,
+  compare
+}: {
+  soldAssets: SoldAssetSummary[];
+  focusSyndicateId: string;
+  summarizeSale: (sale: SoldAssetSummary) => T;
+  compare: (left: T, right: T) => number;
+}): T[] {
+  return soldAssets
+    .filter((sale) => sale.buyerSyndicateId === focusSyndicateId)
+    .map((sale) => summarizeSale(sale))
+    .sort(compare);
+}
+
+export function findLeadingAuctionRegion<T extends OwnedAuctionCompleteAsset>(
+  ownedAssets: T[]
+): AuctionRegionLeader | null {
+  const regionCounts = ownedAssets.reduce<Map<string, number>>((counts, ownedAsset) => {
+    counts.set(
+      ownedAsset.sale.asset.region,
+      (counts.get(ownedAsset.sale.asset.region) ?? 0) + 1
+    );
+    return counts;
+  }, new Map());
+  const topRegionEntry =
+    [...regionCounts.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
+    )[0] ?? null;
+
+  return topRegionEntry
+    ? { region: topRegionEntry[0], count: topRegionEntry[1] }
+    : null;
 }
 
 export function buildOperatorSyndicateHoldings(

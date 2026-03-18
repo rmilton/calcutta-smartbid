@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RoundMatchup, ViewerOwnershipGroup } from "@/lib/live-room";
+import {
+  buildOwnedAuctionCompleteAssets,
+  findLeadingAuctionRegion,
+  RoundMatchup,
+  summarizeAuctionProgress,
+  ViewerOwnershipGroup
+} from "@/lib/live-room";
 import {
   AuctionDashboard,
   MatchupConflict,
@@ -68,36 +74,28 @@ export function ViewerAuctionWorkspace({
     null;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
-  const allSoldAssets = useMemo(() => dashboard.soldAssets ?? [], [dashboard.soldAssets]);
-  const availableAssets = useMemo(() => {
-    if (dashboard.availableAssets) {
-      return dashboard.availableAssets;
-    }
-
-    const soldAssetIds = new Set(allSoldAssets.map((sale) => sale.asset.id));
-    return (dashboard.session.auctionAssets ?? []).filter((asset) => !soldAssetIds.has(asset.id));
-  }, [allSoldAssets, dashboard.availableAssets, dashboard.session.auctionAssets]);
-  const remainingTeamsLabel = `${availableAssets.length} ${
-    availableAssets.length === 1 ? "Team" : "Teams"
-  } Remaining`;
+  const auctionProgress = useMemo(() => summarizeAuctionProgress(dashboard), [dashboard]);
   const shouldStackHeroStat = Boolean(
     nominatedAsset &&
       (nominatedAsset.type === "seed_bundle" ||
         nominatedAsset.type === "play_in_slot" ||
         nominatedAsset.label.length > 24)
   );
-  const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
-  const isAuctionComplete = totalAuctionAssets > 0 && allSoldAssets.length >= totalAuctionAssets;
   const auctionCompleteSummary = useMemo(
     () =>
-      isAuctionComplete
+      auctionProgress.isAuctionComplete
         ? buildViewerAuctionCompleteSummary({
-            soldAssets: allSoldAssets,
+            soldAssets: dashboard.soldAssets,
             focusSyndicateId: dashboard.focusSyndicate.id,
-            totalAuctionAssets
+            totalAuctionAssets: auctionProgress.totalAuctionAssets
           })
         : null,
-    [allSoldAssets, dashboard.focusSyndicate.id, isAuctionComplete, totalAuctionAssets]
+    [
+      auctionProgress.isAuctionComplete,
+      auctionProgress.totalAuctionAssets,
+      dashboard.focusSyndicate.id,
+      dashboard.soldAssets
+    ]
   );
 
   useEffect(() => {
@@ -144,8 +142,15 @@ export function ViewerAuctionWorkspace({
             <div className="decision-panel__header">
               <div className="decision-panel__header-copy">
                 <p className="eyebrow">Live Decision Board</p>
-                <span className={cn("status-pill", !isAuctionComplete && "status-pill--muted")}>
-                  {isAuctionComplete ? "Auction complete" : remainingTeamsLabel}
+                <span
+                  className={cn(
+                    "status-pill",
+                    !auctionProgress.isAuctionComplete && "status-pill--muted"
+                  )}
+                >
+                  {auctionProgress.isAuctionComplete
+                    ? "Auction complete"
+                    : auctionProgress.remainingAssetsLabel}
                 </span>
               </div>
             </div>
@@ -153,7 +158,7 @@ export function ViewerAuctionWorkspace({
             <div
               className={cn(
                 "decision-panel__hero",
-                isAuctionComplete
+                auctionProgress.isAuctionComplete
                   ? "decision-panel__hero--complete"
                   : nominatedAsset
                     ? "decision-panel__hero--active"
@@ -163,7 +168,7 @@ export function ViewerAuctionWorkspace({
               <div
                 className={cn(
                   "decision-panel__hero-topline",
-                  (shouldStackHeroStat || isAuctionComplete) &&
+                  (shouldStackHeroStat || auctionProgress.isAuctionComplete) &&
                     "decision-panel__hero-topline--stacked"
                 )}
               >
@@ -172,26 +177,26 @@ export function ViewerAuctionWorkspace({
                     <span
                       className={cn(
                         "pulse-dot",
-                        isAuctionComplete
+                        auctionProgress.isAuctionComplete
                           ? "pulse-dot--complete"
                           : !nominatedAsset && "pulse-dot--muted"
                       )}
                     />
                     <span>
-                      {isAuctionComplete
+                      {auctionProgress.isAuctionComplete
                         ? "Books closed"
                         : nominatedAsset
                           ? "Active team"
                           : "Awaiting selection"}
                     </span>
-                    {!isAuctionComplete && nominatedTeamClassification ? (
+                    {!auctionProgress.isAuctionComplete && nominatedTeamClassification ? (
                       <div className="decision-panel__classification">
                         <TeamClassificationBadge classification={nominatedTeamClassification} />
                       </div>
                     ) : null}
                   </div>
                   <div className="team-title-lockup">
-                    {nominatedAsset && !isAuctionComplete ? (
+                    {nominatedAsset && !auctionProgress.isAuctionComplete ? (
                       <AssetLogo
                         asset={nominatedAsset}
                         teamLookup={teamLookup}
@@ -211,18 +216,18 @@ export function ViewerAuctionWorkspace({
                             nominatedAsset.label.length > 24) &&
                           "decision-panel__hero-title--long",
                         !nominatedAsset &&
-                          !isAuctionComplete &&
+                          !auctionProgress.isAuctionComplete &&
                           "decision-panel__hero-title--waiting"
                       )}
                     >
-                      {isAuctionComplete
+                      {auctionProgress.isAuctionComplete
                         ? "Auction Complete"
                         : nominatedAsset
                           ? nominatedAsset.label
                           : "Waiting for selection"}
                     </h2>
                   </div>
-                  {isAuctionComplete ? (
+                  {auctionProgress.isAuctionComplete ? (
                     <p className="decision-panel__subcopy">
                       {auctionCompleteSummary?.ownedAssets.length
                         ? `${dashboard.focusSyndicate.name} finished with ${
@@ -247,7 +252,7 @@ export function ViewerAuctionWorkspace({
                   )}
                 </div>
                 <div className="decision-panel__hero-stat">
-                  {isAuctionComplete ? (
+                  {auctionProgress.isAuctionComplete ? (
                     <>
                       <span className="insight-label">Assets sold</span>
                       <strong>
@@ -277,7 +282,7 @@ export function ViewerAuctionWorkspace({
                   )}
                 </div>
               </div>
-              {isAuctionComplete ? (
+              {auctionProgress.isAuctionComplete ? (
                 <div className="decision-panel__complete-grid">
                   <div className="decision-panel__complete-stat">
                     <span>Mothership teams</span>
@@ -324,7 +329,7 @@ export function ViewerAuctionWorkspace({
                   ) : null}
                 </p>
               ) : null}
-              {!isAuctionComplete && likelyRound2Matchup ? (
+              {!auctionProgress.isAuctionComplete && likelyRound2Matchup ? (
                 <p className="decision-panel__path">
                   <span>Most likely Round 2:</span>
                   <span className="decision-panel__matchup-team">
@@ -345,14 +350,14 @@ export function ViewerAuctionWorkspace({
                   ) : null}
                 </p>
               ) : null}
-              {!isAuctionComplete && nominatedTeamNote ? (
+              {!auctionProgress.isAuctionComplete && nominatedTeamNote ? (
                 <div className="decision-panel__annotation">
                   <span className="decision-panel__note">{nominatedTeamNote}</span>
                 </div>
               ) : null}
             </div>
 
-            {isAuctionComplete ? (
+            {auctionProgress.isAuctionComplete ? (
               <ViewerAuctionCompleteBoard
                 summary={auctionCompleteSummary}
                 teamLookup={teamLookup}
@@ -374,11 +379,11 @@ export function ViewerAuctionWorkspace({
                 <div className="section-headline section-headline--compact">
                   <div>
                     <p className="eyebrow">
-                      {isAuctionComplete ? "Team Highlights" : "Rationale"}
+                      {auctionProgress.isAuctionComplete ? "Team Highlights" : "Rationale"}
                     </p>
                   </div>
                 </div>
-                {isAuctionComplete ? (
+                {auctionProgress.isAuctionComplete ? (
                   auctionCompleteSummary?.ownedAssets.length ? (
                     <div className="list-stack">
                       {auctionCompleteSummary.favoriteAsset ? (
@@ -444,11 +449,11 @@ export function ViewerAuctionWorkspace({
                 <div className="section-headline section-headline--compact">
                   <div>
                     <p className="eyebrow">
-                      {isAuctionComplete ? "Rooting Guide" : "Ownership Conflicts"}
+                      {auctionProgress.isAuctionComplete ? "Rooting Guide" : "Ownership Conflicts"}
                     </p>
                   </div>
                 </div>
-                {isAuctionComplete ? (
+                {auctionProgress.isAuctionComplete ? (
                   auctionCompleteSummary?.ownedAssets.length ? (
                     <div className="list-stack">
                       {auctionCompleteSummary.ownedAssets.slice(0, 3).map((ownedAsset) => (
@@ -632,38 +637,25 @@ function buildViewerAuctionCompleteSummary({
   focusSyndicateId: string;
   totalAuctionAssets: number;
 }): ViewerAuctionCompleteSummary {
-  const ownedAssets = soldAssets
-    .filter((sale) => sale.buyerSyndicateId === focusSyndicateId)
-    .map((sale) => summarizeViewerOwnedAsset(sale))
-    .sort(
-      (left, right) =>
-        (left.bestSeed ?? Number.MAX_SAFE_INTEGER) - (right.bestSeed ?? Number.MAX_SAFE_INTEGER) ||
-        left.sale.asset.label.localeCompare(right.sale.asset.label)
-    );
+  const ownedAssets = buildOwnedAuctionCompleteAssets({
+    soldAssets,
+    focusSyndicateId,
+    summarizeSale: summarizeViewerOwnedAsset,
+    compare: (left, right) =>
+      (left.bestSeed ?? Number.MAX_SAFE_INTEGER) - (right.bestSeed ?? Number.MAX_SAFE_INTEGER) ||
+      left.sale.asset.label.localeCompare(right.sale.asset.label)
+  });
   const bestOwnedSeed = ownedAssets.reduce(
     (best, ownedAsset) => Math.min(best, ownedAsset.bestSeed ?? Number.MAX_SAFE_INTEGER),
     Number.MAX_SAFE_INTEGER
   );
-  const regionCounts = ownedAssets.reduce<Map<string, number>>((counts, ownedAsset) => {
-    counts.set(
-      ownedAsset.sale.asset.region,
-      (counts.get(ownedAsset.sale.asset.region) ?? 0) + 1
-    );
-    return counts;
-  }, new Map());
-  const topRegionEntry =
-    [...regionCounts.entries()].sort(
-      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
-    )[0] ?? null;
 
   return {
     totalAuctionAssets,
     soldCount: soldAssets.length,
     ownedAssets,
     bestSeed: bestOwnedSeed === Number.MAX_SAFE_INTEGER ? null : bestOwnedSeed,
-    topRegion: topRegionEntry
-      ? { region: topRegionEntry[0], count: topRegionEntry[1] }
-      : null,
+    topRegion: findLeadingAuctionRegion(ownedAssets),
     favoriteAsset: ownedAssets[0] ?? null,
     sleeperAsset:
       [...ownedAssets].sort(

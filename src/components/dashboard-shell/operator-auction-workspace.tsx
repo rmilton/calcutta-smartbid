@@ -1,6 +1,11 @@
 import type { FocusEvent, KeyboardEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { RoundMatchup } from "@/lib/live-room";
+import {
+  buildOwnedAuctionCompleteAssets,
+  findLeadingAuctionRegion,
+  RoundMatchup,
+  summarizeAuctionProgress
+} from "@/lib/live-room";
 import {
   AuctionAsset,
   AuctionDashboard,
@@ -59,9 +64,6 @@ interface OperatorAuctionWorkspaceProps {
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
   hasOwnedLikelyRoundTwoOpponent: boolean;
-  callHeadline?: string;
-  callSupportText?: string;
-  callDetailText?: string | null;
   breakEvenStage: Stage | "negativeReturn" | null;
   targetBidDisplay: string;
   maxBidDisplay: string;
@@ -114,9 +116,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     likelyRound2Matchup,
     hasOwnedRoundOneOpponent,
     hasOwnedLikelyRoundTwoOpponent,
-    callHeadline,
-    callSupportText,
-    callDetailText,
     breakEvenStage,
     targetBidDisplay,
     maxBidDisplay,
@@ -136,47 +135,31 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     syndicateLookup,
     focusFundingImpliedSharePrice
   } = props;
-  const soldAssets = useMemo(() => dashboard.soldAssets ?? [], [dashboard.soldAssets]);
-  const availableAssets = useMemo(() => {
-    if (dashboard.availableAssets) {
-      return dashboard.availableAssets;
-    }
-
-    const soldAssetIds = new Set(soldAssets.map((sale) => sale.asset.id));
-    return (dashboard.session.auctionAssets ?? []).filter((asset) => !soldAssetIds.has(asset.id));
-  }, [dashboard.availableAssets, dashboard.session.auctionAssets, soldAssets]);
-  const remainingTeamsLabel = `${availableAssets.length} ${
-    availableAssets.length === 1 ? "Team" : "Teams"
-  } Remaining`;
+  const auctionProgress = useMemo(() => summarizeAuctionProgress(dashboard), [dashboard]);
   const shouldStackHeroStat = Boolean(
     nominatedAsset &&
       (nominatedAsset.type === "seed_bundle" ||
         nominatedAsset.type === "play_in_slot" ||
         nominatedAsset.label.length > 24)
   );
-  const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
-  const isAuctionComplete = totalAuctionAssets > 0 && soldAssets.length >= totalAuctionAssets;
   const resolvedCallHeadline =
-    callHeadline ??
-    (nominatedAsset ? signalLabel ?? "Decision window open" : "Waiting on nomination");
+    nominatedAsset ? signalLabel ?? "Decision window open" : "Waiting on nomination";
   const resolvedCallSupportText =
-    callSupportText ??
     (nominatedAsset
       ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
       : "Set an active team to unlock guidance.");
   const resolvedCallDetailText =
-    callDetailText ??
     (forcedPassConflictTeamId
       ? "This team overlaps with an owned position, so the sheet is flagging a pass."
       : null);
   const auctionCompleteSummary = useMemo(
     () =>
-      isAuctionComplete
+      auctionProgress.isAuctionComplete
         ? buildAuctionCompleteSummary({
             dashboard
           })
         : null,
-    [dashboard, isAuctionComplete]
+    [auctionProgress.isAuctionComplete, dashboard]
   );
   const auctionCompleteRootingGuide = auctionCompleteSummary?.ownedAssets.slice(0, 3) ?? [];
   const auctionCompleteRegionLabel = auctionCompleteSummary?.topRegion
@@ -215,7 +198,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
             <span>Active team</span>
             <AssetCombobox
-              assets={availableAssets}
+              assets={dashboard.availableAssets}
               soldAssets={dashboard.soldAssets}
               teamLookup={teamLookup}
               value={selectedAssetId}
@@ -311,11 +294,18 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             <div className="decision-panel__header">
               <div className="decision-panel__header-copy">
                 <p className="eyebrow">Live Decision Board</p>
-                <span className={cn("status-pill", !isAuctionComplete && "status-pill--muted")}>
-                  {isAuctionComplete ? "Auction complete" : remainingTeamsLabel}
+                <span
+                  className={cn(
+                    "status-pill",
+                    !auctionProgress.isAuctionComplete && "status-pill--muted"
+                  )}
+                >
+                  {auctionProgress.isAuctionComplete
+                    ? "Auction complete"
+                    : auctionProgress.remainingAssetsLabel}
                 </span>
               </div>
-              {!isAuctionComplete && signalLabel ? (
+              {!auctionProgress.isAuctionComplete && signalLabel ? (
                 <div
                   className={cn(
                     "signal-pill",
@@ -330,7 +320,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             <div
               className={cn(
                 "decision-panel__hero",
-                isAuctionComplete
+                auctionProgress.isAuctionComplete
                   ? "decision-panel__hero--complete"
                   : nominatedAsset
                   ? "decision-panel__hero--active"
@@ -340,7 +330,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
               <div
                 className={cn(
                   "decision-panel__hero-topline",
-                  (shouldStackHeroStat || isAuctionComplete) &&
+                  (shouldStackHeroStat || auctionProgress.isAuctionComplete) &&
                     "decision-panel__hero-topline--stacked"
                 )}
               >
@@ -349,26 +339,26 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     <span
                       className={cn(
                         "pulse-dot",
-                        isAuctionComplete
+                        auctionProgress.isAuctionComplete
                           ? "pulse-dot--complete"
                           : !nominatedAsset && "pulse-dot--muted"
                       )}
                     />
                     <span>
-                      {isAuctionComplete
+                      {auctionProgress.isAuctionComplete
                         ? "Books closed"
                         : nominatedAsset
                           ? "Active team"
                           : "Awaiting selection"}
                     </span>
-                    {!isAuctionComplete && nominatedTeamClassification ? (
+                    {!auctionProgress.isAuctionComplete && nominatedTeamClassification ? (
                       <div className="decision-panel__classification">
                         <TeamClassificationBadge classification={nominatedTeamClassification} />
                       </div>
                     ) : null}
                   </div>
                   <div className="team-title-lockup">
-                    {nominatedAsset && !isAuctionComplete ? (
+                    {nominatedAsset && !auctionProgress.isAuctionComplete ? (
                       <AssetLogo
                         asset={nominatedAsset}
                         teamLookup={teamLookup}
@@ -388,18 +378,18 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                             nominatedAsset.label.length > 24) &&
                           "decision-panel__hero-title--long",
                         !nominatedAsset &&
-                          !isAuctionComplete &&
+                          !auctionProgress.isAuctionComplete &&
                           "decision-panel__hero-title--waiting"
                       )}
                     >
-                      {isAuctionComplete
+                      {auctionProgress.isAuctionComplete
                         ? "Auction Complete"
                         : nominatedAsset
                           ? nominatedAsset.label
                           : "Waiting for selection"}
                     </h2>
                   </div>
-                  {isAuctionComplete ? (
+                  {auctionProgress.isAuctionComplete ? (
                     <p className="decision-panel__subcopy">
                       {auctionCompleteSummary && auctionCompleteSummary.ownedAssets.length
                         ? `Mothership closed with ${auctionCompleteSummary.ownedAssets.length} ${
@@ -423,8 +413,8 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 </div>
                 <div className="decision-panel__hero-stat">
                   <span className="insight-label">
-                    {isAuctionComplete ? "Final pot" : "Current bid"}
-                    {!isAuctionComplete ? (
+                    {auctionProgress.isAuctionComplete ? "Final pot" : "Current bid"}
+                    {!auctionProgress.isAuctionComplete ? (
                       <button
                         type="button"
                         className="tooltip-hint"
@@ -443,7 +433,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   </strong>
                 </div>
               </div>
-              {isAuctionComplete ? (
+              {auctionProgress.isAuctionComplete ? (
                 <div className="decision-panel__complete-grid">
                   <div className="decision-panel__complete-stat">
                     <span>Teams won</span>
@@ -497,7 +487,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   ) : null}
                 </p>
               ) : null}
-              {!isAuctionComplete && likelyRound2Matchup ? (
+              {!auctionProgress.isAuctionComplete && likelyRound2Matchup ? (
                 <p className="decision-panel__path">
                   <span>Most likely Round 2:</span>
                   <span className="decision-panel__matchup-team">
@@ -518,14 +508,14 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   ) : null}
                 </p>
               ) : null}
-              {!isAuctionComplete && nominatedTeamNote ? (
+              {!auctionProgress.isAuctionComplete && nominatedTeamNote ? (
                 <div className="decision-panel__annotation">
                   <span className="decision-panel__note">{nominatedTeamNote}</span>
                 </div>
               ) : null}
             </div>
 
-            {isAuctionComplete ? (
+            {auctionProgress.isAuctionComplete ? (
               <AuctionCompleteRootingBoard
                 ownedAssets={auctionCompleteRootingGuide}
                 totalAuctionAssets={auctionCompleteSummary?.totalAuctionAssets ?? 0}
@@ -543,7 +533,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           </article>
 
           <article className="surface-card decision-context">
-            {isAuctionComplete ? (
+            {auctionProgress.isAuctionComplete ? (
               <>
                 <div className="decision-context__overview">
                   <div className="decision-panel__callout decision-context__callout">
@@ -790,16 +780,18 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           <article className="surface-card">
             <div className="section-headline">
               <div>
-                <p className="eyebrow">{isAuctionComplete ? "Auction Recap" : "Model Drivers"}</p>
+                <p className="eyebrow">
+                  {auctionProgress.isAuctionComplete ? "Auction Recap" : "Model Drivers"}
+                </p>
                 <h3>
-                  {isAuctionComplete
+                  {auctionProgress.isAuctionComplete
                     ? "The final board in one glance"
                     : "Visible metrics that justify the bid call"}
                 </h3>
               </div>
             </div>
             <div className="metric-grid">
-              {isAuctionComplete ? (
+              {auctionProgress.isAuctionComplete ? (
                 <>
                   <MetricCard
                     label="Room spend"
@@ -1081,14 +1073,14 @@ function buildAuctionCompleteSummary({
 }): AuctionCompleteSummary {
   const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
   const snapshot = dashboard.session.simulationSnapshot;
-  const ownedAssets = dashboard.soldAssets
-    .filter((sale) => sale.buyerSyndicateId === dashboard.focusSyndicate.id)
-    .map((sale) => summarizeAuctionCompleteAsset(sale, snapshot))
-    .sort(
-      (left, right) =>
-        right.championProbability - left.championProbability ||
-        right.expectedGross - left.expectedGross
-    );
+  const ownedAssets = buildOwnedAuctionCompleteAssets({
+    soldAssets: dashboard.soldAssets,
+    focusSyndicateId: dashboard.focusSyndicate.id,
+    summarizeSale: (sale) => summarizeAuctionCompleteAsset(sale, snapshot),
+    compare: (left, right) =>
+      right.championProbability - left.championProbability ||
+      right.expectedGross - left.expectedGross
+  });
 
   const totalSpend = ownedAssets.reduce((total, ownedAsset) => total + ownedAsset.sale.price, 0);
   const finalPot = dashboard.soldAssets.reduce((total, sale) => total + sale.price, 0);
@@ -1114,20 +1106,11 @@ function buildAuctionCompleteSummary({
   const averageSeed = seedValues.length
     ? seedValues.reduce((total, seed) => total + seed, 0) / seedValues.length
     : null;
-  const regionCounts = ownedAssets.reduce<Map<string, number>>((counts, ownedAsset) => {
-    counts.set(
-      ownedAsset.sale.asset.region,
-      (counts.get(ownedAsset.sale.asset.region) ?? 0) + 1
-    );
-    return counts;
-  }, new Map());
-  const topRegionEntry =
-    [...regionCounts.entries()].sort(
-      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
-    )[0] ?? null;
   const roomBiggestSale =
     [...dashboard.soldAssets]
-      .sort((left, right) => right.price - left.price || left.asset.label.localeCompare(right.asset.label))
+      .sort(
+        (left, right) => right.price - left.price || left.asset.label.localeCompare(right.asset.label)
+      )
       .map((sale) => summarizeAuctionCompleteAsset(sale, snapshot))[0] ?? null;
 
   return {
@@ -1151,9 +1134,7 @@ function buildAuctionCompleteSummary({
           right.championProbability - left.championProbability ||
           right.finalFourProbability - left.finalFourProbability
       )[0] ?? null,
-    topRegion: topRegionEntry
-      ? { region: topRegionEntry[0], count: topRegionEntry[1] }
-      : null,
+    topRegion: findLeadingAuctionRegion(ownedAssets),
     roomBiggestSale
   };
 }

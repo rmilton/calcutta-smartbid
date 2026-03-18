@@ -196,6 +196,7 @@ describe("ViewerAuctionWorkspace", () => {
     } satisfies BidRecommendation;
     const dashboard = {
       availableAssets: [asset],
+      soldAssets: soldFeed,
       session: {
         payoutRules,
         teamClassifications: {
@@ -298,6 +299,7 @@ describe("ViewerAuctionWorkspace", () => {
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
       availableAssets: [],
+      soldAssets: [],
       session: {
         payoutRules,
         teamClassifications: {},
@@ -342,6 +344,8 @@ describe("ViewerAuctionWorkspace", () => {
     const asset = buildBundleAsset();
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
+      availableAssets: [asset],
+      soldAssets: [],
       session: {
         payoutRules,
         teamClassifications: {},
@@ -394,6 +398,8 @@ describe("ViewerAuctionWorkspace", () => {
     const asset = buildAsset("asset-houston", "Houston", team.id, team.seed);
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
+      availableAssets: [asset],
+      soldAssets: [],
       session: {
         payoutRules: {
           ...payoutRules
@@ -472,6 +478,7 @@ describe("ViewerAuctionWorkspace", () => {
       }
     ];
     const dashboard = {
+      availableAssets: [],
       session: {
         payoutRules,
         auctionAssets: [dukeAsset, gonzagaAsset, auburnAsset],
