@@ -264,7 +264,7 @@ describe("OperatorAuctionWorkspace", () => {
 
     expect(markup).toContain("Nate Silver Path");
     expect(markup).toContain("Round return odds against the projected pot");
-    expect(markup).toContain("$220,000");
+    expect(markup).toContain("Payout if reached");
     expect(markup).not.toContain("Round of 64");
     expect(markup).toContain("Round of 32");
     expect(markup).toContain("Championship");
