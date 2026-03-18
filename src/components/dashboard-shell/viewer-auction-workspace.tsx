@@ -1,11 +1,9 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { RoundMatchup, ViewerOwnershipGroup } from "@/lib/live-room";
 import {
   AuctionDashboard,
-  BidRecommendation,
   MatchupConflict,
   SoldAssetSummary,
-  Stage,
   Syndicate,
   TeamProjection
 } from "@/lib/types";
@@ -13,30 +11,20 @@ import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
   AssetSaleRow,
   ConflictRow,
-  MetricCard,
   formatAssetMembers,
   formatAssetMembersCompact,
-  formatAssetSubtitle,
-  formatBreakEvenStage
+  formatAssetSubtitle
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
-  recommendation: BidRecommendation | null;
-  signalLabel: string | null;
   currentBid: number;
   nominatedMatchup: RoundMatchup | null;
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
   hasOwnedLikelyRoundTwoOpponent: boolean;
-  callHeadline: string;
-  callSupportText: string;
-  callDetailText: string | null;
-  breakEvenStage: Stage | "negativeReturn" | null;
-  targetBidDisplay: string;
-  maxBidDisplay: string;
   filteredRationale: string[];
   ownershipConflicts: MatchupConflict[];
   teamLookup: Map<string, TeamProjection>;
@@ -50,19 +38,11 @@ interface ViewerAuctionWorkspaceProps {
 
 export function ViewerAuctionWorkspace({
   dashboard,
-  recommendation,
-  signalLabel,
   currentBid,
   nominatedMatchup,
   likelyRound2Matchup,
   hasOwnedRoundOneOpponent,
   hasOwnedLikelyRoundTwoOpponent,
-  callHeadline,
-  callSupportText,
-  callDetailText,
-  breakEvenStage,
-  targetBidDisplay,
-  maxBidDisplay,
   filteredRationale,
   ownershipConflicts,
   teamLookup,
@@ -73,6 +53,8 @@ export function ViewerAuctionWorkspace({
   soldFeed,
   syndicateLookup
 }: ViewerAuctionWorkspaceProps) {
+  const leftColumnRef = useRef<HTMLDivElement | null>(null);
+  const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
   const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
   const nominatedTeamClassification =
@@ -81,31 +63,55 @@ export function ViewerAuctionWorkspace({
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const desktopQuery = window.matchMedia("(min-width: 1181px)");
+    const observedElement = leftColumnRef.current;
+    if (!observedElement) {
+      return undefined;
+    }
+
+    const syncSalesHeight = () => {
+      if (!desktopQuery.matches) {
+        setSalesCardHeight(null);
+        return;
+      }
+
+      setSalesCardHeight(observedElement.getBoundingClientRect().height);
+    };
+
+    syncSalesHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncSalesHeight();
+    });
+    resizeObserver.observe(observedElement);
+    desktopQuery.addEventListener("change", syncSalesHeight);
+    window.addEventListener("resize", syncSalesHeight);
+
+    return () => {
+      resizeObserver.disconnect();
+      desktopQuery.removeEventListener("change", syncSalesHeight);
+      window.removeEventListener("resize", syncSalesHeight);
+    };
+  }, [filteredRationale.length, ownershipConflicts.length, soldFeed.length]);
+
   return (
     <section className="viewer-layout">
-      <section className="operator-board-layout">
-        <div className="operator-board-layout__main">
+      <section className="viewer-auction-grid">
+        <div ref={leftColumnRef} className="viewer-auction-grid__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
               <p className="eyebrow">Live Decision Board</p>
-              {signalLabel ? (
-                <div
-                  className={cn(
-                    "signal-pill",
-                    recommendation && `signal-pill--${recommendation.stoplight}`
-                  )}
-                >
-                  {signalLabel}
-                </div>
-              ) : null}
             </div>
 
             <div
               className={cn(
                 "decision-panel__hero",
-                nominatedAsset
-                  ? "decision-panel__hero--active"
-                  : "decision-panel__hero--waiting"
+                nominatedAsset ? "decision-panel__hero--active" : "decision-panel__hero--waiting"
               )}
             >
               <div className="decision-panel__hero-topline">
@@ -202,43 +208,7 @@ export function ViewerAuctionWorkspace({
             </div>
           </article>
 
-          <article className="surface-card decision-context">
-            <div className="decision-context__overview">
-              <div className="decision-panel__callout decision-context__callout">
-                <p className="eyebrow">Call</p>
-                <h3>{callHeadline}</h3>
-                <p>{callSupportText}</p>
-                {callDetailText ? <p className="call-conflict">{callDetailText}</p> : null}
-              </div>
-
-              <div className="decision-context__summary-grid">
-                <MetricCard
-                  label="Break-even round"
-                  value={formatBreakEvenStage(breakEvenStage)}
-                  compact
-                  tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                />
-                <MetricCard
-                  label="Simulated net"
-                  value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
-                  compact
-                  tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                />
-                <MetricCard
-                  label="Target bid"
-                  value={targetBidDisplay}
-                  compact
-                  tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining buying room."
-                />
-                <MetricCard
-                  label="Max bid"
-                  value={maxBidDisplay}
-                  compact
-                  tooltip="The highest bid the model can justify after funding room and portfolio overlap penalties are applied."
-                />
-              </div>
-            </div>
-
+          <article className="surface-card decision-context viewer-auction-grid__context">
             <div className="decision-context__columns">
               <section className="decision-context__section">
                 <div className="section-headline section-headline--compact">
@@ -285,8 +255,11 @@ export function ViewerAuctionWorkspace({
           </article>
         </div>
 
-        <aside className="operator-board-layout__side viewer-layout__side">
-          <article className="surface-card">
+        <aside className="viewer-auction-grid__sales">
+          <article
+            className="surface-card viewer-layout__sales-card"
+            style={salesCardHeight ? { height: `${Math.round(salesCardHeight)}px` } : undefined}
+          >
             <div className="section-headline">
               <div>
                 <p className="eyebrow">Recent Sales</p>
@@ -294,7 +267,7 @@ export function ViewerAuctionWorkspace({
               </div>
             </div>
             {soldFeed.length ? (
-              <div className="list-stack">
+              <div className="viewer-layout__sales-list list-stack">
                 {soldFeed.map((sale) => (
                   <AssetSaleRow
                     key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
@@ -357,11 +330,18 @@ function ViewerOwnershipLedgerGroup({
   isMothership: boolean;
   hasActiveSearch: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
   return (
     <article
       className={cn("viewer-ledger-group", isMothership && "viewer-ledger-group--focus")}
     >
-      <div className="viewer-ledger-group__header">
+      <button
+        type="button"
+        className="viewer-ledger-group__header viewer-ledger-group__toggle"
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded((current) => !current)}
+      >
         <div className="viewer-ledger-group__title">
           <span className="syndicate-dot" style={{ backgroundColor: group.syndicate.color }} />
           <div>
@@ -369,13 +349,14 @@ function ViewerOwnershipLedgerGroup({
           </div>
         </div>
         <div className="viewer-ledger-group__total">
+          <span>{isExpanded ? "Hide" : "Show"}</span>
           <strong>
-            {formatCurrency(group.syndicate.spend)} · {group.sales.length}{" "}
+            {group.sales.length}{" "}
             {group.sales.length === 1 ? "team" : "teams"}
           </strong>
         </div>
-      </div>
-      {group.sales.length ? (
+      </button>
+      {isExpanded ? group.sales.length ? (
         <div className="viewer-ledger-group__rows">
           {group.sales.map((sale) => (
             <div
@@ -404,7 +385,7 @@ function ViewerOwnershipLedgerGroup({
             ? `No matching teams for ${group.syndicate.name}.`
             : `No purchased teams yet for ${group.syndicate.name}.`}
         </p>
-      )}
+      ) : null}
     </article>
   );
 }
