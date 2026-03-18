@@ -476,49 +476,65 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     </strong>
                   </div>
                 </div>
-              ) : nominatedMatchup ? (
-                <p className="decision-panel__matchup">
-                  <span>Round 1 Matchup:</span>
-                  <span className="decision-panel__matchup-team">
-                    <TeamLogo
-                      teamId={nominatedMatchup.opponent.teamId}
-                      teamName={nominatedMatchup.opponent.name}
-                      size="xs"
-                      decorative
-                    />
-                    <span>
-                      {nominatedMatchup.opponent.seed}-seed {nominatedMatchup.opponent.name}
-                    </span>
-                  </span>
-                  {hasOwnedRoundOneOpponent ? (
-                    <span className="decision-panel__matchup-owned">you own</span>
-                  ) : null}
-                </p>
-              ) : null}
-              {!auctionProgress.isAuctionComplete && likelyRound2Matchup ? (
-                <p className="decision-panel__path">
-                  <span>Most likely Round 2:</span>
-                  <span className="decision-panel__matchup-team">
-                    <TeamLogo
-                      teamId={likelyRound2Matchup.opponent.teamId}
-                      teamName={likelyRound2Matchup.opponent.name}
-                      size="xs"
-                      decorative
-                    />
-                    <span>
-                      {likelyRound2Matchup.opponent.seed}-seed{" "}
-                      {likelyRound2Matchup.opponent.name}
-                    </span>
-                  </span>
-                  <span>({formatPercent(likelyRound2Matchup.probability ?? 0)})</span>
-                  {hasOwnedLikelyRoundTwoOpponent ? (
-                    <span className="decision-panel__matchup-owned">you own</span>
-                  ) : null}
-                </p>
-              ) : null}
-              {!auctionProgress.isAuctionComplete && nominatedTeamNote ? (
-                <div className="decision-panel__annotation">
-                  <span className="decision-panel__note">{nominatedTeamNote}</span>
+              ) : nominatedAsset ? (
+                <div className="decision-panel__hero-meta">
+                  <div className="decision-panel__hero-meta-copy">
+                    {nominatedMatchup ? (
+                      <p className="decision-panel__matchup">
+                        <span>Round 1 Matchup:</span>
+                        <span className="decision-panel__matchup-team">
+                          <TeamLogo
+                            teamId={nominatedMatchup.opponent.teamId}
+                            teamName={nominatedMatchup.opponent.name}
+                            size="xs"
+                            decorative
+                          />
+                          <span>
+                            {nominatedMatchup.opponent.seed}-seed {nominatedMatchup.opponent.name}
+                          </span>
+                        </span>
+                        {hasOwnedRoundOneOpponent ? (
+                          <span className="decision-panel__matchup-owned">you own</span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    {likelyRound2Matchup ? (
+                      <p className="decision-panel__path">
+                        <span>Most likely Round 2:</span>
+                        <span className="decision-panel__matchup-team">
+                          <TeamLogo
+                            teamId={likelyRound2Matchup.opponent.teamId}
+                            teamName={likelyRound2Matchup.opponent.name}
+                            size="xs"
+                            decorative
+                          />
+                          <span>
+                            {likelyRound2Matchup.opponent.seed}-seed{" "}
+                            {likelyRound2Matchup.opponent.name}
+                          </span>
+                        </span>
+                        <span>({formatPercent(likelyRound2Matchup.probability ?? 0)})</span>
+                        {hasOwnedLikelyRoundTwoOpponent ? (
+                          <span className="decision-panel__matchup-owned">you own</span>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    {nominatedTeamNote ? (
+                      <div className="decision-panel__annotation">
+                        <span className="decision-panel__note">{nominatedTeamNote}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="decision-panel__hero-bid-guide" aria-label="Bid guide">
+                    <div className="decision-panel__hero-bid-line">
+                      <span>Target bid</span>
+                      <strong>{targetBidDisplay}</strong>
+                    </div>
+                    <div className="decision-panel__hero-bid-line">
+                      <span>Max bid</span>
+                      <strong>{maxBidDisplay}</strong>
+                    </div>
+                  </div>
                 </div>
               ) : null}
             </div>

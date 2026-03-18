@@ -339,8 +339,8 @@ describe("OperatorAuctionWorkspace", () => {
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
         breakEvenStage: "sweet16",
-        targetBidDisplay: "--",
-        maxBidDisplay: "--",
+        targetBidDisplay: "$2,783",
+        maxBidDisplay: "$3,647",
         filteredRationale: [],
         ownershipConflicts: [],
         teamLookup: new Map([["purdue", nominatedTeam]]),
@@ -370,6 +370,10 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("74.9%");
     expect(markup).toContain("18.0%");
     expect(markup).toContain("4.1%");
+    expect(markup).toContain("Target bid");
+    expect(markup).toContain("$2,783");
+    expect(markup).toContain("Max bid");
+    expect(markup).toContain("$3,647");
     expect(markup).toContain("$2,200");
     expect(markup).toContain("$5,500");
     expect(markup).toContain("$11,000");

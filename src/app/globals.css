@@ -1147,6 +1147,50 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.decision-panel__hero-bid-guide {
+  display: grid;
+  gap: 0.35rem;
+  justify-self: end;
+  align-self: end;
+  min-width: min(100%, 13rem);
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--panel) 76%, transparent);
+  text-align: right;
+}
+
+.decision-panel__hero-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 13rem);
+  gap: 1rem 1.25rem;
+  align-items: end;
+}
+
+.decision-panel__hero-meta-copy {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.decision-panel__hero-bid-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.decision-panel__hero-bid-line strong {
+  color: var(--foreground);
+  font-size: 0.96rem;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
 .decision-panel__hero--waiting {
   border-color: color-mix(in srgb, var(--line) 84%, transparent);
   background:
@@ -3895,6 +3939,20 @@ kbd {
   .decision-panel__hero-stat {
     min-width: 0;
     text-align: left;
+  }
+
+  .decision-panel__hero-bid-guide {
+    justify-self: stretch;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .decision-panel__hero-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-panel__hero-bid-line {
+    letter-spacing: 0.1em;
   }
 
   .decision-panel .decision-panel__hero-title {
