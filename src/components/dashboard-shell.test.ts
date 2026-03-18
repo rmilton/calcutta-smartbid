@@ -672,4 +672,211 @@ describe("DashboardShell analysis hero", () => {
 
     expect(markup).not.toContain("Nate Silver projection");
   });
+
+  it("hides the owned teams and spend pills for viewers", async () => {
+    const { DashboardShell } = await import("@/components/dashboard-shell");
+    const team = buildTeam("gonzaga", "Gonzaga", 4);
+    const asset = buildAsset(team);
+    const syndicate = {
+      ...buildSyndicate(),
+      spend: 31878
+    };
+    const analysis = {
+      ranking: [],
+      fieldAverages: {
+        q1Wins: null,
+        q2Wins: null,
+        q3Wins: null,
+        q4Wins: null,
+        rankedWins: null,
+        threePointPct: null,
+        kenpomRank: null,
+        atsWinPct: null
+      },
+      budgetRows: [],
+      ownedTeams: [],
+      funding: {
+        targetSharePrice: 0,
+        allowHalfShares: false,
+        fullSharesSold: 0,
+        halfSharesSold: 0,
+        budgetLow: 0,
+        budgetBase: 0,
+        budgetStretch: 0,
+        equivalentShares: 0,
+        committedCash: 0,
+        impliedSharePrice: null,
+        lowBidRoom: 0,
+        baseBidRoom: 0,
+        stretchBidRoom: 0
+      },
+      investableCash: 0,
+      actualPaidSpend: 0,
+      remainingBankroll: 0
+    } satisfies SessionAnalysisSnapshot;
+
+    const dashboard = {
+      session: {
+        id: "session-3",
+        name: "March 18 Test",
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-15T00:00:00.000Z",
+        archivedAt: null,
+        archivedByName: null,
+        archivedByEmail: null,
+        projections: [team],
+        projectionProvider: "test",
+        projectionImportedAt: null,
+        projectionOverrides: {},
+        teamClassifications: {},
+        teamNotes: {},
+        auctionAssets: [asset],
+        liveState: {
+          nominatedTeamId: team.id,
+          nominatedAssetId: asset.id,
+          currentBid: 0,
+          soldTeamIds: [],
+          soldAssetIds: [],
+          lastUpdatedAt: "2026-03-15T00:00:00.000Z"
+        },
+        payoutRules: {
+          roundOf64: 1,
+          roundOf32: 1,
+          sweet16: 1,
+          elite8: 1,
+          finalFour: 1,
+          champion: 1,
+          projectedPot: 100000
+        },
+        mothershipFunding: {
+          targetSharePrice: 0,
+          allowHalfShares: false,
+          fullSharesSold: 0,
+          halfSharesSold: 0,
+          budgetLow: 0,
+          budgetBase: 0,
+          budgetStretch: 0
+        },
+        simulationSnapshot: {
+          id: "sim-3",
+          sessionId: "session-3",
+          provider: "test",
+          iterations: 1000,
+          generatedAt: "2026-03-15T00:00:00.000Z",
+          teamResults: {
+            [team.id]: {
+              teamId: team.id,
+              roundProbabilities: {
+                roundOf64: 1,
+                roundOf32: 0.5,
+                sweet16: 0.25,
+                elite8: 0.12,
+                finalFour: 0.05,
+                champion: 0.02
+              },
+              expectedGrossPayout: 3000,
+              confidenceBand: [0, 7000],
+              likelyConflicts: []
+            }
+          },
+          matchupMatrix: {}
+        }
+      },
+      focusSyndicate: syndicate,
+      nominatedAsset: asset,
+      nominatedTeam: team,
+      availableAssets: [asset],
+      soldAssets: [],
+      availableTeams: [team],
+      soldTeams: [],
+      ledger: [syndicate],
+      analysis,
+      bracket: {
+        isSupported: false,
+        unsupportedReason: null,
+        regions: [],
+        finals: []
+      },
+      recommendation: null,
+      lastPurchase: null,
+      projectionOverrideCount: 0,
+      storageBackend: "local"
+    } as unknown as AuctionDashboard;
+
+    mockUseLiveRoomController.mockReturnValue({
+      dashboard,
+      activeView: "auction",
+      setActiveView: vi.fn(),
+      selectedAssetId: asset.id,
+      selectedTeamId: team.id,
+      currentBid: 0,
+      bidInputValue: "",
+      parsedBidInputValue: null,
+      buyerId: "",
+      isUndoingPurchase: false,
+      isSavingClassification: false,
+      isSavingTeamNote: false,
+      isSavingBracket: false,
+      overrideForm: {},
+      teamNoteInput: "",
+      analysisSearch: "",
+      analysisTeamId: team.id,
+      overrideTeamId: "",
+      expandedSyndicateIds: [],
+      ownershipSearch: "",
+      teamSelectRef: { current: null },
+      bidInputRef: { current: null },
+      selectedAsset: asset,
+      selectedTeam: team,
+      overrideSelectedTeam: null,
+      selectedOverride: null,
+      analysisDetailTeam: team,
+      setBuyerId: vi.fn(),
+      setOverrideForm: vi.fn(),
+      setTeamNoteInput: vi.fn(),
+      setAnalysisSearch: vi.fn(),
+      setAnalysisTeamId: vi.fn(),
+      setOverrideTeamId: vi.fn(),
+      setExpandedSyndicateIds: vi.fn(),
+      setOwnershipSearch: vi.fn(),
+      handleAssetChange: vi.fn(),
+      setBidInputValue: vi.fn(),
+      handleBidBlur: vi.fn(),
+      handleBidKeyDown: vi.fn(),
+      recordPurchase: vi.fn(),
+      undoPurchase: vi.fn(),
+      saveProjectionOverride: vi.fn(),
+      clearProjectionOverride: vi.fn(),
+      saveTeamClassification: vi.fn(),
+      clearTeamClassification: vi.fn(),
+      saveTeamNote: vi.fn(),
+      clearTeamNote: vi.fn(),
+      saveBracketWinner: vi.fn()
+    });
+
+    const currentMember = {
+      scope: "session",
+      sessionId: "session-3",
+      memberId: "member-3",
+      name: "Han",
+      email: "viewer@example.com",
+      role: "viewer"
+    } satisfies AuthenticatedMember;
+
+    const markup = renderToStaticMarkup(
+      createElement(DashboardShell, {
+        sessionId: "session-3",
+        initialDashboard: dashboard,
+        initialView: "auction",
+        viewerMode: true,
+        currentMember
+      })
+    );
+
+    expect(markup).toContain("Han");
+    expect(markup).toContain("viewer");
+    expect(markup).not.toContain("owned team");
+    expect(markup).not.toContain("Spend");
+    expect(markup).not.toContain("$31,878");
+  });
 });

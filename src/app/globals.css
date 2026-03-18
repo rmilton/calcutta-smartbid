@@ -1099,6 +1099,11 @@ kbd {
   align-items: start;
 }
 
+.decision-panel__hero-topline--stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.15rem;
+}
+
 .decision-panel__hero-content {
   display: grid;
   gap: 0.35rem;
@@ -1114,6 +1119,13 @@ kbd {
   border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent);
   background: color-mix(in srgb, var(--panel) 84%, white);
   text-align: center;
+}
+
+.decision-panel__hero-topline--stacked .decision-panel__hero-stat {
+  min-width: 0;
+  width: min(100%, 15rem);
+  justify-self: start;
+  text-align: left;
 }
 
 .decision-panel__hero-stat strong {
@@ -1265,6 +1277,10 @@ kbd {
 
 .decision-panel__matchup,
 .decision-panel__path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
   margin-top: 0.65rem;
   color: var(--muted-strong);
   font: 600 0.82rem/1.4 var(--font-mono);
@@ -1276,8 +1292,13 @@ kbd {
   color: var(--muted);
 }
 
+.decision-panel__matchup-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
 .decision-panel__matchup-owned {
-  margin-left: 0.45rem;
   color: var(--danger);
 }
 

@@ -101,4 +101,40 @@ describe("team logos", () => {
       getTeamLogoPath({ teamName: "Saint Mary's" })
     ]);
   });
+
+  it("keeps grouped asset members without local logos so the UI can show fallback initials", () => {
+    const teamLookup = new Map<string, TeamProjection>([
+      ["tm_003", buildProjection("tm_003", "Long Island")]
+    ]);
+
+    const asset: AuctionAsset = {
+      id: "bundle:east-13-16",
+      label: "East 13-16 Seeds",
+      type: "seed_bundle",
+      region: "East",
+      seed: 13,
+      seedRange: [13, 16],
+      memberTeamIds: ["tm_003"],
+      projectionIds: ["tm_003"],
+      members: [
+        {
+          id: "member-3",
+          type: "team",
+          label: "Long Island",
+          region: "East",
+          seed: 16,
+          regionSlot: "East-16",
+          teamIds: ["tm_003"],
+          projectionIds: ["tm_003"],
+          unresolved: false
+        }
+      ],
+      unresolved: false
+    };
+
+    expect(getTeamLogoPath({ teamId: "tm_003", teamName: "Long Island" })).toBeNull();
+    expect(getAssetLogoRefs(asset, teamLookup)).toEqual([
+      { teamId: "tm_003", teamName: "Long Island" }
+    ]);
+  });
 });

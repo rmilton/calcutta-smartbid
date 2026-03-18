@@ -622,10 +622,14 @@ export function DashboardShell({
         </div>
         <div className="session-hero__meta">
           <ThemeToggle />
-          <div className="status-pill">
-            {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
-          </div>
-          <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+          {!viewerMode ? (
+            <>
+              <div className="status-pill">
+                {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
+              </div>
+              <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+            </>
+          ) : null}
           <div className="status-pill">
             {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
           </div>

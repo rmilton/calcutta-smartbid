@@ -69,14 +69,22 @@ export function getAssetLogoRefs(
   teamLookup?: Map<string, TeamProjection>
 ): TeamLogoRef[] {
   const refs: TeamLogoRef[] = [];
-  const seenPaths = new Set<string>();
+  const seenRefs = new Set<string>();
 
   const pushRef = (ref: TeamLogoRef) => {
     const record = resolveTeamLogoRecord(ref);
-    if (!record || seenPaths.has(record.path)) {
+    const dedupeKey =
+      record?.path ??
+      [ref.teamId, ref.teamName]
+        .filter((value): value is string => Boolean(value))
+        .map(normalizeTeamLogoKey)
+        .join("|");
+
+    if (!dedupeKey || seenRefs.has(dedupeKey)) {
       return;
     }
-    seenPaths.add(record.path);
+
+    seenRefs.add(dedupeKey);
     refs.push(ref);
   };
 
