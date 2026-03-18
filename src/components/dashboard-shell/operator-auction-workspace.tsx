@@ -595,6 +595,12 @@ function OperatorSyndicateBoardCard({
   onExpandAll: () => void;
   onCollapseAll: () => void;
 }) {
+  const currentSpend = holdings.reduce((total, { syndicate }) => total + syndicate.spend, 0);
+  const projectedFinalPot = holdings.reduce(
+    (total, { syndicate }) => total + Math.max(syndicate.spend, syndicate.estimatedBudget),
+    0
+  );
+
   return (
     <article className="surface-card syndicate-board-card syndicate-board-card--operator">
       <div className="section-headline">
@@ -614,6 +620,16 @@ function OperatorSyndicateBoardCard({
           >
             Collapse all
           </button>
+        </div>
+      </div>
+      <div className="syndicate-board-summary" aria-label="Room totals">
+        <div className="syndicate-board-summary__item">
+          <span>Current spend</span>
+          <strong>{formatCurrency(currentSpend)}</strong>
+        </div>
+        <div className="syndicate-board-summary__item">
+          <span>Projected final pot</span>
+          <strong>{formatCurrency(projectedFinalPot)}</strong>
         </div>
       </div>
       <div className="syndicate-board-frame syndicate-board-frame--operator">
