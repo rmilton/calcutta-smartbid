@@ -135,6 +135,11 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   }, [buyerId, dashboard.focusSyndicate.id, dashboard.ledger]);
 
   useEffect(() => {
+    setAnalysisTeamId(liveNominatedTeamId);
+    setAnalysisSearch("");
+  }, [liveNominatedTeamId]);
+
+  useEffect(() => {
     setOverrideTeamId(dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? "");
   }, [dashboard.nominatedTeam?.id, dashboard.session.liveState.nominatedTeamId]);
 

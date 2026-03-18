@@ -257,6 +257,73 @@ export function formatAssetMembersCompact(
   return includeParens ? `(${value})` : value;
 }
 
+export function getRepresentativeTeamForAsset(
+  asset: AuctionAsset,
+  teamLookup: Map<string, TeamProjection>
+) {
+  return teamLookup.get(asset.projectionIds[0] ?? "") ?? null;
+}
+
+export function getAssetSummaryText(
+  asset: AuctionAsset,
+  teamLookup: Map<string, TeamProjection>
+) {
+  const representativeTeam = getRepresentativeTeamForAsset(asset, teamLookup);
+  return (
+    formatAssetSubtitle(asset, representativeTeam) ||
+    (asset.type === "single_team"
+      ? formatAssetMembers(asset)
+      : formatAssetMembersCompact(asset, { includeParens: false }))
+  );
+}
+
+export function getAssetBestSeed(asset: AuctionAsset) {
+  const bestSeed = asset.members.reduce(
+    (best, member) => Math.min(best, member.seed),
+    Number.MAX_SAFE_INTEGER
+  );
+
+  return bestSeed === Number.MAX_SAFE_INTEGER ? null : bestSeed;
+}
+
+export function AuctionCompleteAssetRow({
+  label,
+  asset,
+  teamLookup,
+  detail,
+  value,
+  valueLabel
+}: {
+  label: string;
+  asset: AuctionAsset;
+  teamLookup: Map<string, TeamProjection>;
+  detail: string;
+  value?: string;
+  valueLabel?: string;
+}) {
+  const subtitle = getAssetSummaryText(asset, teamLookup);
+
+  return (
+    <div className="list-row list-row--top-aligned">
+      <div className="team-label">
+        <AssetLogo asset={asset} teamLookup={teamLookup} size="sm" decorative />
+        <div className="team-label__copy">
+          <strong>{asset.label}</strong>
+          <span>{label}</span>
+          <span>{subtitle}</span>
+          <span>{detail}</span>
+        </div>
+      </div>
+      {value ? (
+        <div className="auction-complete-value">
+          {valueLabel ? <span>{valueLabel}</span> : null}
+          <strong>{value}</strong>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function displayNullableNumber(value: number | null) {
   if (value === null || value === undefined) {
     return "--";

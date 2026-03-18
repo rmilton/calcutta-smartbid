@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { RoundMatchup, ViewerOwnershipGroup } from "@/lib/live-room";
 import {
   AuctionDashboard,
@@ -10,12 +10,14 @@ import {
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
+  AuctionCompleteAssetRow,
   AssetSaleRow,
   ConflictRow,
   NateSilverDecisionBoard,
-  formatAssetMembers,
   formatAssetMembersCompact,
-  formatAssetSubtitle
+  formatAssetMembers,
+  formatAssetSubtitle,
+  getAssetBestSeed
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
@@ -59,7 +61,6 @@ export function ViewerAuctionWorkspace({
 }: ViewerAuctionWorkspaceProps) {
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
-  const availableAssets = dashboard.availableAssets ?? [];
   const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
   const nominatedTeamClassification =
@@ -67,6 +68,15 @@ export function ViewerAuctionWorkspace({
     null;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
+  const allSoldAssets = useMemo(() => dashboard.soldAssets ?? [], [dashboard.soldAssets]);
+  const availableAssets = useMemo(() => {
+    if (dashboard.availableAssets) {
+      return dashboard.availableAssets;
+    }
+
+    const soldAssetIds = new Set(allSoldAssets.map((sale) => sale.asset.id));
+    return (dashboard.session.auctionAssets ?? []).filter((asset) => !soldAssetIds.has(asset.id));
+  }, [allSoldAssets, dashboard.availableAssets, dashboard.session.auctionAssets]);
   const remainingTeamsLabel = `${availableAssets.length} ${
     availableAssets.length === 1 ? "Team" : "Teams"
   } Remaining`;
@@ -75,6 +85,19 @@ export function ViewerAuctionWorkspace({
       (nominatedAsset.type === "seed_bundle" ||
         nominatedAsset.type === "play_in_slot" ||
         nominatedAsset.label.length > 24)
+  );
+  const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
+  const isAuctionComplete = totalAuctionAssets > 0 && allSoldAssets.length >= totalAuctionAssets;
+  const auctionCompleteSummary = useMemo(
+    () =>
+      isAuctionComplete
+        ? buildViewerAuctionCompleteSummary({
+            soldAssets: allSoldAssets,
+            focusSyndicateId: dashboard.focusSyndicate.id,
+            totalAuctionAssets
+          })
+        : null,
+    [allSoldAssets, dashboard.focusSyndicate.id, isAuctionComplete, totalAuctionAssets]
   );
 
   useEffect(() => {
@@ -121,34 +144,54 @@ export function ViewerAuctionWorkspace({
             <div className="decision-panel__header">
               <div className="decision-panel__header-copy">
                 <p className="eyebrow">Live Decision Board</p>
-                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+                <span className={cn("status-pill", !isAuctionComplete && "status-pill--muted")}>
+                  {isAuctionComplete ? "Auction complete" : remainingTeamsLabel}
+                </span>
               </div>
             </div>
 
             <div
               className={cn(
                 "decision-panel__hero",
-                nominatedAsset ? "decision-panel__hero--active" : "decision-panel__hero--waiting"
+                isAuctionComplete
+                  ? "decision-panel__hero--complete"
+                  : nominatedAsset
+                    ? "decision-panel__hero--active"
+                    : "decision-panel__hero--waiting"
               )}
             >
               <div
                 className={cn(
                   "decision-panel__hero-topline",
-                  shouldStackHeroStat && "decision-panel__hero-topline--stacked"
+                  (shouldStackHeroStat || isAuctionComplete) &&
+                    "decision-panel__hero-topline--stacked"
                 )}
               >
                 <div className="decision-panel__hero-content">
                   <div className="decision-panel__hero-pulse">
-                    <span className={cn("pulse-dot", !nominatedAsset && "pulse-dot--muted")} />
-                    <span>{nominatedAsset ? "Active team" : "Awaiting selection"}</span>
-                    {nominatedTeamClassification ? (
+                    <span
+                      className={cn(
+                        "pulse-dot",
+                        isAuctionComplete
+                          ? "pulse-dot--complete"
+                          : !nominatedAsset && "pulse-dot--muted"
+                      )}
+                    />
+                    <span>
+                      {isAuctionComplete
+                        ? "Books closed"
+                        : nominatedAsset
+                          ? "Active team"
+                          : "Awaiting selection"}
+                    </span>
+                    {!isAuctionComplete && nominatedTeamClassification ? (
                       <div className="decision-panel__classification">
                         <TeamClassificationBadge classification={nominatedTeamClassification} />
                       </div>
                     ) : null}
                   </div>
                   <div className="team-title-lockup">
-                    {nominatedAsset ? (
+                    {nominatedAsset && !isAuctionComplete ? (
                       <AssetLogo
                         asset={nominatedAsset}
                         teamLookup={teamLookup}
@@ -167,13 +210,31 @@ export function ViewerAuctionWorkspace({
                           (nominatedAsset.type === "play_in_slot" ||
                             nominatedAsset.label.length > 24) &&
                           "decision-panel__hero-title--long",
-                        !nominatedAsset && "decision-panel__hero-title--waiting"
+                        !nominatedAsset &&
+                          !isAuctionComplete &&
+                          "decision-panel__hero-title--waiting"
                       )}
                     >
-                      {nominatedAsset ? nominatedAsset.label : "Waiting for selection"}
+                      {isAuctionComplete
+                        ? "Auction Complete"
+                        : nominatedAsset
+                          ? nominatedAsset.label
+                          : "Waiting for selection"}
                     </h2>
                   </div>
-                  {nominatedAsset && nominatedAsset.type !== "single_team" ? (
+                  {isAuctionComplete ? (
+                    <p className="decision-panel__subcopy">
+                      {auctionCompleteSummary?.ownedAssets.length
+                        ? `${dashboard.focusSyndicate.name} finished with ${
+                            auctionCompleteSummary.ownedAssets.length
+                          } ${
+                            auctionCompleteSummary.ownedAssets.length === 1
+                              ? "auction team"
+                              : "auction teams"
+                          }. The auction is over and the board has shifted from bidding to bracket sweat.`
+                        : "The auction is over. The room has moved from bidding to bracket sweat."}
+                    </p>
+                  ) : nominatedAsset && nominatedAsset.type !== "single_team" ? (
                     <p className="decision-panel__note">
                       {formatAssetMembersCompact(nominatedAsset, { includeParens: false })}
                     </p>
@@ -186,24 +247,65 @@ export function ViewerAuctionWorkspace({
                   )}
                 </div>
                 <div className="decision-panel__hero-stat">
-                  <span className="insight-label">
-                    Current bid
-                    <button
-                      type="button"
-                      className="tooltip-hint"
-                      aria-label="Current bid explanation"
-                    >
-                      ?
-                      <span className="tooltip-content">
-                        The live price currently on the board for this team. Break-even, bid range,
-                        and recommendation context all update against this number.
+                  {isAuctionComplete ? (
+                    <>
+                      <span className="insight-label">Assets sold</span>
+                      <strong>
+                        {auctionCompleteSummary
+                          ? `${auctionCompleteSummary.soldCount}/${auctionCompleteSummary.totalAuctionAssets}`
+                          : "--"}
+                      </strong>
+                    </>
+                  ) : (
+                    <>
+                      <span className="insight-label">
+                        Current bid
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Current bid explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The live price currently on the board for this team. Break-even, bid range,
+                            and recommendation context all update against this number.
+                          </span>
+                        </button>
                       </span>
-                    </button>
-                  </span>
-                  <strong>{formatCurrency(currentBid)}</strong>
+                      <strong>{formatCurrency(currentBid)}</strong>
+                    </>
+                  )}
                 </div>
               </div>
-              {nominatedMatchup ? (
+              {isAuctionComplete ? (
+                <div className="decision-panel__complete-grid">
+                  <div className="decision-panel__complete-stat">
+                    <span>Mothership teams</span>
+                    <strong>{auctionCompleteSummary?.ownedAssets.length ?? 0}</strong>
+                  </div>
+                  <div className="decision-panel__complete-stat">
+                    <span>Best seed held</span>
+                    <strong>
+                      {auctionCompleteSummary?.bestSeed === null ||
+                      auctionCompleteSummary?.bestSeed === undefined
+                        ? "--"
+                        : `#${auctionCompleteSummary.bestSeed}`}
+                    </strong>
+                  </div>
+                  <div className="decision-panel__complete-stat">
+                    <span>Region stack</span>
+                    <strong>
+                      {auctionCompleteSummary?.topRegion
+                        ? `${auctionCompleteSummary.topRegion.region} x${auctionCompleteSummary.topRegion.count}`
+                        : "--"}
+                    </strong>
+                  </div>
+                  <div className="decision-panel__complete-stat">
+                    <span>Sleeper card</span>
+                    <strong>{auctionCompleteSummary?.sleeperAsset?.sale.asset.label ?? "--"}</strong>
+                  </div>
+                </div>
+              ) : nominatedMatchup ? (
                 <p className="decision-panel__matchup">
                   <span>Round 1 Matchup:</span>
                   <span className="decision-panel__matchup-team">
@@ -222,7 +324,7 @@ export function ViewerAuctionWorkspace({
                   ) : null}
                 </p>
               ) : null}
-              {likelyRound2Matchup ? (
+              {!isAuctionComplete && likelyRound2Matchup ? (
                 <p className="decision-panel__path">
                   <span>Most likely Round 2:</span>
                   <span className="decision-panel__matchup-team">
@@ -243,20 +345,27 @@ export function ViewerAuctionWorkspace({
                   ) : null}
                 </p>
               ) : null}
-              {nominatedTeamNote ? (
+              {!isAuctionComplete && nominatedTeamNote ? (
                 <div className="decision-panel__annotation">
                   <span className="decision-panel__note">{nominatedTeamNote}</span>
                 </div>
               ) : null}
             </div>
 
-            <NateSilverDecisionBoard
-              nominatedAsset={nominatedAsset}
-              nominatedTeam={nominatedTeam}
-              currentBid={currentBid}
-              breakEvenStage={breakEvenStage}
-              payoutRules={dashboard.session.payoutRules}
-            />
+            {isAuctionComplete ? (
+              <ViewerAuctionCompleteBoard
+                summary={auctionCompleteSummary}
+                teamLookup={teamLookup}
+              />
+            ) : (
+              <NateSilverDecisionBoard
+                nominatedAsset={nominatedAsset}
+                nominatedTeam={nominatedTeam}
+                currentBid={currentBid}
+                breakEvenStage={breakEvenStage}
+                payoutRules={dashboard.session.payoutRules}
+              />
+            )}
           </article>
 
           <article className="surface-card decision-context viewer-auction-grid__context">
@@ -264,10 +373,61 @@ export function ViewerAuctionWorkspace({
               <section className="decision-context__section">
                 <div className="section-headline section-headline--compact">
                   <div>
-                    <p className="eyebrow">Rationale</p>
+                    <p className="eyebrow">
+                      {isAuctionComplete ? "Team Highlights" : "Rationale"}
+                    </p>
                   </div>
                 </div>
-                {filteredRationale.length ? (
+                {isAuctionComplete ? (
+                  auctionCompleteSummary?.ownedAssets.length ? (
+                    <div className="list-stack">
+                      {auctionCompleteSummary.favoriteAsset ? (
+                        <AuctionCompleteAssetRow
+                          label="Lead sweat"
+                          asset={auctionCompleteSummary.favoriteAsset.sale.asset}
+                          teamLookup={teamLookup}
+                          detail={`Best seed on the viewer board`}
+                          value={
+                            auctionCompleteSummary.favoriteAsset.bestSeed === null
+                              ? "--"
+                              : `#${auctionCompleteSummary.favoriteAsset.bestSeed}`
+                          }
+                        />
+                      ) : null}
+                      {auctionCompleteSummary.sleeperAsset ? (
+                        <AuctionCompleteAssetRow
+                          label="Sleeper watch"
+                          asset={auctionCompleteSummary.sleeperAsset.sale.asset}
+                          teamLookup={teamLookup}
+                          detail="Highest-seed flyer still worth tracking"
+                          value={
+                            auctionCompleteSummary.sleeperAsset.bestSeed === null
+                              ? "--"
+                              : `#${auctionCompleteSummary.sleeperAsset.bestSeed}`
+                          }
+                        />
+                      ) : null}
+                      {auctionCompleteSummary.topRegion ? (
+                        <div className="list-row">
+                          <div className="team-label">
+                            <div className="team-label__copy">
+                              <strong>Region stack</strong>
+                              <span>{auctionCompleteSummary.topRegion.region} region leads the board</span>
+                            </div>
+                          </div>
+                          <strong>
+                            {auctionCompleteSummary.topRegion.count}{" "}
+                            {auctionCompleteSummary.topRegion.count === 1 ? "team" : "teams"}
+                          </strong>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="empty-copy">
+                      Mothership closed the auction without a team to track.
+                    </p>
+                  )
+                ) : filteredRationale.length ? (
                   <div className="list-stack">
                     {filteredRationale.map((line) => (
                       <div key={line} className="list-line">
@@ -283,10 +443,36 @@ export function ViewerAuctionWorkspace({
               <section className="decision-context__section">
                 <div className="section-headline section-headline--compact">
                   <div>
-                    <p className="eyebrow">Ownership Conflicts</p>
+                    <p className="eyebrow">
+                      {isAuctionComplete ? "Rooting Guide" : "Ownership Conflicts"}
+                    </p>
                   </div>
                 </div>
-                {ownershipConflicts.length ? (
+                {isAuctionComplete ? (
+                  auctionCompleteSummary?.ownedAssets.length ? (
+                    <div className="list-stack">
+                      {auctionCompleteSummary.ownedAssets.slice(0, 3).map((ownedAsset) => (
+                        <AuctionCompleteAssetRow
+                          key={ownedAsset.sale.asset.id}
+                          label="Watch list"
+                          asset={ownedAsset.sale.asset}
+                          teamLookup={teamLookup}
+                          detail={
+                            ownedAsset.sale.asset.type === "single_team"
+                              ? `${ownedAsset.sale.asset.region} region · ${ownedAsset.sale.asset.seed}-seed`
+                              : formatAssetMembersCompact(ownedAsset.sale.asset, {
+                                  includeParens: false
+                                })
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-copy">
+                      The board is closed, but there is no Mothership rooting guide to surface.
+                    </p>
+                  )
+                ) : ownershipConflicts.length ? (
                   <div className="list-stack">
                     {ownershipConflicts.slice(0, 4).map((conflict) => (
                       <ConflictRow
@@ -368,6 +554,131 @@ export function ViewerAuctionWorkspace({
       </article>
     </section>
   );
+}
+
+interface ViewerAuctionCompleteAssetSummary {
+  sale: SoldAssetSummary;
+  bestSeed: number | null;
+}
+
+interface ViewerAuctionCompleteSummary {
+  totalAuctionAssets: number;
+  soldCount: number;
+  ownedAssets: ViewerAuctionCompleteAssetSummary[];
+  bestSeed: number | null;
+  topRegion: { region: string; count: number } | null;
+  favoriteAsset: ViewerAuctionCompleteAssetSummary | null;
+  sleeperAsset: ViewerAuctionCompleteAssetSummary | null;
+}
+
+function ViewerAuctionCompleteBoard({
+  summary,
+  teamLookup
+}: {
+  summary: ViewerAuctionCompleteSummary | null;
+  teamLookup: Map<string, TeamProjection>;
+}) {
+  return (
+    <section className="nate-silver-panel">
+      <div className="nate-silver-panel__header">
+        <div>
+          <p className="eyebrow">Rooting Guide</p>
+          <h3>Who to watch now that the auction board is final</h3>
+        </div>
+        <div className="nate-silver-panel__meta">
+          <span className="status-pill status-pill--muted">
+            {summary?.ownedAssets.length ?? 0}/{summary?.totalAuctionAssets ?? 0} teams held
+          </span>
+        </div>
+      </div>
+
+      {summary?.ownedAssets.length ? (
+        <div className="list-stack">
+          {summary.ownedAssets.slice(0, 3).map((ownedAsset) => (
+            <AuctionCompleteAssetRow
+              key={ownedAsset.sale.asset.id}
+              label="Priority sweat"
+              asset={ownedAsset.sale.asset}
+              teamLookup={teamLookup}
+              detail={
+                ownedAsset.sale.asset.type === "single_team"
+                  ? `${ownedAsset.sale.asset.region} region · ${ownedAsset.sale.asset.seed}-seed`
+                  : formatAssetMembersCompact(ownedAsset.sale.asset, { includeParens: false })
+              }
+              value={
+                ownedAsset.bestSeed === null || ownedAsset.bestSeed === undefined
+                  ? undefined
+                  : `#${ownedAsset.bestSeed}`
+              }
+              valueLabel="seed"
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">
+          The auction is complete, but Mothership did not finish with a team on the board.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function buildViewerAuctionCompleteSummary({
+  soldAssets,
+  focusSyndicateId,
+  totalAuctionAssets
+}: {
+  soldAssets: SoldAssetSummary[];
+  focusSyndicateId: string;
+  totalAuctionAssets: number;
+}): ViewerAuctionCompleteSummary {
+  const ownedAssets = soldAssets
+    .filter((sale) => sale.buyerSyndicateId === focusSyndicateId)
+    .map((sale) => summarizeViewerOwnedAsset(sale))
+    .sort(
+      (left, right) =>
+        (left.bestSeed ?? Number.MAX_SAFE_INTEGER) - (right.bestSeed ?? Number.MAX_SAFE_INTEGER) ||
+        left.sale.asset.label.localeCompare(right.sale.asset.label)
+    );
+  const bestOwnedSeed = ownedAssets.reduce(
+    (best, ownedAsset) => Math.min(best, ownedAsset.bestSeed ?? Number.MAX_SAFE_INTEGER),
+    Number.MAX_SAFE_INTEGER
+  );
+  const regionCounts = ownedAssets.reduce<Map<string, number>>((counts, ownedAsset) => {
+    counts.set(
+      ownedAsset.sale.asset.region,
+      (counts.get(ownedAsset.sale.asset.region) ?? 0) + 1
+    );
+    return counts;
+  }, new Map());
+  const topRegionEntry =
+    [...regionCounts.entries()].sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
+    )[0] ?? null;
+
+  return {
+    totalAuctionAssets,
+    soldCount: soldAssets.length,
+    ownedAssets,
+    bestSeed: bestOwnedSeed === Number.MAX_SAFE_INTEGER ? null : bestOwnedSeed,
+    topRegion: topRegionEntry
+      ? { region: topRegionEntry[0], count: topRegionEntry[1] }
+      : null,
+    favoriteAsset: ownedAssets[0] ?? null,
+    sleeperAsset:
+      [...ownedAssets].sort(
+        (left, right) =>
+          (right.bestSeed ?? Number.MIN_SAFE_INTEGER) - (left.bestSeed ?? Number.MIN_SAFE_INTEGER) ||
+          left.sale.asset.label.localeCompare(right.sale.asset.label)
+      )[0] ?? null
+  };
+}
+
+function summarizeViewerOwnedAsset(sale: SoldAssetSummary): ViewerAuctionCompleteAssetSummary {
+  return {
+    sale,
+    bestSeed: getAssetBestSeed(sale.asset)
+  };
 }
 
 function ViewerOwnershipLedgerGroup({

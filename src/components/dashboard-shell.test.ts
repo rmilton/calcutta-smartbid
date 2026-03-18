@@ -434,6 +434,7 @@ describe("DashboardShell analysis hero", () => {
     );
 
     expect(markup).toContain("Selected Team");
+    expect(markup).toContain("Search team");
     expect(markup).toContain("Kentucky");
     expect(markup).toContain("67.6%");
     expect(markup).toContain("Round of 32");
@@ -442,6 +443,7 @@ describe("DashboardShell analysis hero", () => {
     expect(markup).toContain("8.1%");
     expect(markup).toContain("Quick thought on this team");
     expect(markup).toContain("Limited scouting data increases uncertainty");
+    expect(markup).not.toContain("Type team, package, or abbreviation");
     expect(markup).not.toContain("Session ranking and bid guidance");
     expect(markup).not.toContain("Base room");
     expect(markup).not.toContain("0/80");
