@@ -322,6 +322,9 @@ describe("recommendations", () => {
 
     expect(recommendation?.fundingStatus).toBe("above-plan");
     expect(recommendation?.stretchBudgetHeadroom).toBeLessThan(0);
+    expect(recommendation?.targetBid).toBe(session.liveState.currentBid);
+    expect(recommendation?.maxBid).toBe(session.liveState.currentBid);
+    expect(recommendation?.valueGap).toBe(0);
     expect(recommendation?.stoplight).toBe("pass");
   });
 
