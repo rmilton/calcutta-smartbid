@@ -230,20 +230,30 @@ function BracketBoardRegion({
         <h3>{region.name}</h3>
       </header>
       <div className="bracket-board__rounds">
-        {displayRounds.map((round) => (
-          <section key={`${region.name}-${round.key}`} className="bracket-round-column">
+        {displayRounds.map((round, roundIndex) => (
+          <section
+            key={`${region.name}-${round.key}`}
+            className="bracket-round-column"
+            data-round-size={round.games.length}
+            data-connect-next={roundIndex < displayRounds.length - 1 ? "true" : "false"}
+          >
             <header className="bracket-round-column__header">
               <strong>{round.label}</strong>
             </header>
             <div className="bracket-round-column__games">
-              {round.games.map((game) => (
-                <BracketGameCard
+              {round.games.map((game, gameIndex) => (
+                <div
                   key={game.id}
-                  game={game}
-                  canEdit={canEdit}
-                  isSaving={isSaving}
-                  onSelectWinner={onSelectWinner}
-                />
+                  className="bracket-game-slot"
+                  data-slot-role={gameIndex % 2 === 0 ? "top" : "bottom"}
+                >
+                  <BracketGameCard
+                    game={game}
+                    canEdit={canEdit}
+                    isSaving={isSaving}
+                    onSelectWinner={onSelectWinner}
+                  />
+                </div>
               ))}
             </div>
           </section>
@@ -400,24 +410,28 @@ function BracketEntrantRow({
   const ownerStyle = {
     ["--bracket-owner-accent" as string]: team.buyerColor ?? "transparent"
   } as CSSProperties;
+  const broadcastLabel = buildBracketBroadcastLabel();
 
   const content = (
     <>
+      <div className="bracket-entrant__meta">
+        <span className="bracket-owner-pill" title={broadcastLabel}>
+          {broadcastLabel}
+        </span>
+      </div>
       <div className="bracket-entrant__identity">
         <TeamLogo teamId={team.teamId} teamName={team.name} size="sm" decorative />
-        <div className="team-label__copy">
-          <strong>
-            {team.seed}. {team.shortName}
+        <div className="team-label__copy bracket-entrant__copy">
+          <strong className="bracket-entrant__seed-name" title={`${team.seed}. ${team.name}`}>
+            {team.seed}. {team.name}
           </strong>
-          <span>{team.name}</span>
+          <span
+            className="bracket-entrant__detail"
+            title={team.buyerSyndicateName ?? "Unsold"}
+          >
+            {team.buyerSyndicateName ?? "Unsold"}
+          </span>
         </div>
-      </div>
-      <div className="bracket-entrant__meta">
-        {team.buyerSyndicateName ? (
-          <span className="bracket-owner-pill">{team.buyerSyndicateName}</span>
-        ) : (
-          <span className="bracket-owner-pill bracket-owner-pill--muted">Unsold</span>
-        )}
       </div>
     </>
   );
@@ -453,4 +467,8 @@ function BracketEntrantRow({
       {content}
     </button>
   );
+}
+
+function buildBracketBroadcastLabel() {
+  return "Date / Time / TV TBD";
 }
