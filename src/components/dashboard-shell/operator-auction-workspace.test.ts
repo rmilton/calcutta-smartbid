@@ -145,6 +145,7 @@ describe("OperatorAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Syndicate Board");
+    expect(markup).toContain("0 Teams Remaining");
     expect(markup).toContain("Current spend");
     expect(markup).toContain("Projected final pot");
     expect(markup).toContain("$7,000");

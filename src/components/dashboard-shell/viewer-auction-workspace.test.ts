@@ -125,6 +125,7 @@ describe("ViewerAuctionWorkspace", () => {
       ]
     } satisfies BidRecommendation;
     const dashboard = {
+      availableAssets: [asset],
       session: {
         teamClassifications: {
           [team.id]: {
@@ -203,6 +204,7 @@ describe("ViewerAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Live Decision Board");
+    expect(markup).toContain("1 Team Remaining");
     expect(markup).toContain("Current bid");
     expect(markup).toContain("Recent Sales");
     expect(markup).toContain("Ownership Ledger");
@@ -214,12 +216,12 @@ describe("ViewerAuctionWorkspace", () => {
     expect(markup).not.toContain("$1,200");
     expect(markup).not.toContain("Syndicate Board");
     expect(markup).not.toContain("Funding status");
-    expect(markup).not.toContain("Teams remaining to sell");
   });
 
   it("renders selection language in the empty decision-board state", () => {
     const mothership = buildSyndicate("focus", "Mothership", "#111111");
     const dashboard = {
+      availableAssets: [],
       session: {
         teamClassifications: {},
         teamNotes: {}

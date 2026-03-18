@@ -176,6 +176,9 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     syndicateLookup,
     focusFundingImpliedSharePrice
   } = props;
+  const remainingTeamsLabel = `${dashboard.availableAssets.length} ${
+    dashboard.availableAssets.length === 1 ? "Team" : "Teams"
+  } Remaining`;
 
   return (
     <section className="auction-layout">
@@ -298,7 +301,10 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         <div className="operator-board-layout__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
-              <p className="eyebrow">Live Decision Board</p>
+              <div className="decision-panel__header-copy">
+                <p className="eyebrow">Live Decision Board</p>
+                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+              </div>
               {signalLabel ? (
                 <div
                   className={cn(

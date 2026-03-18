@@ -1072,6 +1072,17 @@ kbd {
   align-items: flex-start;
 }
 
+.decision-panel__header-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.decision-panel__header-copy .eyebrow {
+  margin-bottom: 0;
+}
+
 .decision-panel__hero {
   position: relative;
   overflow: hidden;

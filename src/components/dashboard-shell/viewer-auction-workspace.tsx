@@ -62,6 +62,9 @@ export function ViewerAuctionWorkspace({
     null;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
+  const remainingTeamsLabel = `${dashboard.availableAssets.length} ${
+    dashboard.availableAssets.length === 1 ? "Team" : "Teams"
+  } Remaining`;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -105,7 +108,10 @@ export function ViewerAuctionWorkspace({
         <div ref={leftColumnRef} className="viewer-auction-grid__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
-              <p className="eyebrow">Live Decision Board</p>
+              <div className="decision-panel__header-copy">
+                <p className="eyebrow">Live Decision Board</p>
+                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+              </div>
             </div>
 
             <div
