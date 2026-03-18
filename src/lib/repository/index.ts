@@ -1257,6 +1257,7 @@ class SupabaseSessionRepository implements SessionRepository {
         (row) => {
           const storedId = String(row.team_id);
           const matchingAsset = findAuctionAssetForPurchase(rawAuctionAssets, {
+            assetId: storedId,
             teamId: storedId
           });
 
