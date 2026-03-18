@@ -170,9 +170,6 @@ describe("OperatorAuctionWorkspace", () => {
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
-        callHeadline: "Waiting on nomination",
-        callSupportText: "Set an active team to unlock guidance.",
-        callDetailText: null,
         breakEvenStage: null,
         targetBidDisplay: "--",
         maxBidDisplay: "--",
@@ -201,6 +198,7 @@ describe("OperatorAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Syndicate Board");
+    expect(markup).toContain("1 Team Remaining");
     expect(markup).toContain("Current spend");
     expect(markup).toContain("Projected final pot");
     expect(markup).toContain("$7,000");
@@ -294,9 +292,6 @@ describe("OperatorAuctionWorkspace", () => {
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
-        callHeadline: "Pass above $8,000",
-        callSupportText: "Model does not support chasing here.",
-        callDetailText: null,
         breakEvenStage: "sweet16",
         targetBidDisplay: "--",
         maxBidDisplay: "--",
@@ -320,6 +315,7 @@ describe("OperatorAuctionWorkspace", () => {
 
     expect(markup).toContain("Nate Silver Path");
     expect(markup).toContain("Round return odds against the projected pot");
+    expect(markup).toContain("Payout if reached");
     expect(markup).not.toContain("Round of 64");
     expect(markup).toContain("Round of 32");
     expect(markup).toContain("Championship");

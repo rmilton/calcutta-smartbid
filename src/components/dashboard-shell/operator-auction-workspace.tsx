@@ -1,13 +1,11 @@
 import type { FocusEvent, KeyboardEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RoundMatchup } from "@/lib/live-room";
-import { getCumulativeStagePayouts } from "@/lib/payouts";
 import {
   AuctionAsset,
   AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
-  NateSilverProjection,
   SoldAssetSummary,
   Stage,
   Syndicate,
@@ -19,13 +17,14 @@ import {
   AssetSaleRow,
   ConflictRow,
   MetricCard,
+  NateSilverDecisionBoard,
   formatAssetMembers,
   formatAssetMembersCompact,
   formatAssetSeed,
   formatAssetSubtitle,
   formatBreakEvenStage
 } from "@/components/dashboard-shell/shared";
-import { AssetLogo } from "@/components/team-logo";
+import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface OperatorAuctionWorkspaceProps {
@@ -59,9 +58,6 @@ interface OperatorAuctionWorkspaceProps {
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
   hasOwnedLikelyRoundTwoOpponent: boolean;
-  callHeadline: string;
-  callSupportText: string;
-  callDetailText: string | null;
   breakEvenStage: Stage | "negativeReturn" | null;
   targetBidDisplay: string;
   maxBidDisplay: string;
@@ -81,46 +77,6 @@ interface OperatorAuctionWorkspaceProps {
   syndicateLookup: Map<string, Syndicate>;
   focusFundingImpliedSharePrice: number | null;
 }
-
-type OperatorNateSilverColumn = {
-  key: "roundOf32" | "sweet16" | "elite8" | "finalFour" | "championshipGame" | "champion";
-  label: string;
-  payoutStage: Stage;
-  note?: string;
-};
-
-const operatorNateSilverColumns: readonly OperatorNateSilverColumn[] = [
-  {
-    key: "roundOf32",
-    label: "Round of 32",
-    payoutStage: "roundOf64"
-  },
-  {
-    key: "sweet16",
-    label: "Sweet 16",
-    payoutStage: "roundOf32"
-  },
-  {
-    key: "elite8",
-    label: "Elite 8",
-    payoutStage: "sweet16"
-  },
-  {
-    key: "finalFour",
-    label: "Final Four",
-    payoutStage: "elite8"
-  },
-  {
-    key: "championshipGame",
-    label: "Championship",
-    payoutStage: "finalFour"
-  },
-  {
-    key: "champion",
-    label: "Champion",
-    payoutStage: "champion"
-  }
-] as const;
 
 export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
   const {
@@ -154,9 +110,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     likelyRound2Matchup,
     hasOwnedRoundOneOpponent,
     hasOwnedLikelyRoundTwoOpponent,
-    callHeadline,
-    callSupportText,
-    callDetailText,
     breakEvenStage,
     targetBidDisplay,
     maxBidDisplay,
@@ -176,6 +129,15 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     syndicateLookup,
     focusFundingImpliedSharePrice
   } = props;
+  const remainingTeamsLabel = `${dashboard.availableAssets.length} ${
+    dashboard.availableAssets.length === 1 ? "Team" : "Teams"
+  } Remaining`;
+  const shouldStackHeroStat = Boolean(
+    nominatedAsset &&
+      (nominatedAsset.type === "seed_bundle" ||
+        nominatedAsset.type === "play_in_slot" ||
+        nominatedAsset.label.length > 24)
+  );
 
   return (
     <section className="auction-layout">
@@ -298,7 +260,10 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         <div className="operator-board-layout__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
-              <p className="eyebrow">Live Decision Board</p>
+              <div className="decision-panel__header-copy">
+                <p className="eyebrow">Live Decision Board</p>
+                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+              </div>
               {signalLabel ? (
                 <div
                   className={cn(
@@ -319,7 +284,12 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   : "decision-panel__hero--waiting"
               )}
             >
-              <div className="decision-panel__hero-topline">
+              <div
+                className={cn(
+                  "decision-panel__hero-topline",
+                  shouldStackHeroStat && "decision-panel__hero-topline--stacked"
+                )}
+              >
                 <div className="decision-panel__hero-content">
                   <div className="decision-panel__hero-pulse">
                     <span className={cn("pulse-dot", !nominatedAsset && "pulse-dot--muted")} />
@@ -388,8 +358,18 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
               </div>
               {nominatedMatchup ? (
                 <p className="decision-panel__matchup">
-                  Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                  {nominatedMatchup.opponent.name}
+                  <span>Round 1 Matchup:</span>
+                  <span className="decision-panel__matchup-team">
+                    <TeamLogo
+                      teamId={nominatedMatchup.opponent.teamId}
+                      teamName={nominatedMatchup.opponent.name}
+                      size="xs"
+                      decorative
+                    />
+                    <span>
+                      {nominatedMatchup.opponent.seed}-seed {nominatedMatchup.opponent.name}
+                    </span>
+                  </span>
                   {hasOwnedRoundOneOpponent ? (
                     <span className="decision-panel__matchup-owned">you own</span>
                   ) : null}
@@ -397,9 +377,20 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
               ) : null}
               {likelyRound2Matchup ? (
                 <p className="decision-panel__path">
-                  Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                  {likelyRound2Matchup.opponent.name} (
-                  {formatPercent(likelyRound2Matchup.probability ?? 0)})
+                  <span>Most likely Round 2:</span>
+                  <span className="decision-panel__matchup-team">
+                    <TeamLogo
+                      teamId={likelyRound2Matchup.opponent.teamId}
+                      teamName={likelyRound2Matchup.opponent.name}
+                      size="xs"
+                      decorative
+                    />
+                    <span>
+                      {likelyRound2Matchup.opponent.seed}-seed{" "}
+                      {likelyRound2Matchup.opponent.name}
+                    </span>
+                  </span>
+                  <span>({formatPercent(likelyRound2Matchup.probability ?? 0)})</span>
                   {hasOwnedLikelyRoundTwoOpponent ? (
                     <span className="decision-panel__matchup-owned">you own</span>
                   ) : null}
@@ -422,42 +413,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           </article>
 
           <article className="surface-card decision-context">
-            <div className="decision-context__overview">
-              <div className="decision-panel__callout decision-context__callout">
-                <p className="eyebrow">Call</p>
-                <h3>{callHeadline}</h3>
-                <p>{callSupportText}</p>
-                {callDetailText ? <p className="call-conflict">{callDetailText}</p> : null}
-              </div>
-
-              <div className="decision-context__summary-grid">
-                <MetricCard
-                  label="Break-even round"
-                  value={formatBreakEvenStage(breakEvenStage)}
-                  compact
-                  tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                />
-                <MetricCard
-                  label="Simulated net"
-                  value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
-                  compact
-                  tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                />
-                <MetricCard
-                  label="Target bid"
-                  value={targetBidDisplay}
-                  compact
-                  tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
-                />
-                <MetricCard
-                  label="Max bid"
-                  value={maxBidDisplay}
-                  compact
-                  tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
-                />
-              </div>
-            </div>
-
             <div className="decision-context__columns">
               <section className="decision-context__section">
                 <div className="section-headline section-headline--compact">
@@ -537,6 +492,16 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 label="Opening bid"
                 value={recommendation ? formatCurrency(recommendation.openingBid) : "--"}
                 tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
+              />
+              <MetricCard
+                label="Target bid"
+                value={targetBidDisplay}
+                tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
+              />
+              <MetricCard
+                label="Max bid"
+                value={maxBidDisplay}
+                tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
               />
               <MetricCard
                 label="Base budget room"
@@ -630,127 +595,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
       </section>
     </section>
   );
-}
-
-function NateSilverDecisionBoard({
-  nominatedAsset,
-  nominatedTeam,
-  currentBid,
-  breakEvenStage,
-  payoutRules
-}: {
-  nominatedAsset: AuctionAsset | null;
-  nominatedTeam: TeamProjection | null;
-  currentBid: number;
-  breakEvenStage: Stage | "negativeReturn" | null;
-  payoutRules: AuctionDashboard["session"]["payoutRules"];
-}) {
-  const nateSilver = nominatedTeam?.nateSilverProjection ?? null;
-  const hasNateSilverProjection = operatorNateSilverColumns.some(
-    ({ key }) => getNateSilverProbability(nateSilver, key) !== null
-  );
-  const payoutLookup = useMemo(
-    () =>
-      new Map(getCumulativeStagePayouts(payoutRules).map(({ stage, payout }) => [stage, payout])),
-    [payoutRules]
-  );
-  const breakEvenLabel =
-    breakEvenStage === null
-      ? "Awaiting bid"
-      : breakEvenStage === "negativeReturn"
-        ? "Above modeled return"
-        : `Clears by ${formatBreakEvenStage(breakEvenStage)}`;
-  const isSingleTeamAsset = nominatedAsset?.type === "single_team";
-
-  return (
-    <section className="operator-nate-silver-panel">
-      <div className="operator-nate-silver-panel__header">
-        <div>
-          <p className="eyebrow">Nate Silver Path</p>
-          <h3>Round return odds against the projected pot</h3>
-        </div>
-        <div className="operator-nate-silver-panel__meta">
-          <span className="status-pill status-pill--muted">{breakEvenLabel}</span>
-        </div>
-      </div>
-
-      {!nominatedTeam ? (
-        <p className="empty-copy">
-          Select an active team to unlock the Nate Silver round board.
-        </p>
-      ) : !isSingleTeamAsset ? (
-        <p className="empty-copy">
-          Nate Silver round odds are shown for single-team nominations. Bundle and play-in
-          packages still use the main recommendation model above.
-        </p>
-      ) : !hasNateSilverProjection ? (
-        <p className="empty-copy">
-          Nate Silver round data is not loaded for this team yet. Import analysis data with the
-          Nate Silver columns to populate this board.
-        </p>
-      ) : (
-        <>
-          <div className="operator-nate-silver-board" aria-label="Nate Silver round reach board">
-            {operatorNateSilverColumns.map(({ key, label, payoutStage, note }) => {
-              const probability = getNateSilverProbability(nateSilver, key);
-              const payoutValue = payoutLookup.get(payoutStage) ?? null;
-              const clearsBid = payoutValue !== null && payoutValue >= currentBid;
-
-              return (
-                <article
-                  key={key}
-                  className={cn(
-                    "operator-nate-silver-board__cell",
-                    clearsBid && "operator-nate-silver-board__cell--clears-bid"
-                  )}
-                >
-                  <div className="operator-nate-silver-board__topline">
-                    <span className="operator-nate-silver-board__label">{label}</span>
-                  </div>
-                  <strong className="operator-nate-silver-board__probability">
-                    {probability === null ? "--" : formatPercent(probability)}
-                  </strong>
-                  <div className="operator-nate-silver-board__metric">
-                    <span>Payout if reached</span>
-                    <strong>{payoutValue === null ? "--" : formatCurrency(payoutValue)}</strong>
-                  </div>
-                  {note ? <p className="operator-nate-silver-board__note">{note}</p> : null}
-                </article>
-              );
-            })}
-          </div>
-
-          <p className="operator-nate-silver-panel__footnote">
-            Payout values are aligned to the round that unlocks the payout. Reaching the Round of 32
-            triggers the first payout, Sweet 16 triggers the next, and so on.
-          </p>
-        </>
-      )}
-    </section>
-  );
-}
-
-function getNateSilverProbability(projection: NateSilverProjection | null, key: OperatorNateSilverColumn["key"]) {
-  if (!projection) {
-    return null;
-  }
-
-  switch (key) {
-    case "roundOf32":
-      return projection.roundOf32;
-    case "sweet16":
-      return projection.sweet16;
-    case "elite8":
-      return projection.elite8;
-    case "finalFour":
-      return projection.finalFour;
-    case "championshipGame":
-      return projection.championshipGame;
-    case "champion":
-      return projection.champion;
-    default:
-      return null;
-  }
 }
 
 function OperatorSyndicateBoardCard({

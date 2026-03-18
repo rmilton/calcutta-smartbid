@@ -62,8 +62,8 @@ export function buildBidRecommendation(
       0.22
     );
   const unconstrainedMaxBid = roundCurrency(Math.max(0, baseMaxBid * conflictPenaltyMultiplier));
-  const maxBid = stretchBudgetHeadroom < 0 ? roundCurrency(Math.min(unconstrainedMaxBid, currentBid)) : unconstrainedMaxBid;
-  const targetBid = stretchBudgetHeadroom < 0 ? roundCurrency(Math.min(rawTargetBid, maxBid)) : rawTargetBid;
+  const maxBid = unconstrainedMaxBid;
+  const targetBid = rawTargetBid;
   const expectedNetValue = roundCurrency(
     expectedGrossPayout - currentBid - ownershipExposure.overlapScore * 850
   );
@@ -81,9 +81,7 @@ export function buildBidRecommendation(
   } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
     stoplight = "caution";
   }
-  if (stretchBudgetHeadroom < 0) {
-    stoplight = "pass";
-  } else if (baseBudgetHeadroom < 0 && stoplight === "buy") {
+  if (baseBudgetHeadroom < 0 && stoplight === "buy") {
     stoplight = "caution";
   }
   if (forcedPassConflict) {

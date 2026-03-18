@@ -4,6 +4,7 @@ import {
   AuctionDashboard,
   MatchupConflict,
   SoldAssetSummary,
+  Stage,
   Syndicate,
   TeamProjection
 } from "@/lib/types";
@@ -11,16 +12,18 @@ import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
   AssetSaleRow,
   ConflictRow,
+  NateSilverDecisionBoard,
   formatAssetMembers,
   formatAssetMembersCompact,
   formatAssetSubtitle
 } from "@/components/dashboard-shell/shared";
-import { AssetLogo } from "@/components/team-logo";
+import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
   currentBid: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
   nominatedMatchup: RoundMatchup | null;
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
@@ -39,6 +42,7 @@ interface ViewerAuctionWorkspaceProps {
 export function ViewerAuctionWorkspace({
   dashboard,
   currentBid,
+  breakEvenStage,
   nominatedMatchup,
   likelyRound2Matchup,
   hasOwnedRoundOneOpponent,
@@ -55,6 +59,7 @@ export function ViewerAuctionWorkspace({
 }: ViewerAuctionWorkspaceProps) {
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
+  const availableAssets = dashboard.availableAssets ?? [];
   const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
   const nominatedTeamClassification =
@@ -62,6 +67,15 @@ export function ViewerAuctionWorkspace({
     null;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
+  const remainingTeamsLabel = `${availableAssets.length} ${
+    availableAssets.length === 1 ? "Team" : "Teams"
+  } Remaining`;
+  const shouldStackHeroStat = Boolean(
+    nominatedAsset &&
+      (nominatedAsset.type === "seed_bundle" ||
+        nominatedAsset.type === "play_in_slot" ||
+        nominatedAsset.label.length > 24)
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -105,7 +119,10 @@ export function ViewerAuctionWorkspace({
         <div ref={leftColumnRef} className="viewer-auction-grid__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
-              <p className="eyebrow">Live Decision Board</p>
+              <div className="decision-panel__header-copy">
+                <p className="eyebrow">Live Decision Board</p>
+                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+              </div>
             </div>
 
             <div
@@ -114,7 +131,12 @@ export function ViewerAuctionWorkspace({
                 nominatedAsset ? "decision-panel__hero--active" : "decision-panel__hero--waiting"
               )}
             >
-              <div className="decision-panel__hero-topline">
+              <div
+                className={cn(
+                  "decision-panel__hero-topline",
+                  shouldStackHeroStat && "decision-panel__hero-topline--stacked"
+                )}
+              >
                 <div className="decision-panel__hero-content">
                   <div className="decision-panel__hero-pulse">
                     <span className={cn("pulse-dot", !nominatedAsset && "pulse-dot--muted")} />
@@ -183,8 +205,18 @@ export function ViewerAuctionWorkspace({
               </div>
               {nominatedMatchup ? (
                 <p className="decision-panel__matchup">
-                  Round 1 Matchup: {nominatedMatchup.opponent.seed}-seed{" "}
-                  {nominatedMatchup.opponent.name}
+                  <span>Round 1 Matchup:</span>
+                  <span className="decision-panel__matchup-team">
+                    <TeamLogo
+                      teamId={nominatedMatchup.opponent.teamId}
+                      teamName={nominatedMatchup.opponent.name}
+                      size="xs"
+                      decorative
+                    />
+                    <span>
+                      {nominatedMatchup.opponent.seed}-seed {nominatedMatchup.opponent.name}
+                    </span>
+                  </span>
                   {hasOwnedRoundOneOpponent ? (
                     <span className="decision-panel__matchup-owned">you own</span>
                   ) : null}
@@ -192,9 +224,20 @@ export function ViewerAuctionWorkspace({
               ) : null}
               {likelyRound2Matchup ? (
                 <p className="decision-panel__path">
-                  Most likely Round 2: {likelyRound2Matchup.opponent.seed}-seed{" "}
-                  {likelyRound2Matchup.opponent.name} (
-                  {formatPercent(likelyRound2Matchup.probability ?? 0)})
+                  <span>Most likely Round 2:</span>
+                  <span className="decision-panel__matchup-team">
+                    <TeamLogo
+                      teamId={likelyRound2Matchup.opponent.teamId}
+                      teamName={likelyRound2Matchup.opponent.name}
+                      size="xs"
+                      decorative
+                    />
+                    <span>
+                      {likelyRound2Matchup.opponent.seed}-seed{" "}
+                      {likelyRound2Matchup.opponent.name}
+                    </span>
+                  </span>
+                  <span>({formatPercent(likelyRound2Matchup.probability ?? 0)})</span>
                   {hasOwnedLikelyRoundTwoOpponent ? (
                     <span className="decision-panel__matchup-owned">you own</span>
                   ) : null}
@@ -206,6 +249,14 @@ export function ViewerAuctionWorkspace({
                 </div>
               ) : null}
             </div>
+
+            <NateSilverDecisionBoard
+              nominatedAsset={nominatedAsset}
+              nominatedTeam={nominatedTeam}
+              currentBid={currentBid}
+              breakEvenStage={breakEvenStage}
+              payoutRules={dashboard.session.payoutRules}
+            />
           </article>
 
           <article className="surface-card decision-context viewer-auction-grid__context">

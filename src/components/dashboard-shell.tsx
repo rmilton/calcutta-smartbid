@@ -26,12 +26,11 @@ import {
   TeamProjection
 } from "@/lib/types";
 import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team-classifications";
-import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import { OperatorAuctionWorkspace } from "@/components/dashboard-shell/operator-auction-workspace";
 import {
   displayNullableNumber,
   displayNullablePercent,
-  formatBreakEvenStage,
   formatAssetMembersCompact
 } from "@/components/dashboard-shell/shared";
 import { AppFooter } from "@/components/app-footer";
@@ -516,64 +515,14 @@ export function DashboardShell({
       selectedTeam
     ]
   );
-  const forcedPassConflictName = recommendation?.forcedPassConflictTeamId
-    ? teamLookup.get(recommendation.forcedPassConflictTeamId)?.name ??
-      recommendation.forcedPassConflictTeamId
-    : null;
-  const topOwnershipConflict = ownershipConflicts[0] ?? null;
-  const callSupportText = recommendation
-    ? recommendation.forcedPassConflictTeamId
-      ? `Round 1 is against ${forcedPassConflictName}, which Mothership already owns.`
-      : recommendation.stoplight === "buy"
-        ? "Model supports buying here"
-        : recommendation.stoplight === "caution"
-          ? "Model is getting cautious here"
-          : recommendation.fundingStatus === "above-plan"
-            ? "Funding plan is already exceeded"
-          : "Model does not support chasing here"
-    : "The live room stays focused on the current selection and bankroll position.";
-  const callDetailText = recommendation?.forcedPassConflictTeamId
-    ? recommendation.forcedPassReason
-    : recommendation
-      ? recommendation.stoplight === "buy"
-        ? topOwnershipConflict && topOwnershipConflict.probability >= 0.05
-          ? `The live price remains below target, and the main ownership collision risk does not arrive until the ${titleCaseStage(topOwnershipConflict.earliestRound)}.`
-          : breakEvenStage && breakEvenStage !== "negativeReturn"
-            ? `${formatBreakEvenStage(breakEvenStage)} is enough for this price to clear the modeled cost.`
-            : "The live price remains below target with positive simulated value."
-        : recommendation.stoplight === "caution"
-          ? topOwnershipConflict && topOwnershipConflict.probability >= 0.05
-            ? `This price is near the model's ceiling, and the main ownership collision risk arrives in the ${titleCaseStage(topOwnershipConflict.earliestRound)}.`
-            : "The live price is nearing the model's ceiling, so upside is starting to compress."
-          : recommendation.fundingStatus === "above-plan"
-            ? "The current bid already pushes beyond Mothership's stretch funding plan, so the board should pass here."
-          : topOwnershipConflict && topOwnershipConflict.probability >= 0.05
-            ? `The price is above the model's comfort range before the ${titleCaseStage(topOwnershipConflict.earliestRound)} ownership risk is even priced in.`
-            : "The live price is above the model's comfort range for this team."
-      : null;
-  const callHeadline = recommendation
-    ? recommendation.forcedPassConflictTeamId
-      ? "Pass"
-      : recommendation.stoplight === "buy"
-        ? `Bid through ${formatCurrency(recommendation.targetBid)}`
-        : recommendation.stoplight === "caution"
-          ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
-          : recommendation.fundingStatus === "above-plan"
-            ? "Pass now"
-          : `Pass above ${formatCurrency(recommendation.maxBid)}`
-    : "Pick a team to set the board";
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
-      : recommendation.fundingStatus === "above-plan"
-        ? "Pass"
       : formatCurrency(recommendation.targetBid)
     : "--";
   const maxBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
-      : recommendation.fundingStatus === "above-plan"
-        ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
@@ -622,10 +571,14 @@ export function DashboardShell({
         </div>
         <div className="session-hero__meta">
           <ThemeToggle />
-          <div className="status-pill">
-            {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
-          </div>
-          <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+          {!viewerMode ? (
+            <>
+              <div className="status-pill">
+                {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
+              </div>
+              <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+            </>
+          ) : null}
           <div className="status-pill">
             {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
           </div>
@@ -666,6 +619,7 @@ export function DashboardShell({
           <ViewerAuctionWorkspace
             dashboard={dashboard}
             currentBid={currentBid}
+            breakEvenStage={breakEvenStage}
             nominatedMatchup={matchupSummary.nominatedMatchup}
             likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
             hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
@@ -717,9 +671,6 @@ export function DashboardShell({
               likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
               hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
               hasOwnedLikelyRoundTwoOpponent={matchupSummary.hasOwnedLikelyRoundTwoOpponent}
-              callHeadline={callHeadline}
-              callSupportText={callSupportText}
-              callDetailText={callDetailText}
               breakEvenStage={breakEvenStage}
               targetBidDisplay={targetBidDisplay}
               maxBidDisplay={maxBidDisplay}
