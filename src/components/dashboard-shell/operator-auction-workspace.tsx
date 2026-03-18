@@ -733,8 +733,6 @@ function getNateSilverProbability(projection: NateSilverProjection | null, key: 
   }
 
   switch (key) {
-    case "roundOf64":
-      return projection.roundOf64;
     case "roundOf32":
       return projection.roundOf32;
     case "sweet16":
