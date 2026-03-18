@@ -304,6 +304,7 @@ export interface AnalysisBudgetRow {
   convictionScore: number;
   investableShare: number;
   openingBid: number;
+  plannedBudgetAllocation: number;
   targetBid: number;
   maxBid: number;
   tier: "core" | "flex" | "depth";
@@ -569,6 +570,7 @@ export interface BidRecommendation {
   assetId?: string;
   currentBid: number;
   openingBid: number;
+  plannedBudgetAllocation: number;
   targetBid: number;
   maxBid: number;
   expectedGrossPayout: number;

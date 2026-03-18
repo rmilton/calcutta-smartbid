@@ -78,6 +78,7 @@ export function buildSessionAnalysisSnapshot(
       const openingBid = roundCurrency(
         Math.max((targetBid > 0 ? targetBid : maxBid) * 0.62, 1)
       );
+      const plannedBudgetAllocation = roundCurrency(legacyTargetBid);
 
       return {
         teamId: row.teamId,
@@ -88,6 +89,7 @@ export function buildSessionAnalysisSnapshot(
         convictionScore: roundMetric(conviction, 4),
         investableShare: roundMetric(share, 4),
         openingBid,
+        plannedBudgetAllocation,
         targetBid,
         maxBid,
         tier: classifyTier(row.percentile)

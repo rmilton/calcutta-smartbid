@@ -843,6 +843,37 @@ describe("repository funding model", () => {
   });
 });
 
+describe("repository live state", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-auth-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("keeps a fresh session awaiting selection before any team is sold", async () => {
+    const { repository, session } = await createBaselineSession();
+
+    const dashboard = await repository.getDashboard(session.id);
+
+    expect(dashboard.session.liveState.nominatedAssetId).toBeNull();
+    expect(dashboard.session.liveState.nominatedTeamId).toBeNull();
+    expect(dashboard.nominatedAsset).toBeNull();
+    expect(dashboard.nominatedTeam).toBeNull();
+  });
+});
 describe("repository purchases", () => {
   beforeEach(async () => {
     storeFile = path.join(

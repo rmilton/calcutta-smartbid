@@ -43,6 +43,7 @@ vi.mock("@/lib/funding", () => ({
 vi.mock("@/lib/live-room", () => ({
   buildOperatorSyndicateHoldings: () => [],
   buildViewerOwnershipGroups: () => [],
+  deriveProjectedAssetClose: () => 0,
   deriveAuctionMatchups: () => ({
     nominatedMatchup: null,
     likelyRound2Matchup: null,
@@ -243,6 +244,7 @@ describe("DashboardShell analysis hero", () => {
           convictionScore: 0.02,
           investableShare: 0.02,
           openingBid: 2241,
+          plannedBudgetAllocation: 1980,
           targetBid: 3614,
           maxBid: 5335,
           tier: "core"

@@ -2,6 +2,7 @@ import {
   buildOperatorSyndicateHoldings,
   buildViewerOwnershipGroups,
   deriveAuctionMatchups,
+  deriveProjectedAssetClose,
   deriveProjectedFinalPot,
   filterRecommendationRationale,
   getFirstRoundMatchup,
@@ -253,6 +254,32 @@ describe("live room helpers", () => {
     const remainingAsset = buildAsset("asset-d", "Delta", "team-d", 6);
 
     expect(
+      deriveProjectedAssetClose({
+        ledger: [focusSyndicate, otherSyndicate],
+        availableAssets: [remainingAsset],
+        budgetRows: [
+          {
+            teamId: "team-d",
+            teamName: "Delta",
+            classification: null,
+            rank: 1,
+            percentile: 0.4,
+            convictionScore: 0.5,
+            investableShare: 0.05,
+            openingBid: 700,
+            plannedBudgetAllocation: 2200,
+            targetBid: 1800,
+            maxBid: 2400,
+            tier: "depth"
+          }
+        ],
+        asset: remainingAsset,
+        liveAssetId: remainingAsset.id,
+        liveBid: 2200
+      })
+    ).toBe(5900);
+
+    expect(
       deriveProjectedFinalPot({
         ledger: [focusSyndicate, otherSyndicate],
         availableAssets: [remainingAsset],
@@ -266,6 +293,7 @@ describe("live room helpers", () => {
             convictionScore: 0.5,
             investableShare: 0.05,
             openingBid: 700,
+            plannedBudgetAllocation: 2200,
             targetBid: 1800,
             maxBid: 2400,
             tier: "depth"
@@ -274,7 +302,7 @@ describe("live room helpers", () => {
         liveAssetId: remainingAsset.id,
         liveBid: 2200
       })
-    ).toBe(4300);
+    ).toBe(8000);
   });
 
   it("derives shared matchup state for the nominated team", () => {
