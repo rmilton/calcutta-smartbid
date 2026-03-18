@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import type { Route } from "next";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
@@ -108,6 +109,164 @@ function getWorkspacePath(sessionId: string, view: WorkspaceView) {
   return (
     view === "auction" ? `/session/${sessionId}` : `/session/${sessionId}?view=${view}`
   ) as Route;
+}
+
+interface AnalysisTeamComboboxProps {
+  rows: AnalysisAssetTableRow[];
+  value: string;
+  search: string;
+  onSearchChange: (value: string) => void;
+  onChange: (teamId: string) => void;
+}
+
+function AnalysisTeamCombobox({
+  rows,
+  value,
+  search,
+  onSearchChange,
+  onChange
+}: AnalysisTeamComboboxProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+
+  const filteredRows = useMemo(() => {
+    const normalized = search.trim().toLowerCase();
+    if (!normalized) {
+      return rows;
+    }
+
+    return rows.filter((row) => row.searchText.includes(normalized));
+  }, [rows, search]);
+  const selectedRow = rows.find((row) => row.representativeTeamId === value) ?? null;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        onSearchChange("");
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [onSearchChange, open]);
+
+  useEffect(() => {
+    setHighlightIndex((current) => {
+      if (filteredRows.length === 0) {
+        return 0;
+      }
+
+      return Math.min(current, filteredRows.length - 1);
+    });
+  }, [filteredRows]);
+
+  function handleFocus() {
+    setOpen(true);
+    onSearchChange("");
+    setHighlightIndex(0);
+  }
+
+  function commitSelection(teamId: string) {
+    onChange(teamId);
+    setOpen(false);
+    onSearchChange("");
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightIndex((index) =>
+        filteredRows.length === 0 ? 0 : Math.min(index + 1, filteredRows.length - 1)
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const row = filteredRows[highlightIndex];
+      if (row) {
+        commitSelection(row.representativeTeamId);
+      }
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      onSearchChange("");
+      inputRef.current?.blur();
+    }
+  }
+
+  const displayValue = open ? search : selectedRow?.representativeTeamName ?? "";
+
+  return (
+    <div className="combobox" ref={containerRef}>
+      <input
+        ref={inputRef}
+        className="combobox__input"
+        value={displayValue}
+        placeholder={open ? "Search teams or packages..." : "Select a team"}
+        readOnly={!open}
+        autoComplete="off"
+        onFocus={handleFocus}
+        onClick={() => {
+          if (!open) {
+            handleFocus();
+          }
+        }}
+        onChange={(event) => {
+          onSearchChange(event.target.value);
+          setHighlightIndex(0);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      {open ? (
+        <ul className="combobox__list">
+          {filteredRows.length === 0 ? (
+            <li className="combobox__empty">No teams found</li>
+          ) : (
+            filteredRows.map((row, index) => (
+              <li
+                key={row.asset.id}
+                className={cn(
+                  "combobox__item analysis-combobox__item",
+                  index === highlightIndex && "combobox__item--highlighted"
+                )}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  commitSelection(row.representativeTeamId);
+                }}
+                onMouseEnter={() => setHighlightIndex(index)}
+              >
+                <TeamLogo
+                  teamId={row.representativeTeamId}
+                  teamName={row.representativeTeamName}
+                  size="sm"
+                  decorative
+                  className="combobox__logo"
+                />
+                <span className="combobox__seed">#{row.rank}</span>
+                <span className="analysis-combobox__copy">
+                  <span className="combobox__name">{row.representativeTeamName}</span>
+                  <span className="analysis-combobox__meta">
+                    <span>{row.asset.label}</span>
+                    {row.memberSummary ? <span>{row.memberSummary}</span> : null}
+                  </span>
+                </span>
+                {row.status !== "Available" ? (
+                  <span className="combobox__sold-badge">{row.status.toLowerCase()}</span>
+                ) : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 export function DashboardShell({
@@ -420,6 +579,10 @@ export function DashboardShell({
 
     return analysisAssetRows.filter((row) => row.searchText.includes(normalized));
   }, [analysisAssetRows, analysisSearch]);
+  const analysisSelectedAssetRow = useMemo(
+    () => analysisAssetRows.find((row) => row.representativeTeamId === analysisTeamId) ?? null,
+    [analysisAssetRows, analysisTeamId]
+  );
   const filteredRationale = useMemo(
     () =>
       filterRecommendationRationale(
@@ -709,6 +872,19 @@ export function DashboardShell({
                   <div>
                     <p className="eyebrow">Analysis</p>
                   </div>
+                </div>
+
+                <div className="analysis-combobox-row">
+                  <label className="field-shell field-shell--accent analysis-combobox-field">
+                    <span>Search team</span>
+                    <AnalysisTeamCombobox
+                      rows={analysisAssetRows}
+                      value={analysisTeamId}
+                      search={analysisSearch}
+                      onSearchChange={setAnalysisSearch}
+                      onChange={setAnalysisTeamId}
+                    />
+                  </label>
                 </div>
 
                 {analysisDetailTeam && analysisRow ? (
@@ -1066,18 +1242,6 @@ export function DashboardShell({
                   </div>
                 )}
 
-                <div className="form-grid analysis-search-row">
-                  <label className="field-shell analysis-search-field">
-                    <span>Search</span>
-                    <input
-                      type="search"
-                      value={analysisSearch}
-                      onChange={(event) => setAnalysisSearch(event.target.value)}
-                      placeholder="Type team, package, or abbreviation"
-                    />
-                  </label>
-                </div>
-
                 <div className="table-wrap admin-table-wrap">
                   <table className="admin-table admin-table--dense">
                     <thead>
@@ -1097,7 +1261,7 @@ export function DashboardShell({
                         <tr
                           key={row.asset.id}
                           className={cn(
-                            analysisDetailAsset?.id === row.asset.id && "table-row--focus"
+                            analysisSelectedAssetRow?.asset.id === row.asset.id && "table-row--focus"
                           )}
                           onClick={() => setAnalysisTeamId(row.representativeTeamId)}
                         >

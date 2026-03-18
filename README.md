@@ -27,10 +27,10 @@ Additional project context lives in:
 ## Live-room code map
 
 - [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
-- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, and keyboard shortcuts
-- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace
-- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace
-- [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives and asset-formatting helpers
+- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, keyboard shortcuts, and the one-way sync from the auction active team into analysis
+- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including the auction-complete recap board once every asset is sold
+- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, including the read-only auction-complete rooting guide without spend/equity summaries
+- [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives, asset-formatting helpers, and shared auction-complete asset row rendering
 - [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors and matchup helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
 
 ## Run locally
@@ -130,6 +130,9 @@ The logo smoke check is now covered by [src/lib/team-logos.test.ts](/Users/llewi
   - `Auction` now carries the old portfolio context directly in the live board through syndicate, ownership, and decision-context panels
   - viewer workspaces are `Auction` and `Bracket`
   - viewer `Auction` mirrors the operator decision-board language for the live call, rationale, ownership conflicts, recent sales, and ownership ledger, while staying read-only
+  - when every auction asset is sold, both operator and viewer `Auction` boards switch from live bidding state into an `Auction Complete` recap
+  - the operator `Auction Complete` board surfaces room-close portfolio recap, rooting priorities, and final board context
+  - the viewer `Auction Complete` board stays read-only and team-focused, intentionally omitting spend, price, and equity recap language
   - active team can represent:
     - a single school
     - an unresolved play-in team
@@ -215,7 +218,8 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
 - Mothership-owned purchases are the source of truth for owned-team position state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
 - `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
-- the in-room `Analysis` view now leads with a compact selected-team hero that keeps rank, bid guidance, round reach probabilities, classification, note, and scouting signals above the ranking table
+- the in-room `Analysis` view now leads with a compact selected-team hero and searchable team selector above the ranking table
+- the analysis selector follows the live auction active team by default, but operators can temporarily inspect another team without changing the auction board
 - `Bracket` reflects the same session truth as the live room, including purchased-team ownership markers
 - only the most recent purchase can be undone in the current correction flow
 - session analysis settings are:

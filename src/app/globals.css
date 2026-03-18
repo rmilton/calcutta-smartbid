@@ -1158,6 +1158,22 @@ kbd {
     var(--panel);
 }
 
+.decision-panel__hero--complete {
+  border-color: color-mix(in srgb, var(--success) 24%, transparent);
+  background:
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--success) 14%, transparent),
+      transparent 54%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 48%
+    ),
+    color-mix(in srgb, var(--success) 5%, var(--panel));
+}
+
 .decision-panel__hero-pulse {
   position: relative;
   z-index: 1;
@@ -1173,6 +1189,38 @@ kbd {
   align-items: center;
   gap: 0.75rem;
   margin-top: 0.85rem;
+}
+
+.decision-panel__complete-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.85rem;
+}
+
+.decision-panel__complete-stat {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.9rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: color-mix(in srgb, var(--panel) 88%, white);
+}
+
+.decision-panel__complete-stat span,
+.auction-complete-value span {
+  color: var(--muted);
+  font-size: 0.77rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+}
+
+.decision-panel__complete-stat strong {
+  margin-top: 0;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  line-height: 1.05;
 }
 
 .decision-panel__classification {
@@ -1494,6 +1542,13 @@ kbd {
   border-top: none;
 }
 
+.auction-complete-value {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: end;
+  text-align: right;
+}
+
 .list-line,
 .list-row {
   padding: 0.95rem 1rem;
@@ -1559,21 +1614,41 @@ kbd {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.analysis-search-row {
+.analysis-combobox-row {
   margin-bottom: 0.85rem;
 }
 
-.analysis-search-field {
+.analysis-combobox-field {
+  max-width: 32rem;
   padding: 0.8rem 0.9rem;
   background: var(--panel-muted);
 }
 
-.analysis-search-field span {
+.analysis-combobox-field > span {
   font-size: 0.8rem;
 }
 
-.analysis-search-field input {
+.analysis-combobox-field input {
   min-height: 2.9rem;
+}
+
+.analysis-combobox__item {
+  align-items: flex-start;
+}
+
+.analysis-combobox__copy {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.analysis-combobox__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.7rem;
+  font-size: 0.74rem;
+  color: var(--muted);
 }
 
 .analysis-selected-panel {
@@ -3832,6 +3907,15 @@ kbd {
 
   .decision-panel .decision-panel__hero-title--waiting {
     font-size: clamp(2.1rem, 8vw, 3rem);
+  }
+
+  .decision-panel__complete-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auction-complete-value {
+    justify-items: start;
+    text-align: left;
   }
   .viewer-ledger-group__header,
   .viewer-ledger-row {
