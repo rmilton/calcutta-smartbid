@@ -114,9 +114,6 @@ describe("OperatorAuctionWorkspace", () => {
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
-        callHeadline: "Waiting on nomination",
-        callSupportText: "Set an active team to unlock guidance.",
-        callDetailText: null,
         breakEvenStage: null,
         targetBidDisplay: "--",
         maxBidDisplay: "--",
@@ -145,6 +142,7 @@ describe("OperatorAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Syndicate Board");
+    expect(markup).toContain("0 Teams Remaining");
     expect(markup).toContain("Current spend");
     expect(markup).toContain("Projected final pot");
     expect(markup).toContain("$7,000");
@@ -238,9 +236,6 @@ describe("OperatorAuctionWorkspace", () => {
         likelyRound2Matchup: null,
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
-        callHeadline: "Pass above $8,000",
-        callSupportText: "Model does not support chasing here.",
-        callDetailText: null,
         breakEvenStage: "sweet16",
         targetBidDisplay: "--",
         maxBidDisplay: "--",

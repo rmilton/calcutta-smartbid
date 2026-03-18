@@ -58,9 +58,6 @@ interface OperatorAuctionWorkspaceProps {
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
   hasOwnedLikelyRoundTwoOpponent: boolean;
-  callHeadline: string;
-  callSupportText: string;
-  callDetailText: string | null;
   breakEvenStage: Stage | "negativeReturn" | null;
   targetBidDisplay: string;
   maxBidDisplay: string;
@@ -113,9 +110,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     likelyRound2Matchup,
     hasOwnedRoundOneOpponent,
     hasOwnedLikelyRoundTwoOpponent,
-    callHeadline,
-    callSupportText,
-    callDetailText,
     breakEvenStage,
     targetBidDisplay,
     maxBidDisplay,
@@ -135,6 +129,9 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     syndicateLookup,
     focusFundingImpliedSharePrice
   } = props;
+  const remainingTeamsLabel = `${dashboard.availableAssets.length} ${
+    dashboard.availableAssets.length === 1 ? "Team" : "Teams"
+  } Remaining`;
   const shouldStackHeroStat = Boolean(
     nominatedAsset &&
       (nominatedAsset.type === "seed_bundle" ||
@@ -263,7 +260,10 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         <div className="operator-board-layout__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
-              <p className="eyebrow">Live Decision Board</p>
+              <div className="decision-panel__header-copy">
+                <p className="eyebrow">Live Decision Board</p>
+                <span className="status-pill status-pill--muted">{remainingTeamsLabel}</span>
+              </div>
               {signalLabel ? (
                 <div
                   className={cn(
@@ -413,42 +413,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           </article>
 
           <article className="surface-card decision-context">
-            <div className="decision-context__overview">
-              <div className="decision-panel__callout decision-context__callout">
-                <p className="eyebrow">Call</p>
-                <h3>{callHeadline}</h3>
-                <p>{callSupportText}</p>
-                {callDetailText ? <p className="call-conflict">{callDetailText}</p> : null}
-              </div>
-
-              <div className="decision-context__summary-grid">
-                <MetricCard
-                  label="Break-even round"
-                  value={formatBreakEvenStage(breakEvenStage)}
-                  compact
-                  tooltip="The minimum tournament round this team needs to reach for the modeled payout to cover the current bid."
-                />
-                <MetricCard
-                  label="Simulated net"
-                  value={recommendation ? formatCurrency(recommendation.expectedNetValue) : "--"}
-                  compact
-                  tooltip="Expected gross payout minus the current bid and any portfolio-overlap penalty from teams Mothership already owns."
-                />
-                <MetricCard
-                  label="Target bid"
-                  value={targetBidDisplay}
-                  compact
-                  tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
-                />
-                <MetricCard
-                  label="Max bid"
-                  value={maxBidDisplay}
-                  compact
-                  tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
-                />
-              </div>
-            </div>
-
             <div className="decision-context__columns">
               <section className="decision-context__section">
                 <div className="section-headline section-headline--compact">
@@ -528,6 +492,16 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 label="Opening bid"
                 value={recommendation ? formatCurrency(recommendation.openingBid) : "--"}
                 tooltip="A conservative first number to put on the board before the bidding settles into the target and max range."
+              />
+              <MetricCard
+                label="Target bid"
+                value={targetBidDisplay}
+                tooltip="The model's normal buy price for this team based on conviction and Mothership's remaining base-plan buying room."
+              />
+              <MetricCard
+                label="Max bid"
+                value={maxBidDisplay}
+                tooltip="The highest bid the model can justify after stretch funding room and portfolio overlap penalties are applied."
               />
               <MetricCard
                 label="Base budget room"
