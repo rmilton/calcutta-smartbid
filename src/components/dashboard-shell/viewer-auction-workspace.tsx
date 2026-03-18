@@ -4,6 +4,7 @@ import {
   AuctionDashboard,
   MatchupConflict,
   SoldAssetSummary,
+  Stage,
   Syndicate,
   TeamProjection
 } from "@/lib/types";
@@ -11,6 +12,7 @@ import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
   AssetSaleRow,
   ConflictRow,
+  NateSilverDecisionBoard,
   formatAssetMembers,
   formatAssetMembersCompact,
   formatAssetSubtitle
@@ -21,6 +23,7 @@ import { TeamClassificationBadge } from "@/components/team-classification-badge"
 interface ViewerAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
   currentBid: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
   nominatedMatchup: RoundMatchup | null;
   likelyRound2Matchup: RoundMatchup | null;
   hasOwnedRoundOneOpponent: boolean;
@@ -39,6 +42,7 @@ interface ViewerAuctionWorkspaceProps {
 export function ViewerAuctionWorkspace({
   dashboard,
   currentBid,
+  breakEvenStage,
   nominatedMatchup,
   likelyRound2Matchup,
   hasOwnedRoundOneOpponent,
@@ -238,6 +242,14 @@ export function ViewerAuctionWorkspace({
                 </div>
               ) : null}
             </div>
+
+            <NateSilverDecisionBoard
+              nominatedAsset={nominatedAsset}
+              nominatedTeam={nominatedTeam}
+              currentBid={currentBid}
+              breakEvenStage={breakEvenStage}
+              payoutRules={dashboard.session.payoutRules}
+            />
           </article>
 
           <article className="surface-card decision-context viewer-auction-grid__context">
