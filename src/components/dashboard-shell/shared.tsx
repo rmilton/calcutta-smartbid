@@ -127,7 +127,9 @@ export function NateSilverDecisionBoard({
     ({ key }) => getNateSilverProbability(nateSilver, key) !== null
   );
   const effectiveBreakEvenStage =
-    projectedPot === undefined
+    breakEvenStage === null
+      ? null
+      : projectedPot === undefined
       ? breakEvenStage
       : getBreakEvenStage(currentBid, payoutRules, projectedPot);
   const payoutLookup = useMemo(
@@ -182,13 +184,15 @@ export function NateSilverDecisionBoard({
             {nateSilverColumns.map(({ key, label, payoutStage }, index) => {
               const probability = getNateSilverProbability(nateSilver, key);
               const payoutValue = payoutLookup.get(payoutStage) ?? null;
-              const clearsBid = breakEvenCoverageIndex >= 0 && index <= breakEvenCoverageIndex;
+              const needsDepth = breakEvenCoverageIndex >= 0 && index <= breakEvenCoverageIndex;
+              const clearsBid = breakEvenCoverageIndex >= 0 && index >= breakEvenCoverageIndex;
 
               return (
                 <article
                   key={key}
                   className={cn(
                     "nate-silver-board__cell",
+                    needsDepth && "nate-silver-board__cell--needs-depth",
                     clearsBid && "nate-silver-board__cell--clears-bid"
                   )}
                 >

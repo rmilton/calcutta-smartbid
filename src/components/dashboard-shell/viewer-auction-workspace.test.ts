@@ -334,6 +334,8 @@ describe("ViewerAuctionWorkspace", () => {
 
     expect(markup).toContain("Awaiting selection");
     expect(markup).toContain("Waiting for selection");
+    expect(markup).toContain("Awaiting bid");
+    expect(markup).not.toContain("Needs Round of 32");
     expect(markup).toContain(
       "The next active team will take over this board when the operator makes a selection."
     );
@@ -456,7 +458,8 @@ describe("ViewerAuctionWorkspace", () => {
     expect(markup).toContain("$26,400");
     expect(markup).toContain("$35,200");
     expect(markup).toContain("Needs Elite 8");
-    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(3);
+    expect((markup.match(/nate-silver-board__cell--needs-depth/g) ?? []).length).toBe(3);
+    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(4);
   });
 
   it("renders an auction-complete viewer board without cost or equity summaries", () => {

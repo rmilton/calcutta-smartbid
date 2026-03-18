@@ -381,7 +381,8 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("$26,400");
     expect(markup).toContain("$35,200");
     expect(markup).toContain("Needs Elite 8");
-    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(3);
+    expect((markup.match(/nate-silver-board__cell--needs-depth/g) ?? []).length).toBe(3);
+    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(4);
     expect(markup).not.toContain("Value at odds");
   });
 
