@@ -61,7 +61,9 @@ function buildDashboard(overrides?: Partial<AuctionDashboard>): AuctionDashboard
     availableTeams: [],
     soldTeams: [],
     ledger: [],
-    analysis: {} as AuctionDashboard["analysis"],
+    analysis: {
+      budgetRows: []
+    } as AuctionDashboard["analysis"],
     bracket: {} as AuctionDashboard["bracket"],
     recommendation: null,
     lastPurchase: null,
@@ -72,14 +74,68 @@ function buildDashboard(overrides?: Partial<AuctionDashboard>): AuctionDashboard
 }
 
 describe("OperatorAuctionWorkspace", () => {
-  it("shows compact room totals above the syndicate list on the operator board", () => {
+  it("shows room totals using remaining-asset forecast instead of syndicate budget ceilings", () => {
     globalThis.React = React;
 
     const mothership = buildSyndicate("focus", "Mothership", "#111111", 4000, 6000);
     const riverboat = buildSyndicate("other", "Riverboat", "#222222", 3000, 9000);
+    const remainingTeam: TeamProjection = {
+      id: "remaining",
+      name: "Drake",
+      shortName: "DRK",
+      region: "West",
+      seed: 11,
+      rating: 88,
+      offense: 112,
+      defense: 99,
+      tempo: 67,
+      source: "test"
+    };
+    const remainingAsset = {
+      id: "asset_remaining",
+      label: "Drake",
+      type: "single_team",
+      region: "West",
+      seed: 11,
+      seedRange: null,
+      memberTeamIds: ["remaining"],
+      projectionIds: ["remaining"],
+      members: [
+        {
+          id: "remaining",
+          type: "team",
+          label: "Drake",
+          region: "West",
+          seed: 11,
+          regionSlot: "West-11",
+          teamIds: ["remaining"],
+          projectionIds: ["remaining"],
+          unresolved: false
+        }
+      ],
+      unresolved: false
+    } as const;
     const dashboard = buildDashboard({
+      availableAssets: [remainingAsset],
       ledger: [mothership, riverboat],
-      focusSyndicate: mothership
+      focusSyndicate: mothership,
+      analysis: {
+        budgetRows: [
+          {
+            teamId: "remaining",
+            teamName: "Drake",
+            classification: null,
+            rank: 1,
+            percentile: 0.5,
+            convictionScore: 0.5,
+            investableShare: 0.05,
+            openingBid: 1200,
+            targetBid: 1800,
+            maxBid: 2400,
+            tier: "depth"
+          }
+        ]
+      } as AuctionDashboard["analysis"]
     });
 
     const markup = renderToStaticMarkup(
@@ -122,7 +178,7 @@ describe("OperatorAuctionWorkspace", () => {
         maxBidDisplay: "--",
         filteredRationale: [],
         ownershipConflicts: [],
-        teamLookup: new Map(),
+        teamLookup: new Map([["remaining", remainingTeam]]),
         forcedPassConflictTeamId: null,
         projectedBaseRoom: 0,
         projectedStretchRoom: 0,
@@ -148,10 +204,10 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("Current spend");
     expect(markup).toContain("Projected final pot");
     expect(markup).toContain("$7,000");
-    expect(markup).toContain("$15,000");
+    expect(markup).toContain("$8,800");
   });
 
-  it("renders Nate Silver round reach probabilities with pot and chance-weighted values", () => {
+  it("renders Nate Silver round reach probabilities with payout-if-reached values", () => {
     globalThis.React = React;
 
     const mothership = buildSyndicate("focus", "Mothership", "#111111", 4000, 6000);
@@ -264,7 +320,6 @@ describe("OperatorAuctionWorkspace", () => {
 
     expect(markup).toContain("Nate Silver Path");
     expect(markup).toContain("Round return odds against the projected pot");
-    expect(markup).toContain("$220,000");
     expect(markup).not.toContain("Round of 64");
     expect(markup).toContain("Round of 32");
     expect(markup).toContain("Championship");
