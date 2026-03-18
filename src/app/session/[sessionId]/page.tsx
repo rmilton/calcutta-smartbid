@@ -51,7 +51,7 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
               <p>{error.message}</p>
             </div>
             <div className="session-hero__meta">
-              <Link href="/" className="button button-secondary">
+              <Link href="/api/auth/logout" className="button button-secondary">
                 Back to login
               </Link>
             </div>
@@ -74,7 +74,7 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
               <p>{error.message}</p>
             </div>
             <div className="session-hero__meta">
-              <Link href="/" className="button button-secondary">
+              <Link href="/api/auth/logout" className="button button-secondary">
                 Back to login
               </Link>
             </div>
