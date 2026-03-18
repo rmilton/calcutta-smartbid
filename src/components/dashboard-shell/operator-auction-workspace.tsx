@@ -666,7 +666,6 @@ function NateSilverDecisionBoard({
           <h3>Round return odds against the projected pot</h3>
         </div>
         <div className="operator-nate-silver-panel__meta">
-          <span className="status-pill">Projected pot · {formatCurrency(payoutRules.projectedPot)}</span>
           <span className="status-pill status-pill--muted">{breakEvenLabel}</span>
         </div>
       </div>
@@ -708,7 +707,7 @@ function NateSilverDecisionBoard({
                     {probability === null ? "--" : formatPercent(probability)}
                   </strong>
                   <div className="operator-nate-silver-board__metric">
-                    <span>Pot if reached</span>
+                    <span>Payout if reached</span>
                     <strong>{payoutValue === null ? "--" : formatCurrency(payoutValue)}</strong>
                   </div>
                   {note ? <p className="operator-nate-silver-board__note">{note}</p> : null}
@@ -718,7 +717,7 @@ function NateSilverDecisionBoard({
           </div>
 
           <p className="operator-nate-silver-panel__footnote">
-            Pot values are aligned to the round that unlocks the payout. Reaching the Round of 32
+            Payout values are aligned to the round that unlocks the payout. Reaching the Round of 32
             triggers the first payout, Sweet 16 triggers the next, and so on.
           </p>
         </>
