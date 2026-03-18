@@ -66,7 +66,7 @@ Current product surfaces and their roles:
   - manages access, shared code, payout structure, tracked syndicates, bracket/analysis imports, and room readiness
 - `Live room`
   - operator and viewer share the same persisted Mothership room state
-  - operator can update nomination, current bid, purchases, and bracket winners
+  - operator can update active selection, current bid, purchases, and bracket winners
   - operator can undo the most recent purchase
   - operator portfolio context is embedded in `Auction` rather than a separate room workspace
   - viewer is read-only and limited to `Auction` plus `Bracket`
@@ -86,8 +86,8 @@ Current product surfaces and their roles:
 ## State Truth Rules
 
 - completed purchases are the authoritative auction record unless superseded by a deliberate correction workflow
-- active nominated team and current bid are live operational state, not the primary historical record
-- the UI still says `team`, but the live nomination can now represent:
+- active selected team and current bid are live operational state, not the primary historical record
+- the UI still says `team`, but the live selection can now represent:
   - one school
   - one unresolved play-in team
   - one regional `13-16` package
@@ -177,6 +177,7 @@ Key files:
 - live-room controller/state orchestration now lives in `src/components/dashboard-shell/use-live-room-controller.ts`
 - operator and viewer `Auction` surfaces now live in dedicated workspace components under `src/components/dashboard-shell/`
 - shared matchup and live-room selector helpers now live in `src/lib/live-room.ts` with focused unit coverage
+- after recording a purchase, the live board now stays in an awaiting-selection state until the operator explicitly chooses the next team
 - likely bidders were removed
 - `Nominated team` became `Active Team for Bidding`
 - the team selector is now a single searchable control
@@ -209,13 +210,13 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 6. Log in as a session user with assigned email plus shared code.
 7. Confirm the live board loads with the right role.
 8. Change `Active Team for Bidding` and confirm the board updates immediately.
-9. Nominate a grouped `13-16` or play-in team and confirm member schools are visible on the board.
+9. Select a grouped `13-16` or play-in team and confirm member schools are visible on the board.
 10. Open `Analysis` and confirm the selected team matches `Auction` on target/max bid.
 11. Confirm grouped teams show package context inside `Analysis`.
 12. Open `Bracket` and confirm the field renders when the session has a complete 64-team import.
 13. As an operator, advance a bracket winner and confirm it persists after refresh.
 14. Change current bid and confirm it persists.
-15. Record a purchase with a valid bid.
+15. Record a purchase with a valid bid and confirm the board returns to an awaiting-selection state.
 16. Use `Undo last purchase` and confirm the team is unsold again, restored as the active team, and the bid returns.
 17. Try recording a purchase with `0` and confirm the friendly validation error.
 18. Refresh and confirm persistence.

@@ -202,7 +202,8 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
 ## State model notes
 
 - completed purchases are the authoritative auction record unless superseded by an explicit correction workflow
-- current bid and active nominated team are live operational state
+- current bid and active selected team are live operational state
+- after a purchase is recorded, the live board returns to an awaiting-selection state until the operator chooses the next team
 - the live room still talks about `teams` in the UI, but the internal auction model can represent:
   - a single team
   - an unresolved play-in slot

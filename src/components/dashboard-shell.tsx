@@ -529,7 +529,7 @@ export function DashboardShell({
         : recommendation.stoplight === "caution"
           ? "Model is getting cautious here"
           : "Model does not support chasing here"
-    : "The live room stays focused on the current nomination and bankroll position.";
+    : "The live room stays focused on the current selection and bankroll position.";
   const callDetailText = recommendation?.forcedPassConflictTeamId
     ? recommendation.forcedPassReason
     : recommendation

@@ -368,7 +368,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     }
 
     if (!selectedAssetId) {
-      showError("Choose a nominated team before recording a purchase.");
+      showError("Choose an active team before recording a purchase.");
       return;
     }
 

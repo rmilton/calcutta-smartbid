@@ -216,4 +216,44 @@ describe("ViewerAuctionWorkspace", () => {
     expect(markup).not.toContain("Funding status");
     expect(markup).not.toContain("Teams remaining to sell");
   });
+
+  it("renders selection language in the empty decision-board state", () => {
+    const mothership = buildSyndicate("focus", "Mothership", "#111111");
+    const dashboard = {
+      session: {
+        teamClassifications: {},
+        teamNotes: {}
+      },
+      nominatedAsset: null,
+      nominatedTeam: null,
+      focusSyndicate: mothership,
+      ledger: [mothership]
+    } as unknown as AuctionDashboard;
+
+    const markup = renderToStaticMarkup(
+      createElement(ViewerAuctionWorkspace, {
+        dashboard,
+        currentBid: 0,
+        nominatedMatchup: null,
+        likelyRound2Matchup: null,
+        hasOwnedRoundOneOpponent: false,
+        hasOwnedLikelyRoundTwoOpponent: false,
+        filteredRationale: [],
+        ownershipConflicts: [],
+        teamLookup: new Map(),
+        forcedPassConflictTeamId: null,
+        ownershipSearch: "",
+        onOwnershipSearchChange: () => undefined,
+        ownershipGroups: [],
+        soldFeed: [],
+        syndicateLookup: new Map([[mothership.id, mothership]])
+      })
+    );
+
+    expect(markup).toContain("Awaiting selection");
+    expect(markup).toContain("Waiting for selection");
+    expect(markup).toContain(
+      "The next active team will take over this board when the operator makes a selection."
+    );
+  });
 });
