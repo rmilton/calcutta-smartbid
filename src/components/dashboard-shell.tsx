@@ -518,15 +518,11 @@ export function DashboardShell({
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
-      : recommendation.fundingStatus === "above-plan"
-        ? "Pass"
       : formatCurrency(recommendation.targetBid)
     : "--";
   const maxBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
-      : recommendation.fundingStatus === "above-plan"
-        ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
@@ -575,10 +571,14 @@ export function DashboardShell({
         </div>
         <div className="session-hero__meta">
           <ThemeToggle />
-          <div className="status-pill">
-            {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
-          </div>
-          <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+          {!viewerMode ? (
+            <>
+              <div className="status-pill">
+                {focusOwnedTeams.length} {focusOwnedTeams.length === 1 ? "owned team" : "owned teams"}
+              </div>
+              <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
+            </>
+          ) : null}
           <div className="status-pill">
             {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
           </div>
@@ -619,6 +619,7 @@ export function DashboardShell({
           <ViewerAuctionWorkspace
             dashboard={dashboard}
             currentBid={currentBid}
+            breakEvenStage={breakEvenStage}
             nominatedMatchup={matchupSummary.nominatedMatchup}
             likelyRound2Matchup={matchupSummary.likelyRound2Matchup}
             hasOwnedRoundOneOpponent={matchupSummary.hasOwnedRoundOneOpponent}
