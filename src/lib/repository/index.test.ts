@@ -926,6 +926,63 @@ describe("repository purchases", () => {
     expect(reloadedDashboard.nominatedTeam).toBeNull();
   });
 
+  it("reconstructs grouped sold assets from representative team purchases on reload", async () => {
+    const { repository, session } = await createBaselineSession();
+    const buyer = session.syndicates.find((candidate) => candidate.name === "Riverboat");
+
+    expect(buyer).toBeDefined();
+
+    if (!buyer) {
+      throw new Error("Expected a buyer syndicate.");
+    }
+
+    await repository.recordPurchase(session.id, {
+      teamId: "bundle:east:13-16",
+      buyerSyndicateId: buyer.id,
+      price: 4200
+    });
+
+    const store = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      sessions: Array<Record<string, unknown>>;
+    };
+    const storedSession = store.sessions.find((candidate) => candidate.id === session.id);
+
+    expect(storedSession).toBeDefined();
+
+    if (!storedSession) {
+      throw new Error("Expected the stored session to exist.");
+    }
+
+    storedSession.purchases = ((storedSession.purchases as Array<Record<string, unknown>>) ?? []).map(
+      (purchase) => {
+        if (purchase.assetId !== "bundle:east:13-16") {
+          return purchase;
+        }
+
+        const { assetId, assetLabel, projectionIds, ...legacyPurchase } = purchase;
+        void assetId;
+        void assetLabel;
+        void projectionIds;
+        return legacyPurchase;
+      }
+    );
+    storedSession.liveState = {
+      ...(storedSession.liveState as Record<string, unknown>),
+      soldAssetIds: []
+    };
+
+    await fs.writeFile(storeFile, JSON.stringify(store, null, 2), "utf8");
+
+    const reloadedRepository = await loadRepository();
+    const reloadedDashboard = await reloadedRepository.getDashboard(session.id);
+
+    expect(reloadedDashboard.soldAssets.map((sale) => sale.asset.id)).toContain("bundle:east:13-16");
+    expect(reloadedDashboard.availableAssets.map((asset) => asset.id)).not.toContain(
+      "bundle:east:13-16"
+    );
+    expect(reloadedDashboard.session.liveState.soldAssetIds).toContain("bundle:east:13-16");
+  });
+
   it("rejects undoing an older purchase once a newer one exists", async () => {
     const { repository, session } = await createBaselineSession();
     const [firstTeam, secondTeam] = session.projections;

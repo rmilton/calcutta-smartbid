@@ -1,4 +1,11 @@
-import { AuctionAsset, AuctionAssetMember, BracketImportTeam, SessionBracketImport, TeamProjection } from "@/lib/types";
+import {
+  AuctionAsset,
+  AuctionAssetMember,
+  BracketImportTeam,
+  PurchaseRecord,
+  SessionBracketImport,
+  TeamProjection
+} from "@/lib/types";
 
 const BUNDLED_SEEDS = [13, 14, 15, 16];
 
@@ -101,6 +108,29 @@ export function buildAuctionAssets(args: {
   }
 
   return assets;
+}
+
+export function findAuctionAssetForPurchase(
+  assets: AuctionAsset[],
+  purchase: Pick<PurchaseRecord, "assetId" | "teamId" | "projectionIds">
+) {
+  if (purchase.assetId) {
+    const directMatch = assets.find((asset) => asset.id === purchase.assetId) ?? null;
+    if (directMatch) {
+      return directMatch;
+    }
+  }
+
+  const projectionIds =
+    purchase.projectionIds && purchase.projectionIds.length > 0
+      ? purchase.projectionIds
+      : [purchase.teamId];
+
+  return (
+    assets.find((asset) =>
+      projectionIds.some((projectionId) => asset.projectionIds.includes(projectionId))
+    ) ?? null
+  );
 }
 
 function buildSingleTeamAsset(team: BracketImportTeam, projection: TeamProjection | null): AuctionAsset {

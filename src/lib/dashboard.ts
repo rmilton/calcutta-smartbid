@@ -1,5 +1,5 @@
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
-import { buildAuctionAssets } from "@/lib/auction-assets";
+import { buildAuctionAssets, findAuctionAssetForPurchase } from "@/lib/auction-assets";
 import { buildBracketView, normalizeBracketState } from "@/lib/bracket";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
@@ -97,12 +97,17 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
       (projection) => projection.id === (nominatedAsset?.projectionIds[0] ?? publicSession.liveState.nominatedTeamId)
     ) ?? null;
   const soldAssetLookup = new Map(
-    publicSession.purchases.map((purchase) => [purchase.assetId ?? purchase.teamId, purchase])
+    publicSession.purchases
+      .map((purchase) => {
+        const asset = findAuctionAssetForPurchase(auctionAssets, purchase);
+        return asset ? ([asset.id, purchase] as const) : null;
+      })
+      .filter((entry): entry is readonly [string, (typeof publicSession.purchases)[number]] => entry !== null)
   );
   const availableAssets = auctionAssets.filter((asset) => !soldAssetLookup.has(asset.id));
   const soldAssets = publicSession.purchases
     .map((purchase) => {
-      const asset = auctionAssets.find((candidate) => candidate.id === (purchase.assetId ?? purchase.teamId));
+      const asset = findAuctionAssetForPurchase(auctionAssets, purchase);
       if (!asset) {
         return null;
       }

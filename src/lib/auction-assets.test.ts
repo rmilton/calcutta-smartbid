@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildAuctionAssets } from "@/lib/auction-assets";
+import { buildAuctionAssets, findAuctionAssetForPurchase } from "@/lib/auction-assets";
 import { parseSessionBracketImport } from "@/lib/session-imports";
-import { SessionBracketImport, TeamProjection } from "@/lib/types";
+import { PurchaseRecord, SessionBracketImport, TeamProjection } from "@/lib/types";
 
 function buildProjections() {
   const regions = ["East", "West", "South", "Midwest"];
@@ -156,6 +156,35 @@ describe("auction assets", () => {
           unresolved: true
         })
       ])
+    );
+  });
+
+  it("resolves grouped purchases from either stored asset ids or representative team ids", () => {
+    const assets = buildAuctionAssets({
+      baseProjections: buildProjections(),
+      bracketImport: buildResolvedBracketImport()
+    });
+    const purchaseFromAssetId = {
+      id: "purchase_asset_id",
+      sessionId: "session",
+      teamId: "bundle:east:13-16",
+      assetId: "bundle:east:13-16",
+      buyerSyndicateId: "buyer",
+      price: 2000,
+      createdAt: new Date().toISOString()
+    } satisfies PurchaseRecord;
+    const purchaseFromRepresentativeTeam = {
+      id: "purchase_representative_team",
+      sessionId: "session",
+      teamId: "east-13",
+      buyerSyndicateId: "buyer",
+      price: 2000,
+      createdAt: new Date().toISOString()
+    } satisfies PurchaseRecord;
+
+    expect(findAuctionAssetForPurchase(assets, purchaseFromAssetId)?.id).toBe("bundle:east:13-16");
+    expect(findAuctionAssetForPurchase(assets, purchaseFromRepresentativeTeam)?.id).toBe(
+      "bundle:east:13-16"
     );
   });
 });
