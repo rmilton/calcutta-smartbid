@@ -82,7 +82,14 @@ interface OperatorAuctionWorkspaceProps {
   focusFundingImpliedSharePrice: number | null;
 }
 
-const operatorNateSilverColumns = [
+type OperatorNateSilverColumn = {
+  key: "roundOf32" | "sweet16" | "elite8" | "finalFour" | "championshipGame" | "champion";
+  label: string;
+  payoutStage: Stage;
+  note?: string;
+};
+
+const operatorNateSilverColumns: readonly OperatorNateSilverColumn[] = [
   {
     key: "roundOf32",
     label: "Round of 32",
@@ -720,10 +727,7 @@ function NateSilverDecisionBoard({
   );
 }
 
-function getNateSilverProbability(
-  projection: NateSilverProjection | null,
-  key: (typeof operatorNateSilverColumns)[number]["key"]
-) {
+function getNateSilverProbability(projection: NateSilverProjection | null, key: OperatorNateSilverColumn["key"]) {
   if (!projection) {
     return null;
   }
