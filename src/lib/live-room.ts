@@ -1,4 +1,5 @@
 import {
+  AnalysisBudgetRow,
   AuctionDashboard,
   BracketGame,
   BracketGameTeam,
@@ -125,6 +126,34 @@ export function buildOperatorSyndicateHoldings(
           right.price - left.price || left.asset.label.localeCompare(right.asset.label)
       )
   }));
+}
+
+export function deriveProjectedFinalPot({
+  ledger,
+  availableAssets,
+  budgetRows,
+  liveAssetId,
+  liveBid
+}: {
+  ledger: Syndicate[];
+  availableAssets: AuctionDashboard["availableAssets"];
+  budgetRows: AnalysisBudgetRow[];
+  liveAssetId: string;
+  liveBid: number;
+}) {
+  const currentSpend = ledger.reduce((total, syndicate) => total + syndicate.spend, 0);
+  const budgetLookup = new Map(budgetRows.map((row) => [row.teamId, row]));
+  const projectedRemainingSpend = availableAssets.reduce((total, asset) => {
+    const estimatedClosePrice = asset.projectionIds.reduce(
+      (assetTotal, projectionId) => assetTotal + (budgetLookup.get(projectionId)?.targetBid ?? 0),
+      0
+    );
+    const liveBidFloor = asset.id === liveAssetId ? liveBid : 0;
+
+    return total + Math.max(liveBidFloor, estimatedClosePrice);
+  }, 0);
+
+  return currentSpend + projectedRemainingSpend;
 }
 
 export function buildViewerOwnershipGroups(

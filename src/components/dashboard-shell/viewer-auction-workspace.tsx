@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildOwnedAuctionCompleteAssets,
+  deriveProjectedFinalPot,
   findLeadingAuctionRegion,
   RoundMatchup,
   summarizeAuctionProgress,
@@ -95,6 +96,23 @@ export function ViewerAuctionWorkspace({
       auctionProgress.totalAuctionAssets,
       dashboard.focusSyndicate.id,
       dashboard.soldAssets
+    ]
+  );
+  const projectedFinalPot = useMemo(
+    () =>
+      deriveProjectedFinalPot({
+        ledger: dashboard.ledger ?? [],
+        availableAssets: dashboard.availableAssets ?? [],
+        budgetRows: dashboard.analysis?.budgetRows ?? [],
+        liveAssetId: nominatedAsset?.id ?? "",
+        liveBid: currentBid
+      }),
+    [
+      currentBid,
+      dashboard.analysis,
+      dashboard.availableAssets,
+      dashboard.ledger,
+      nominatedAsset?.id
     ]
   );
 
@@ -369,6 +387,7 @@ export function ViewerAuctionWorkspace({
                 currentBid={currentBid}
                 breakEvenStage={breakEvenStage}
                 payoutRules={dashboard.session.payoutRules}
+                projectedPot={projectedFinalPot}
               />
             )}
           </article>

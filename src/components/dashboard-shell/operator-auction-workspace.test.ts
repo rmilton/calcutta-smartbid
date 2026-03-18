@@ -250,7 +250,7 @@ describe("OperatorAuctionWorkspace", () => {
   it("renders Nate Silver round reach probabilities with payout-if-reached values", () => {
     globalThis.React = React;
 
-    const mothership = buildSyndicate("focus", "Mothership", "#111111", 4000, 6000);
+    const mothership = buildSyndicate("focus", "Mothership", "#111111", 212000, 220000);
     const nominatedTeam: TeamProjection = {
       id: "purdue",
       name: "Purdue",
@@ -298,8 +298,12 @@ describe("OperatorAuctionWorkspace", () => {
       unresolved: false
     } as const;
     const dashboard = buildDashboard({
+      availableAssets: [nominatedAsset],
       ledger: [mothership],
-      focusSyndicate: mothership
+      focusSyndicate: mothership,
+      analysis: {
+        budgetRows: []
+      } as AuctionDashboard["analysis"]
     });
 
     const markup = renderToStaticMarkup(
@@ -335,8 +339,8 @@ describe("OperatorAuctionWorkspace", () => {
         hasOwnedRoundOneOpponent: false,
         hasOwnedLikelyRoundTwoOpponent: false,
         breakEvenStage: "sweet16",
-        targetBidDisplay: "--",
-        maxBidDisplay: "--",
+        targetBidDisplay: "$2,783",
+        maxBidDisplay: "$3,647",
         filteredRationale: [],
         ownershipConflicts: [],
         teamLookup: new Map([["purdue", nominatedTeam]]),
@@ -356,7 +360,7 @@ describe("OperatorAuctionWorkspace", () => {
     );
 
     expect(markup).toContain("Nate Silver Path");
-    expect(markup).toContain("Round return odds against the projected pot");
+    expect(markup).toContain("Round return odds against the projected final pot");
     expect(markup).toContain("Payout if reached");
     expect(markup).not.toContain("Round of 64");
     expect(markup).toContain("Round of 32");
@@ -366,13 +370,19 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("74.9%");
     expect(markup).toContain("18.0%");
     expect(markup).toContain("4.1%");
+    expect(markup).toContain("Target bid");
+    expect(markup).toContain("$2,783");
+    expect(markup).toContain("Max bid");
+    expect(markup).toContain("$3,647");
     expect(markup).toContain("$2,200");
     expect(markup).toContain("$5,500");
     expect(markup).toContain("$11,000");
     expect(markup).toContain("$17,600");
     expect(markup).toContain("$26,400");
     expect(markup).toContain("$35,200");
-    expect(markup).toContain("Clears by Sweet 16");
+    expect(markup).toContain("Needs Elite 8");
+    expect((markup.match(/nate-silver-board__cell--needs-depth/g) ?? []).length).toBe(3);
+    expect((markup.match(/nate-silver-board__cell--clears-bid/g) ?? []).length).toBe(4);
     expect(markup).not.toContain("Value at odds");
   });
 
