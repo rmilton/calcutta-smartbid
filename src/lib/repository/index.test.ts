@@ -874,6 +874,34 @@ describe("repository authentication", () => {
     expect(dashboard.nominatedAsset).toBeNull();
     expect(dashboard.nominatedTeam).toBeNull();
   });
+
+  it("clears a previously selected asset when imports are rerun before any purchase", async () => {
+    const { repository, session } = await createBaselineSession();
+
+    const nominatedDashboard = await repository.updateLiveState(session.id, {
+      nominatedAssetId: "bundle:east:13-16"
+    });
+    expect(nominatedDashboard.session.liveState.nominatedAssetId).toBe("bundle:east:13-16");
+    expect(nominatedDashboard.session.liveState.nominatedTeamId).toBe("east-13");
+
+    const rerun = await repository.importSessionAnalysis(session.id, {
+      selection: {
+        mode: "upload",
+        sourceName: "Metrics Feed Refresh",
+        fileName: "analysis-refresh.csv",
+        csvContent: buildFullAnalysisCsv()
+      }
+    });
+
+    expect(rerun.session.liveState.nominatedAssetId).toBeNull();
+    expect(rerun.session.liveState.nominatedTeamId).toBeNull();
+
+    const reloadedDashboard = await repository.getDashboard(session.id);
+    expect(reloadedDashboard.session.liveState.nominatedAssetId).toBeNull();
+    expect(reloadedDashboard.session.liveState.nominatedTeamId).toBeNull();
+    expect(reloadedDashboard.nominatedAsset).toBeNull();
+    expect(reloadedDashboard.nominatedTeam).toBeNull();
+  });
   it("authenticates session members regardless of shared code casing", async () => {
     const repository = await loadRepository();
     const operator = await repository.createPlatformUser({
