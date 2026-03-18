@@ -79,6 +79,11 @@ export function buildBidRecommendation(
   } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
     stoplight = "caution";
   }
+  if (stretchBudgetHeadroom < 0) {
+    stoplight = "pass";
+  } else if (baseBudgetHeadroom < 0 && stoplight === "buy") {
+    stoplight = "caution";
+  }
   if (forcedPassConflict) {
     stoplight = "pass";
   }

@@ -213,6 +213,118 @@ describe("recommendations", () => {
     expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
   });
 
+  it("keeps bid bands value-led even when little base bankroll remains", () => {
+    const session = buildSession();
+    session.liveState.currentBid = 0;
+    session.syndicates[0] = {
+      ...session.syndicates[0],
+      spend: 53000,
+      remainingBankroll: 2000,
+      estimatedRemainingBudget: 2000
+    };
+
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
+
+    expect(recommendation).not.toBeNull();
+    expect(recommendation?.baseBudgetHeadroom).toBe(2000);
+    expect(recommendation?.targetBid).toBeGreaterThan(recommendation?.baseBudgetHeadroom ?? 0);
+    expect(recommendation?.maxBid).toBeGreaterThan(recommendation?.baseBudgetHeadroom ?? 0);
+  });
+
+  it("downgrades a buy signal to caution once bidding moves beyond base funding", () => {
+    const baseSession = buildSession();
+    const session = {
+      ...baseSession,
+      liveState: {
+        ...baseSession.liveState,
+        currentBid: 45000
+      }
+    };
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    if (!team || !session.simulationSnapshot) {
+      throw new Error("Expected mock team and simulation snapshot");
+    }
+
+    session.simulationSnapshot.teamResults[team.id] = {
+      ...session.simulationSnapshot.teamResults[team.id],
+      expectedGrossPayout: 90000,
+      confidenceBand: [70000, 110000]
+    };
+
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(
+      session,
+      team,
+      focus,
+      {
+        ...analysis,
+        budgetRows: analysis.budgetRows.map((row) =>
+          row.teamId === team.id
+            ? {
+                ...row,
+                targetBid: 60000,
+                maxBid: 68000
+              }
+            : row
+        )
+      }
+    );
+
+    expect(recommendation?.fundingStatus).toBe("stretch");
+    expect(recommendation?.baseBudgetHeadroom).toBeLessThan(0);
+    expect(recommendation?.stretchBudgetHeadroom).toBeGreaterThan(0);
+    expect(recommendation?.stoplight).toBe("caution");
+  });
+
+  it("forces a pass once bidding moves beyond stretch funding", () => {
+    const baseSession = buildSession();
+    const session = {
+      ...baseSession,
+      liveState: {
+        ...baseSession.liveState,
+        currentBid: 56000
+      }
+    };
+    const focus = session.syndicates[0];
+    const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
+    if (!team || !session.simulationSnapshot) {
+      throw new Error("Expected mock team and simulation snapshot");
+    }
+
+    session.simulationSnapshot.teamResults[team.id] = {
+      ...session.simulationSnapshot.teamResults[team.id],
+      expectedGrossPayout: 100000,
+      confidenceBand: [85000, 120000]
+    };
+
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(
+      session,
+      team,
+      focus,
+      {
+        ...analysis,
+        budgetRows: analysis.budgetRows.map((row) =>
+          row.teamId === team.id
+            ? {
+                ...row,
+                targetBid: 70000,
+                maxBid: 82000
+              }
+            : row
+        )
+      }
+    );
+
+    expect(recommendation?.fundingStatus).toBe("above-plan");
+    expect(recommendation?.stretchBudgetHeadroom).toBeLessThan(0);
+    expect(recommendation?.stoplight).toBe("pass");
+  });
+
   it("forces a pass when an owned Round of 64 collision is guaranteed", () => {
     const session = buildSession();
     const focus = session.syndicates[0];

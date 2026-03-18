@@ -178,4 +178,23 @@ describe("session analysis classifications", () => {
       alabamaSimulation?.expectedGrossPayout ?? 0
     );
   });
+
+  it("keeps value-led bid guidance from collapsing to remaining bankroll late in the auction", () => {
+    const session = buildSession();
+    session.syndicates[0] = {
+      ...session.syndicates[0],
+      spend: 53000,
+      remainingBankroll: 2000,
+      estimatedRemainingBudget: 2000
+    };
+
+    const focus = session.syndicates[0];
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const alabamaBudget = analysis.budgetRows.find((row) => row.teamId === "alabama");
+
+    expect(analysis.remainingBankroll).toBe(2000);
+    expect(alabamaBudget).toBeDefined();
+    expect(alabamaBudget?.targetBid).toBeGreaterThan(analysis.remainingBankroll);
+    expect(alabamaBudget?.maxBid).toBeGreaterThan(analysis.remainingBankroll);
+  });
 });
