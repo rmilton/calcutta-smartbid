@@ -26,6 +26,7 @@ import {
   encryptSharedCode,
   decryptSharedCode,
   hashSharedCode,
+  normalizeSharedCode,
   verifySharedCode
 } from "@/lib/session-security";
 import {
@@ -3203,12 +3204,12 @@ function ensureUniqueSessionSharedCode(
   sharedAccessCode: string,
   excludeSessionId?: string
 ) {
-  const normalized = sharedAccessCode.trim();
+  const normalized = normalizeSharedCode(sharedAccessCode);
   if (
     sessions.some(
       (candidate) =>
         candidate.id !== excludeSessionId &&
-        getStoredSharedAccessCode(candidate)?.trim() === normalized
+        normalizeSharedCode(getStoredSharedAccessCode(candidate) ?? "") === normalized
     )
   ) {
     throw new Error(
@@ -3230,10 +3231,10 @@ function getStoredSharedAccessCode(session: StoredAuctionSession) {
 }
 
 function doesSharedCodeMatch(session: StoredAuctionSession, sharedCode: string) {
-  const normalized = sharedCode.trim();
+  const normalized = normalizeSharedCode(sharedCode);
   const plaintext = getStoredSharedAccessCode(session);
   if (plaintext) {
-    return plaintext === normalized;
+    return normalizeSharedCode(plaintext) === normalized;
   }
 
   return (
