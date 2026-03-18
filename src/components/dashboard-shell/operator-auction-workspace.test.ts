@@ -13,7 +13,7 @@ vi.mock("@/components/team-logo", () => ({
 }));
 
 import { OperatorAuctionWorkspace } from "@/components/dashboard-shell/operator-auction-workspace";
-import type { AuctionDashboard, Syndicate, TeamProjection } from "@/lib/types";
+import type { AuctionAsset, AuctionDashboard, SoldAssetSummary, Syndicate, TeamProjection } from "@/lib/types";
 
 function buildSyndicate(
   id: string,
@@ -69,6 +69,48 @@ function buildDashboard(overrides?: Partial<AuctionDashboard>): AuctionDashboard
     storageBackend: "local",
     ...overrides
   } as unknown as AuctionDashboard;
+}
+
+function buildTeam(id: string, name: string, region: string, seed: number): TeamProjection {
+  return {
+    id,
+    name,
+    shortName: name,
+    region,
+    seed,
+    rating: 90,
+    offense: 118,
+    defense: 96,
+    tempo: 67,
+    source: "test"
+  };
+}
+
+function buildAsset(team: TeamProjection): AuctionAsset {
+  return {
+    id: `asset_${team.id}`,
+    label: team.name,
+    type: "single_team",
+    region: team.region,
+    seed: team.seed,
+    seedRange: null,
+    memberTeamIds: [team.id],
+    projectionIds: [team.id],
+    members: [
+      {
+        id: team.id,
+        type: "team",
+        label: team.name,
+        region: team.region,
+        seed: team.seed,
+        regionSlot: `${team.region}-${team.seed}`,
+        teamIds: [team.id],
+        projectionIds: [team.id],
+        unresolved: false
+      }
+    ],
+    unresolved: false
+  };
 }
 
 describe("OperatorAuctionWorkspace", () => {
@@ -276,5 +318,210 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("$35,200");
     expect(markup).toContain("Clears by Sweet 16");
     expect(markup).not.toContain("Value at odds");
+  });
+
+  it("switches to an auction-complete board with portfolio recap when every asset is sold", () => {
+    globalThis.React = React;
+
+    const mothership = buildSyndicate("focus", "Mothership", "#111111", 14000, 16000);
+    const riverboat = buildSyndicate("other", "Riverboat", "#222222", 11000, 12000);
+    const duke = buildTeam("duke", "Duke", "East", 1);
+    const houston = buildTeam("houston", "Houston", "Midwest", 2);
+    const auburn = buildTeam("auburn", "Auburn", "South", 1);
+    const dukeAsset = buildAsset(duke);
+    const houstonAsset = buildAsset(houston);
+    const auburnAsset = buildAsset(auburn);
+    const soldAssets: SoldAssetSummary[] = [
+      {
+        asset: dukeAsset,
+        price: 9200,
+        buyerSyndicateId: mothership.id
+      },
+      {
+        asset: houstonAsset,
+        price: 4800,
+        buyerSyndicateId: mothership.id
+      },
+      {
+        asset: auburnAsset,
+        price: 11000,
+        buyerSyndicateId: riverboat.id
+      }
+    ];
+    const dashboard = buildDashboard({
+      session: {
+        payoutRules: {
+          roundOf64: 1,
+          roundOf32: 1.5,
+          sweet16: 2.5,
+          elite8: 3,
+          finalFour: 4,
+          champion: 4,
+          projectedPot: 220000
+        },
+        auctionAssets: [dukeAsset, houstonAsset, auburnAsset],
+        simulationSnapshot: {
+          id: "sim-1",
+          sessionId: "session-1",
+          provider: "test",
+          iterations: 1000,
+          generatedAt: "2026-03-18T00:00:00.000Z",
+          teamResults: {
+            [duke.id]: {
+              teamId: duke.id,
+              roundProbabilities: {
+                roundOf64: 1,
+                roundOf32: 0.95,
+                sweet16: 0.78,
+                elite8: 0.5,
+                finalFour: 0.32,
+                champion: 0.16
+              },
+              expectedGrossPayout: 14000,
+              confidenceBand: [5000, 25000],
+              likelyConflicts: []
+            },
+            [houston.id]: {
+              teamId: houston.id,
+              roundProbabilities: {
+                roundOf64: 1,
+                roundOf32: 0.88,
+                sweet16: 0.63,
+                elite8: 0.35,
+                finalFour: 0.18,
+                champion: 0.08
+              },
+              expectedGrossPayout: 9800,
+              confidenceBand: [3000, 17000],
+              likelyConflicts: []
+            },
+            [auburn.id]: {
+              teamId: auburn.id,
+              roundProbabilities: {
+                roundOf64: 1,
+                roundOf32: 0.91,
+                sweet16: 0.68,
+                elite8: 0.4,
+                finalFour: 0.21,
+                champion: 0.1
+              },
+              expectedGrossPayout: 11200,
+              confidenceBand: [3500, 18000],
+              likelyConflicts: []
+            }
+          },
+          matchupMatrix: {}
+        }
+      } as AuctionDashboard["session"],
+      ledger: [mothership, riverboat],
+      focusSyndicate: {
+        ...mothership,
+        ownedTeamIds: [duke.id, houston.id]
+      },
+      soldAssets,
+      recentSales: soldAssets,
+      availableAssets: [],
+      soldTeams: [
+        { team: duke, price: 9200, buyerSyndicateId: mothership.id },
+        { team: houston, price: 4800, buyerSyndicateId: mothership.id },
+        { team: auburn, price: 11000, buyerSyndicateId: riverboat.id }
+      ],
+      availableTeams: [],
+      nominatedAsset: null,
+      nominatedTeam: null
+    });
+
+    const teamLookup = new Map([
+      [duke.id, duke],
+      [houston.id, houston],
+      [auburn.id, auburn]
+    ]);
+    const syndicateLookup = new Map([
+      [mothership.id, mothership],
+      [riverboat.id, riverboat]
+    ]);
+
+    const markup = renderToStaticMarkup(
+      createElement(OperatorAuctionWorkspace, {
+        dashboard,
+        recommendation: null,
+        notice: null,
+        error: null,
+        selectedAssetId: "",
+        bidInputValue: "",
+        parsedBidInputValue: 0,
+        buyerId: mothership.id,
+        currentBid: 0,
+        isUndoingPurchase: false,
+        teamSelectRef: { current: null },
+        bidInputRef: { current: null },
+        onAssetChange: () => undefined,
+        onBidInputChange: () => undefined,
+        onBidBlur: () => undefined,
+        onBidKeyDown: () => undefined,
+        onBuyerChange: () => undefined,
+        onUndoPurchase: () => undefined,
+        onRecordPurchase: () => undefined,
+        lastPurchaseTeamName: null,
+        lastPurchaseBuyerName: null,
+        signalLabel: null,
+        nominatedAsset: null,
+        nominatedTeam: null,
+        nominatedTeamClassification: null,
+        nominatedTeamNote: null,
+        nominatedMatchup: null,
+        likelyRound2Matchup: null,
+        hasOwnedRoundOneOpponent: false,
+        hasOwnedLikelyRoundTwoOpponent: false,
+        callHeadline: "Waiting on nomination",
+        callSupportText: "Set an active team to unlock guidance.",
+        callDetailText: null,
+        breakEvenStage: null,
+        targetBidDisplay: "--",
+        maxBidDisplay: "--",
+        filteredRationale: [],
+        ownershipConflicts: [],
+        teamLookup,
+        forcedPassConflictTeamId: null,
+        projectedBaseRoom: 0,
+        projectedStretchRoom: 0,
+        titleOdds: 0,
+        operatorSyndicateHoldings: [
+          {
+            syndicate: {
+              ...mothership,
+              ownedTeamIds: [duke.id, houston.id]
+            },
+            sales: soldAssets.filter((sale) => sale.buyerSyndicateId === mothership.id)
+          },
+          {
+            syndicate: {
+              ...riverboat,
+              ownedTeamIds: [auburn.id]
+            },
+            sales: soldAssets.filter((sale) => sale.buyerSyndicateId === riverboat.id)
+          }
+        ],
+        expandedSyndicateIds: [],
+        onToggleSyndicate: () => undefined,
+        onExpandAll: () => undefined,
+        onCollapseAll: () => undefined,
+        recentSales: soldAssets,
+        syndicateLookup,
+        focusFundingImpliedSharePrice: null
+      })
+    );
+
+    expect(markup).toContain("Auction Complete");
+    expect(markup).toContain("Books closed");
+    expect(markup).toContain("Portfolio locked in");
+    expect(markup).toContain("Best bargain");
+    expect(markup).toContain("Rooting Guide");
+    expect(markup).toContain("Final pot");
+    expect(markup).toContain("$25,000");
+    expect(markup).toContain("2/3");
+    expect(markup).toContain("Duke");
+    expect(markup).toContain("Houston");
+    expect(markup).not.toContain("Waiting for selection");
   });
 });

@@ -444,4 +444,100 @@ describe("ViewerAuctionWorkspace", () => {
     expect(markup).toContain("$35,200");
     expect(markup).toContain("Clears by Sweet 16");
   });
+
+  it("renders an auction-complete viewer board without cost or equity summaries", () => {
+    const duke = buildTeam("team-duke", "Duke", 1);
+    const gonzaga = buildTeam("team-gonzaga", "Gonzaga", 4);
+    const auburn = buildTeam("team-auburn", "Auburn", 2);
+    const dukeAsset = buildAsset("asset-duke", "Duke", duke.id, duke.seed);
+    const gonzagaAsset = buildAsset("asset-gonzaga", "Gonzaga", gonzaga.id, gonzaga.seed);
+    const auburnAsset = buildAsset("asset-auburn", "Auburn", auburn.id, auburn.seed);
+    const mothership = buildSyndicate("focus", "Mothership", "#111111");
+    const riverboat = buildSyndicate("other", "Riverboat", "#222222");
+    const soldAssets: SoldAssetSummary[] = [
+      {
+        asset: dukeAsset,
+        price: 9200,
+        buyerSyndicateId: mothership.id
+      },
+      {
+        asset: gonzagaAsset,
+        price: 4800,
+        buyerSyndicateId: mothership.id
+      },
+      {
+        asset: auburnAsset,
+        price: 11000,
+        buyerSyndicateId: riverboat.id
+      }
+    ];
+    const dashboard = {
+      session: {
+        payoutRules,
+        auctionAssets: [dukeAsset, gonzagaAsset, auburnAsset],
+        teamClassifications: {},
+        teamNotes: {}
+      },
+      nominatedAsset: null,
+      nominatedTeam: null,
+      soldAssets,
+      focusSyndicate: mothership,
+      ledger: [mothership, riverboat]
+    } as unknown as AuctionDashboard;
+
+    const markup = renderToStaticMarkup(
+      createElement(ViewerAuctionWorkspace, {
+        dashboard,
+        currentBid: 0,
+        breakEvenStage: null,
+        nominatedMatchup: null,
+        likelyRound2Matchup: null,
+        hasOwnedRoundOneOpponent: false,
+        hasOwnedLikelyRoundTwoOpponent: false,
+        filteredRationale: [],
+        ownershipConflicts: [],
+        teamLookup: new Map([
+          [duke.id, duke],
+          [gonzaga.id, gonzaga],
+          [auburn.id, auburn]
+        ]),
+        forcedPassConflictTeamId: null,
+        ownershipSearch: "",
+        onOwnershipSearchChange: () => undefined,
+        ownershipGroups: [
+          {
+            syndicate: mothership,
+            sales: soldAssets.filter((sale) => sale.buyerSyndicateId === mothership.id),
+            highlight: true
+          },
+          {
+            syndicate: riverboat,
+            sales: soldAssets.filter((sale) => sale.buyerSyndicateId === riverboat.id),
+            highlight: false
+          }
+        ],
+        soldFeed: soldAssets,
+        syndicateLookup: new Map([
+          [mothership.id, mothership],
+          [riverboat.id, riverboat]
+        ])
+      })
+    );
+
+    expect(markup).toContain("Auction Complete");
+    expect(markup).toContain("Books closed");
+    expect(markup).toContain("Team Highlights");
+    expect(markup).toContain("Rooting Guide");
+    expect(markup).toContain("Assets sold");
+    expect(markup).toContain("3/3");
+    expect(markup).toContain("Lead sweat");
+    expect(markup).toContain("Sleeper watch");
+    expect(markup).toContain("Duke");
+    expect(markup).toContain("Gonzaga");
+    expect(markup).not.toContain("Current bid");
+    expect(markup).not.toContain("Final pot");
+    expect(markup).not.toContain("Title equity");
+    expect(markup).not.toContain("Expected gross");
+    expect(markup).not.toContain("$25,000");
+  });
 });

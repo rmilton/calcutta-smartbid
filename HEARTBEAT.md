@@ -40,8 +40,10 @@ As of `2026-03-15`:
   - undo for the most recent purchase
   - in-room `Bracket` workspace with ownership markers and winner advancement
   - in-room `Analysis` workspace backed by the same recommendation payload as `Auction`
+  - analysis team selector now mirrors the active auction team by default while remaining locally overridable inside `Analysis`
   - consolidated `Auction` workspace with live decision board, syndicate board, Mothership position, and decision context
   - viewer `Auction` now uses the same live decision board, call, rationale, ownership-conflict, recent-sales, and ownership-ledger structure as the operator board without exposing controls
+  - operator and viewer `Auction` boards now flip into an `Auction Complete` finish state once every asset is sold
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
   - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
   - extracted live-room controller and dedicated operator/viewer auction workspace components
@@ -95,6 +97,7 @@ Current product surfaces and their roles:
 - viewer mode is read-only, but it does display the live current bid and the same Mothership decision context as the operator surface
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
+- once the room is fully sold, `Auction` should present a closed-books finish state rather than an awaiting-selection idle state
 - Mothership is the fixed recommendation lens for every session
 - Mothership purchases are the owned-position truth for live analysis and bid planning
 - `Auction` and `Analysis` must remain consistent because they share one analysis snapshot
@@ -162,6 +165,7 @@ Key files:
 - `13-16` regional packages are sold as one grouped team in the live room
 - unresolved play-ins are preserved in bracket import and exposed as grouped teams where appropriate
 - analysis now surfaces grouped-team package context alongside team-level scouting detail
+- `Analysis` now opens with a searchable team picker above the hero and follows the active auction team until the operator inspects another team locally
 - admin pages no longer rely on the legacy panel shell for primary layouts
 - runtime config errors no longer masquerade as missing-session 404s
 - production deployments are guarded from running on local storage
@@ -178,6 +182,7 @@ Key files:
 - operator and viewer `Auction` surfaces now live in dedicated workspace components under `src/components/dashboard-shell/`
 - shared matchup and live-room selector helpers now live in `src/lib/live-room.ts` with focused unit coverage
 - after recording a purchase, the live board now stays in an awaiting-selection state until the operator explicitly chooses the next team
+- when the final asset is sold, the live board now swaps to an `Auction Complete` recap for both operator and viewer surfaces
 - likely bidders were removed
 - `Nominated team` became `Active Team for Bidding`
 - the team selector is now a single searchable control
@@ -218,14 +223,18 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 14. Change current bid and confirm it persists.
 15. Record a purchase with a valid bid and confirm the board returns to an awaiting-selection state.
 16. Use `Undo last purchase` and confirm the team is unsold again, restored as the active team, and the bid returns.
-17. Try recording a purchase with `0` and confirm the friendly validation error.
-18. Refresh and confirm persistence.
-19. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
-20. Log in as a viewer and confirm the room is synchronized, bracket is viewable, and edits remain blocked.
-21. Archive a session and confirm it is hidden by default in the admin sessions list.
-22. Show archived sessions and confirm the archived session appears with archived state.
-23. Confirm permanent delete is blocked until the exact session name is entered.
-24. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
+17. Open `Analysis` and confirm the active auction team is selected by default.
+18. Change teams inside `Analysis` and confirm the auction active team does not change.
+19. Sell the final remaining asset and confirm the operator board flips to `Auction Complete`.
+20. Log in as a viewer after the room is sold out and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+21. Try recording a purchase with `0` and confirm the friendly validation error.
+22. Refresh and confirm persistence.
+23. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
+24. Log in as a viewer and confirm the room is synchronized, bracket is viewable, and edits remain blocked.
+25. Archive a session and confirm it is hidden by default in the admin sessions list.
+26. Show archived sessions and confirm the archived session appears with archived state.
+27. Confirm permanent delete is blocked until the exact session name is entered.
+28. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
 
 ## Operational Notes
 

@@ -111,15 +111,18 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/components/dashboard-shell/use-live-room-controller.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts)
   - live-room local state and mutation orchestration
   - keyboard shortcuts, bid persistence, purchase actions, bracket saves, and analysis annotations
+  - one-way sync from the auction active team into the analysis team selector
   - sync guards so operator local state is not clobbered during polling/realtime refresh
 - [src/components/dashboard-shell/operator-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx)
   - operator-only `Auction` workspace
   - live controls, decision board, decision context, model drivers, recent sales, and expandable syndicate holdings
+  - auction-complete recap state once every asset is sold
 - [src/components/dashboard-shell/viewer-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx)
   - viewer-only `Auction` workspace
   - read-only decision board, ownership ledger, sold feed, and synchronized Mothership guidance
+  - team-focused auction-complete state without spend/equity recap
 - [src/components/dashboard-shell/shared.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx)
-  - shared live-room presentation primitives and asset-formatting helpers
+  - shared live-room presentation primitives, asset-formatting helpers, and shared auction-complete row rendering
 - [src/components/session-bracket.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-bracket.tsx)
   - full-field tournament bracket surface
   - owned-team syndicate markers
@@ -192,10 +195,12 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - Session purchases are the owned-position truth for live recommendation math.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - `Auction` and `Analysis` must stay consistent for the same selected team because they read from the same analysis payload.
+- `Analysis` should follow the active auction team by default, but local analysis exploration must not overwrite the auction active team.
 - The UI still says `team`, but the live selection model can represent grouped auction teams such as play-ins and regional `13-16` packages.
 - Bracket structure and team analysis are separate session inputs and should not be collapsed back into one import flow.
 - `Bracket` must stay consistent with session purchases and imported field structure.
 - The active-team control must stay fast and low-friction under live auction use.
+- Once every auction asset is sold, the live decision boards should move into an explicit auction-complete state instead of a waiting-for-selection idle state.
 - The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw schema errors should not leak to the operator if a clean domain message can be returned.
 
@@ -239,15 +244,19 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 9. Open `Bracket` and confirm the full field renders for a bracket-ready session.
 10. Change current bid and confirm it persists.
 11. Open `Analysis` and confirm the selected team shows the same `target bid` and `max bid` as `Auction`.
-12. Confirm grouped teams show their package context in `Analysis`.
-13. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
-14. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
-15. After recording a purchase, confirm the board waits for the operator's next selection instead of auto-selecting the next team.
-16. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
-17. Advance a bracket winner and confirm the change persists after refresh.
-18. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
-19. Archive a session and confirm it is hidden until archived sessions are shown.
-20. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
+12. Confirm `Analysis` opens on the active auction team by default.
+13. Change teams inside `Analysis` and confirm the auction active team does not change.
+14. Confirm grouped teams show their package context in `Analysis`.
+15. Change session analysis settings and confirm both `Auction` and `Analysis` update after refresh.
+16. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
+17. After recording a purchase, confirm the board waits for the operator's next selection instead of auto-selecting the next team.
+18. Sell the final remaining asset and confirm the operator board flips to `Auction Complete`.
+19. Log in as a viewer after sellout and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+20. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
+21. Advance a bracket winner and confirm the change persists after refresh.
+22. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
+23. Archive a session and confirm it is hidden until archived sessions are shown.
+24. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
 
 ## Test Commands
 
