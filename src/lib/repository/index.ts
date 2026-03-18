@@ -26,6 +26,7 @@ import {
   encryptSharedCode,
   decryptSharedCode,
   hashSharedCode,
+  normalizeSharedCode,
   verifySharedCode
 } from "@/lib/session-security";
 import {
@@ -3230,10 +3231,10 @@ function getStoredSharedAccessCode(session: StoredAuctionSession) {
 }
 
 function doesSharedCodeMatch(session: StoredAuctionSession, sharedCode: string) {
-  const normalized = sharedCode.trim();
+  const normalized = normalizeSharedCode(sharedCode);
   const plaintext = getStoredSharedAccessCode(session);
   if (plaintext) {
-    return plaintext === normalized;
+    return normalizeSharedCode(plaintext) === normalized;
   }
 
   return (

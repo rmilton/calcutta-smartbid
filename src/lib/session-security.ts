@@ -8,6 +8,10 @@ import {
   timingSafeEqual
 } from "node:crypto";
 
+export function normalizeSharedCode(sharedCode: string) {
+  return sharedCode.trim().toLowerCase();
+}
+
 function getSharedCodeEncryptionKey() {
   const secret =
     process.env.SHARED_CODE_ENCRYPTION_SECRET ??
@@ -20,13 +24,13 @@ function getSharedCodeEncryptionKey() {
 
 export function createSharedCodeLookup(sharedCode: string) {
   return createHmac("sha256", "calcutta-shared-code-lookup")
-    .update(sharedCode.trim().toLowerCase())
+    .update(normalizeSharedCode(sharedCode))
     .digest("hex");
 }
 
 export function hashSharedCode(sharedCode: string) {
   const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(sharedCode.trim(), salt, 64).toString("hex");
+  const hash = scryptSync(normalizeSharedCode(sharedCode), salt, 64).toString("hex");
   return `${salt}:${hash}`;
 }
 
@@ -36,7 +40,7 @@ export function verifySharedCode(sharedCode: string, storedHash: string) {
     return false;
   }
 
-  const hash = scryptSync(sharedCode.trim(), salt, 64).toString("hex");
+  const hash = scryptSync(normalizeSharedCode(sharedCode), salt, 64).toString("hex");
   return timingSafeEqual(Buffer.from(hash), Buffer.from(stored));
 }
 

@@ -843,6 +843,67 @@ describe("repository funding model", () => {
   });
 });
 
+describe("repository authentication", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-auth-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("authenticates session members regardless of shared code casing", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const viewer = await repository.createPlatformUser({
+      name: "Viewer",
+      email: "viewer@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    const session = await repository.createSession({
+      name: "Auth Test",
+      sharedAccessCode: "march18",
+      accessAssignments: [
+        { platformUserId: operator.id, role: "admin" },
+        { platformUserId: viewer.id, role: "viewer" }
+      ],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 100000
+      },
+      analysisSettings: {},
+      simulationIterations: 1000
+    });
+
+    const result = await repository.authenticateMember("viewer@example.com", "March18");
+
+    expect(result.sessionId).toBe(session.id);
+    expect(result.member.email).toBe("viewer@example.com");
+    expect(result.member.role).toBe("viewer");
+  });
+});
+
 describe("repository purchases", () => {
   beforeEach(async () => {
     storeFile = path.join(
