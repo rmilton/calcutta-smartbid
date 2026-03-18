@@ -62,13 +62,17 @@ export function buildSessionAnalysisSnapshot(
               Math.min(expectedGrossPayout * 0.62, confidenceCeiling * 0.76)
             )
           : legacyMaxBid;
+      // Keep pricing anchored to simulated room value; funding headroom is shown separately
+      // and applied later as a recommendation signal instead of collapsing the bid bands.
       const targetBid = roundCurrency(
-        Math.min(investableCash, valueAnchoredTargetBase * convictionTilt)
+        expectedGrossPayout > 0
+          ? Math.min(expectedGrossPayout, valueAnchoredTargetBase * convictionTilt)
+          : legacyTargetBid
       );
       const maxBid = roundCurrency(
         Math.max(
           targetBid,
-          Math.min(stretchCash, valueAnchoredMaxBase * convictionTilt)
+          expectedGrossPayout > 0 ? valueAnchoredMaxBase * convictionTilt : legacyMaxBid
         )
       );
       const openingBid = roundCurrency(

@@ -528,6 +528,8 @@ export function DashboardShell({
         ? "Model supports buying here"
         : recommendation.stoplight === "caution"
           ? "Model is getting cautious here"
+          : recommendation.fundingStatus === "above-plan"
+            ? "Funding plan is already exceeded"
           : "Model does not support chasing here"
     : "The live room stays focused on the current selection and bankroll position.";
   const callDetailText = recommendation?.forcedPassConflictTeamId
@@ -543,6 +545,8 @@ export function DashboardShell({
           ? topOwnershipConflict && topOwnershipConflict.probability >= 0.05
             ? `This price is near the model's ceiling, and the main ownership collision risk arrives in the ${titleCaseStage(topOwnershipConflict.earliestRound)}.`
             : "The live price is nearing the model's ceiling, so upside is starting to compress."
+          : recommendation.fundingStatus === "above-plan"
+            ? "The current bid already pushes beyond Mothership's stretch funding plan, so the board should pass here."
           : topOwnershipConflict && topOwnershipConflict.probability >= 0.05
             ? `The price is above the model's comfort range before the ${titleCaseStage(topOwnershipConflict.earliestRound)} ownership risk is even priced in.`
             : "The live price is above the model's comfort range for this team."
@@ -554,16 +558,22 @@ export function DashboardShell({
         ? `Bid through ${formatCurrency(recommendation.targetBid)}`
         : recommendation.stoplight === "caution"
           ? `Hold the line at ${formatCurrency(recommendation.maxBid)}`
+          : recommendation.fundingStatus === "above-plan"
+            ? "Pass now"
           : `Pass above ${formatCurrency(recommendation.maxBid)}`
     : "Pick a team to set the board";
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
+      : recommendation.fundingStatus === "above-plan"
+        ? "Pass"
       : formatCurrency(recommendation.targetBid)
     : "--";
   const maxBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
       ? "Pass"
+      : recommendation.fundingStatus === "above-plan"
+        ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
