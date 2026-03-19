@@ -49,6 +49,7 @@ export interface PayoutRules {
 }
 
 export type AnalysisSettings = Record<string, never>;
+export type DashboardAudience = "operator" | "viewer";
 
 export interface MothershipFundingModel {
   targetSharePrice: number;
@@ -386,6 +387,19 @@ export interface BracketGame {
   winnerTeamId: string | null;
 }
 
+export interface RoundMatchup {
+  opponent: BracketGameTeam;
+  game?: BracketGame;
+  probability?: number;
+}
+
+export interface AuctionMatchupSummary {
+  nominatedMatchup: RoundMatchup | null;
+  likelyRound2Matchup: RoundMatchup | null;
+  hasOwnedRoundOneOpponent: boolean;
+  hasOwnedLikelyRoundTwoOpponent: boolean;
+}
+
 export interface BracketRound {
   key: BracketRoundKey;
   label: string;
@@ -617,6 +631,43 @@ export interface AuctionDashboard {
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
 }
+
+export interface ViewerAuctionDetails {
+  projectedFinalPot: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
+  filteredRationale: string[];
+  ownershipConflicts: MatchupConflict[];
+  forcedPassConflictTeamId: string | null;
+  matchupSummary: AuctionMatchupSummary;
+  nominatedTeamClassification: TeamClassificationValue | null;
+  nominatedTeamNote: string | null;
+}
+
+export interface ViewerDashboardSession {
+  id: string;
+  name: string;
+  payoutRules: PayoutRules;
+  projections: TeamProjection[];
+  teamClassifications: Record<string, TeamClassificationTag>;
+  teamNotes: Record<string, TeamNoteTag>;
+  auctionAssets?: AuctionAsset[];
+  liveState: TeamMarketState;
+}
+
+export interface ViewerDashboard {
+  session: ViewerDashboardSession;
+  focusSyndicate: Syndicate;
+  nominatedAsset: AuctionAsset | null;
+  nominatedTeam: TeamProjection | null;
+  availableAssets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
+  ledger: Syndicate[];
+  bracket: BracketViewModel;
+  viewerAuction: ViewerAuctionDetails;
+  storageBackend: StorageBackend;
+}
+
+export type LiveRoomDashboard = AuctionDashboard | ViewerDashboard;
 
 export interface SessionImportResult {
   config: SessionAdminConfig;

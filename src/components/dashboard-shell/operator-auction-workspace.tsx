@@ -4,7 +4,6 @@ import {
   buildOwnedAuctionCompleteAssets,
   deriveProjectedFinalPot,
   findLeadingAuctionRegion,
-  RoundMatchup,
   summarizeAuctionProgress
 } from "@/lib/live-room";
 import {
@@ -12,6 +11,7 @@ import {
   AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
+  RoundMatchup,
   SoldAssetSummary,
   Stage,
   Syndicate,
@@ -28,8 +28,7 @@ import {
   formatAssetMembersCompact,
   formatAssetMembers,
   formatAssetSeed,
-  formatAssetSubtitle,
-  formatBreakEvenReachRound
+  formatAssetSubtitle
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";

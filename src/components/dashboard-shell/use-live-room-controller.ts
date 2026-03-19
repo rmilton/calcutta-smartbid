@@ -4,19 +4,28 @@ import type { FocusEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { formatBidInputText, formatBidInputValue, parseBidInputValue } from "@/lib/bid-input";
 import { useSessionDashboard } from "@/lib/hooks/use-session-dashboard";
-import { AuctionDashboard, TeamClassificationValue } from "@/lib/types";
+import {
+  AuctionDashboard,
+  LiveRoomDashboard,
+  TeamClassificationValue,
+  ViewerDashboard
+} from "@/lib/types";
 
 export type WorkspaceView = "auction" | "analysis" | "bracket" | "overrides";
 
 interface LiveRoomControllerArgs {
   sessionId: string;
-  initialDashboard: AuctionDashboard;
+  initialDashboard: LiveRoomDashboard;
   initialView: WorkspaceView;
   availableViews: WorkspaceView[];
   viewerMode: boolean;
   clearFeedback: () => void;
   showError: (message: string) => void;
   showNotice: (message: string) => void;
+}
+
+function isViewerDashboard(dashboard: LiveRoomDashboard): dashboard is ViewerDashboard {
+  return "viewerAuction" in dashboard;
 }
 
 export function useLiveRoomController(args: LiveRoomControllerArgs) {
@@ -79,6 +88,10 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
   const liveNominatedAssetId = dashboard.session.liveState.nominatedAssetId ?? "";
   const liveNominatedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
+  const projectionOverrides = isViewerDashboard(dashboard)
+    ? {}
+    : dashboard.session.projectionOverrides;
+  const lastPurchase = isViewerDashboard(dashboard) ? null : dashboard.lastPurchase;
 
   const selectedAsset =
     dashboard.session.auctionAssets?.find((asset) => asset.id === selectedAssetId) ?? null;
@@ -86,8 +99,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     dashboard.session.projections.find((team) => team.id === selectedTeamId) ?? null;
   const overrideSelectedTeam =
     dashboard.session.projections.find((team) => team.id === overrideTeamId) ?? null;
-  const selectedOverride =
-    (overrideTeamId && dashboard.session.projectionOverrides[overrideTeamId]) || null;
+  const selectedOverride = (overrideTeamId && projectionOverrides[overrideTeamId]) || null;
   const analysisDetailTeam =
     dashboard.session.projections.find((team) => team.id === analysisTeamId) ?? null;
   const analysisDetailTeamNote = analysisDetailTeam
@@ -418,7 +430,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
 
   const undoPurchase = useCallback(
     async (lastPurchaseTeamName: string | null) => {
-      if (!dashboard.lastPurchase) {
+      if (!lastPurchase) {
         showError("No purchase is available to undo.");
         return;
       }
@@ -426,7 +438,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
       clearFeedback();
       setIsUndoingPurchase(true);
 
-      const purchaseToUndo = dashboard.lastPurchase;
+      const purchaseToUndo = lastPurchase;
       const undoneTeamName = lastPurchaseTeamName ?? purchaseToUndo.teamId;
 
       try {
@@ -457,7 +469,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     [
       broadcastRefresh,
       clearFeedback,
-      dashboard.lastPurchase,
+      lastPurchase,
       replaceDashboard,
       sessionId,
       showError,

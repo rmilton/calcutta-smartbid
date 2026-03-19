@@ -1,9 +1,22 @@
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { buildAuctionAssets, findAuctionAssetForPurchase } from "@/lib/auction-assets";
 import { buildBracketView, normalizeBracketState } from "@/lib/bracket";
-import { buildBidRecommendation } from "@/lib/engine/recommendations";
+import { buildBidRecommendation, computeOwnershipExposure } from "@/lib/engine/recommendations";
+import { getBreakEvenStage } from "@/lib/payouts";
 import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
-import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
+import {
+  deriveAuctionMatchups,
+  deriveProjectedFinalPot,
+  filterRecommendationRationale
+} from "@/lib/live-room";
+import {
+  AuctionDashboard,
+  AuctionSession,
+  DashboardAudience,
+  StorageBackend,
+  StoredAuctionSession,
+  ViewerDashboard
+} from "@/lib/types";
 
 function requireMothershipPerspective(session: AuctionSession) {
   const persistedFocus =
@@ -81,7 +94,10 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
   };
 }
 
-export function buildDashboard(session: AuctionSession | StoredAuctionSession, storageBackend: StorageBackend): AuctionDashboard {
+function buildDashboardContext(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend
+) {
   const publicSession = sanitizeSessionForClient(session);
   if (
     publicSession.importReadiness.mode === "session-imports" &&
@@ -141,9 +157,17 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
 
   const focusSyndicate = requireMothershipPerspective(publicSession);
   const analysis = buildSessionAnalysisSnapshot(publicSession, focusSyndicate);
+  const bracket = buildBracketView(publicSession);
+  const recommendation = buildBidRecommendation(
+    publicSession,
+    nominatedTeam,
+    focusSyndicate,
+    analysis,
+    nominatedAsset
+  );
 
   return {
-    session: publicSession,
+    publicSession,
     focusSyndicate,
     nominatedAsset,
     nominatedTeam,
@@ -151,18 +175,129 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     soldAssets,
     availableTeams,
     soldTeams,
-    ledger: publicSession.syndicates,
     analysis,
-    bracket: buildBracketView(publicSession),
-    recommendation: buildBidRecommendation(
-      publicSession,
-      nominatedTeam,
-      focusSyndicate,
-      analysis,
-      nominatedAsset
-    ),
-    lastPurchase: publicSession.purchases[publicSession.purchases.length - 1] ?? null,
-    projectionOverrideCount: Object.keys(publicSession.projectionOverrides).length,
+    bracket,
+    recommendation,
     storageBackend
+  };
+}
+
+function buildViewerDashboardFromContext(
+  context: ReturnType<typeof buildDashboardContext>
+): ViewerDashboard {
+  const {
+    publicSession,
+    focusSyndicate,
+    nominatedAsset,
+    nominatedTeam,
+    availableAssets,
+    soldAssets,
+    analysis,
+    bracket,
+    recommendation,
+    storageBackend
+  } = context;
+  const ownershipConflicts = computeOwnershipExposure(
+    publicSession,
+    nominatedAsset?.projectionIds ?? (nominatedTeam ? [nominatedTeam.id] : []),
+    focusSyndicate
+  ).likelyConflicts;
+  const breakEvenStage = nominatedTeam
+    ? getBreakEvenStage(publicSession.liveState.currentBid, publicSession.payoutRules)
+    : null;
+  const matchupSummary = deriveAuctionMatchups({
+    bracket,
+    snapshot: publicSession.simulationSnapshot,
+    nominatedTeam,
+    ownedTeamIds: focusSyndicate.ownedTeamIds
+  });
+  const nominatedTeamClassification =
+    (nominatedTeam && publicSession.teamClassifications[nominatedTeam.id]?.classification) || null;
+  const nominatedTeamNote =
+    (nominatedTeam && publicSession.teamNotes[nominatedTeam.id]?.note) || null;
+
+  return {
+    session: {
+      id: publicSession.id,
+      name: publicSession.name,
+      payoutRules: publicSession.payoutRules,
+      projections: publicSession.projections,
+      teamClassifications: publicSession.teamClassifications,
+      teamNotes: publicSession.teamNotes,
+      auctionAssets: publicSession.auctionAssets,
+      liveState: publicSession.liveState
+    },
+    focusSyndicate,
+    nominatedAsset,
+    nominatedTeam,
+    availableAssets,
+    soldAssets,
+    ledger: publicSession.syndicates,
+    bracket,
+    viewerAuction: {
+      projectedFinalPot: deriveProjectedFinalPot({
+        ledger: publicSession.syndicates,
+        availableAssets,
+        budgetRows: analysis.budgetRows,
+        liveAssetId: publicSession.liveState.nominatedAssetId ?? "",
+        liveBid: publicSession.liveState.currentBid
+      }),
+      breakEvenStage,
+      filteredRationale: filterRecommendationRationale(
+        recommendation?.rationale,
+        recommendation?.forcedPassConflictTeamId
+      ),
+      ownershipConflicts,
+      forcedPassConflictTeamId: recommendation?.forcedPassConflictTeamId ?? null,
+      matchupSummary,
+      nominatedTeamClassification,
+      nominatedTeamNote
+    },
+    storageBackend
+  };
+}
+
+export function buildDashboard(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend
+): AuctionDashboard;
+export function buildDashboard(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options: { audience: "operator" }
+): AuctionDashboard;
+export function buildDashboard(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options: { audience: "viewer" }
+): ViewerDashboard;
+export function buildDashboard(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options?: { audience?: DashboardAudience }
+): AuctionDashboard | ViewerDashboard {
+  const context = buildDashboardContext(session, storageBackend);
+
+  if (options?.audience === "viewer") {
+    return buildViewerDashboardFromContext(context);
+  }
+
+  return {
+    session: context.publicSession,
+    focusSyndicate: context.focusSyndicate,
+    nominatedAsset: context.nominatedAsset,
+    nominatedTeam: context.nominatedTeam,
+    availableAssets: context.availableAssets,
+    soldAssets: context.soldAssets,
+    availableTeams: context.availableTeams,
+    soldTeams: context.soldTeams,
+    ledger: context.publicSession.syndicates,
+    analysis: context.analysis,
+    bracket: context.bracket,
+    recommendation: context.recommendation,
+    lastPurchase:
+      context.publicSession.purchases[context.publicSession.purchases.length - 1] ?? null,
+    projectionOverrideCount: Object.keys(context.publicSession.projectionOverrides).length,
+    storageBackend: context.storageBackend
   };
 }

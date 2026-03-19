@@ -10,12 +10,12 @@ vi.mock("@/components/team-classification-badge", () => ({
 import { ViewerAuctionWorkspace } from "@/components/dashboard-shell/viewer-auction-workspace";
 import type {
   AuctionAsset,
-  AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
   SoldAssetSummary,
   Syndicate,
-  TeamProjection
+  TeamProjection,
+  ViewerDashboard
 } from "@/lib/types";
 
 function buildTeam(id: string, name: string, seed: number): TeamProjection {
@@ -217,8 +217,11 @@ describe("ViewerAuctionWorkspace", () => {
       nominatedAsset: asset,
       nominatedTeam: team,
       focusSyndicate: mothership,
-      ledger: [mothership, riverboat]
-    } as unknown as AuctionDashboard;
+      ledger: [mothership, riverboat],
+      viewerAuction: {
+        projectedFinalPot: 31200
+      }
+    } as unknown as ViewerDashboard;
 
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {
@@ -308,8 +311,11 @@ describe("ViewerAuctionWorkspace", () => {
       nominatedAsset: null,
       nominatedTeam: null,
       focusSyndicate: mothership,
-      ledger: [mothership]
-    } as unknown as AuctionDashboard;
+      ledger: [mothership],
+      viewerAuction: {
+        projectedFinalPot: 0
+      }
+    } as unknown as ViewerDashboard;
 
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {
@@ -356,8 +362,11 @@ describe("ViewerAuctionWorkspace", () => {
       nominatedAsset: asset,
       nominatedTeam: team,
       focusSyndicate: mothership,
-      ledger: [mothership]
-    } as unknown as AuctionDashboard;
+      ledger: [mothership],
+      viewerAuction: {
+        projectedFinalPot: 18400
+      }
+    } as unknown as ViewerDashboard;
 
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {
@@ -406,9 +415,6 @@ describe("ViewerAuctionWorkspace", () => {
     const dashboard = {
       availableAssets: [asset],
       soldAssets: [],
-      analysis: {
-        budgetRows: []
-      },
       session: {
         payoutRules: {
           ...payoutRules
@@ -419,8 +425,11 @@ describe("ViewerAuctionWorkspace", () => {
       nominatedAsset: asset,
       nominatedTeam: team,
       focusSyndicate: mothership,
-      ledger: [mothership]
-    } as unknown as AuctionDashboard;
+      ledger: [mothership],
+      viewerAuction: {
+        projectedFinalPot: 220000
+      }
+    } as unknown as ViewerDashboard;
 
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {
@@ -500,8 +509,11 @@ describe("ViewerAuctionWorkspace", () => {
       nominatedTeam: null,
       soldAssets,
       focusSyndicate: mothership,
-      ledger: [mothership, riverboat]
-    } as unknown as AuctionDashboard;
+      ledger: [mothership, riverboat],
+      viewerAuction: {
+        projectedFinalPot: 25000
+      }
+    } as unknown as ViewerDashboard;
 
     const markup = renderToStaticMarkup(
       createElement(ViewerAuctionWorkspace, {

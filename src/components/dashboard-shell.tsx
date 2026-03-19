@@ -22,9 +22,11 @@ import {
   AuctionDashboard,
   AuthenticatedMember,
   BidRecommendation,
+  LiveRoomDashboard,
   ProjectionOverride,
   TeamClassificationValue,
-  TeamProjection
+  TeamProjection,
+  ViewerDashboard
 } from "@/lib/types";
 import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team-classifications";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
@@ -47,7 +49,7 @@ import { TeamClassificationBadge } from "@/components/team-classification-badge"
 
 interface DashboardShellProps {
   sessionId: string;
-  initialDashboard: AuctionDashboard;
+  initialDashboard: LiveRoomDashboard;
   initialView?: WorkspaceView;
   viewerMode: boolean;
   currentMember: AuthenticatedMember;
@@ -96,6 +98,10 @@ const analysisRoundLadder = [
   { stage: "finalFour", shortLabel: "F4", label: "Final Four" },
   { stage: "champion", shortLabel: "Champ", label: "Champion" }
 ] as const;
+
+function isViewerDashboard(dashboard: LiveRoomDashboard): dashboard is ViewerDashboard {
+  return "viewerAuction" in dashboard;
+}
 
 function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMember["scope"]) {
   if (scope === "platform" && role === "admin") {
@@ -383,38 +389,65 @@ export function DashboardShell({
     };
   }, [currentMember.scope, sendPresenceHeartbeat]);
 
-  const snapshot = dashboard.session.simulationSnapshot;
+  const isViewerPayload = isViewerDashboard(dashboard);
+  const snapshot = isViewerPayload ? null : dashboard.session.simulationSnapshot;
+  const analysisRanking = useMemo(
+    () => (isViewerPayload ? [] : dashboard.analysis.ranking),
+    [dashboard, isViewerPayload]
+  );
+  const analysisBudgetRows = useMemo(
+    () => (isViewerPayload ? [] : dashboard.analysis.budgetRows),
+    [dashboard, isViewerPayload]
+  );
+  const projectionOverrides = useMemo(
+    () => (isViewerPayload ? {} : dashboard.session.projectionOverrides),
+    [dashboard, isViewerPayload]
+  );
   const liveSession = useMemo(
-    () => ({
-      ...dashboard.session,
-      liveState: {
-        ...dashboard.session.liveState,
-        nominatedAssetId: selectedAssetId || null,
-        nominatedTeamId: selectedTeamId || null,
-        currentBid
-      }
-    }),
-    [currentBid, dashboard.session, selectedAssetId, selectedTeamId]
+    () =>
+      isViewerPayload
+        ? null
+        : {
+            ...dashboard.session,
+            liveState: {
+              ...dashboard.session.liveState,
+              nominatedAssetId: selectedAssetId || null,
+              nominatedTeamId: selectedTeamId || null,
+              currentBid
+            }
+          },
+    [currentBid, dashboard, isViewerPayload, selectedAssetId, selectedTeamId]
   );
   const recommendation = useMemo(
     () =>
-      buildBidRecommendation(
-        liveSession,
-        selectedTeam,
-        dashboard.focusSyndicate,
-        dashboard.analysis,
-        selectedAsset
-      ),
-    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
+      isViewerPayload || !liveSession
+        ? null
+        : buildBidRecommendation(
+            liveSession,
+            selectedTeam,
+            dashboard.focusSyndicate,
+            dashboard.analysis,
+            selectedAsset
+          ),
+    [dashboard, isViewerPayload, liveSession, selectedAsset, selectedTeam]
   );
   const ownershipConflicts = useMemo(
-    () =>
-      computeOwnershipExposure(
+    () => {
+      if (isViewerPayload) {
+        return dashboard.viewerAuction.ownershipConflicts;
+      }
+
+      if (!liveSession) {
+        return [];
+      }
+
+      return computeOwnershipExposure(
         liveSession,
         selectedAsset?.projectionIds ?? (selectedTeam ? [selectedTeam.id] : []),
         dashboard.focusSyndicate
-      ).likelyConflicts,
-    [dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
+      ).likelyConflicts;
+    },
+    [dashboard, isViewerPayload, liveSession, selectedAsset, selectedTeam]
   );
   const teamLookup = useMemo(
     () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
@@ -440,11 +473,10 @@ export function DashboardShell({
   const analysisDetailAsset = analysisTeamId
     ? analysisDetailAssetLookup.get(analysisTeamId) ?? null
     : null;
-  const analysisRow =
-    dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
+  const analysisRow = analysisRanking.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisBudgetLookup = useMemo(
-    () => new Map(dashboard.analysis.budgetRows.map((row) => [row.teamId, row])),
-    [dashboard.analysis.budgetRows]
+    () => new Map(analysisBudgetRows.map((row) => [row.teamId, row])),
+    [analysisBudgetRows]
   );
   const analysisBudgetRow = analysisTeamId
     ? analysisBudgetLookup.get(analysisTeamId) ?? null
@@ -454,7 +486,7 @@ export function DashboardShell({
       return null;
     }
 
-    const matchingRows = dashboard.analysis.budgetRows.filter((row) =>
+    const matchingRows = analysisBudgetRows.filter((row) =>
       analysisDetailAsset.projectionIds.includes(row.teamId)
     );
     if (!matchingRows.length) {
@@ -466,14 +498,17 @@ export function DashboardShell({
       targetBid: matchingRows.reduce((total, row) => total + row.targetBid, 0),
       maxBid: matchingRows.reduce((total, row) => total + row.maxBid, 0)
     };
-  }, [analysisDetailAsset, dashboard.analysis.budgetRows]);
+  }, [analysisBudgetRows, analysisDetailAsset]);
   const analysisTeamClassification = analysisRow?.classification ?? null;
   const analysisTeamNote = analysisRow?.note ?? null;
   const trimmedTeamNoteInput = teamNoteInput.trim();
   const teamNoteIsDirty = trimmedTeamNoteInput !== (analysisTeamNote ?? "");
   const showAnalysisNoteCounter =
     isAnalysisNoteFocused || teamNoteInput.length > 0 || Boolean(analysisTeamNote);
-  const focusOwnedTeams = useMemo(() => getFocusOwnedTeams(dashboard), [dashboard]);
+  const focusOwnedTeams = useMemo(
+    () => (isViewerPayload ? [] : getFocusOwnedTeams(dashboard)),
+    [dashboard, isViewerPayload]
+  );
   const operatorSyndicateHoldings = useMemo(
     () => buildOperatorSyndicateHoldings(dashboard.soldAssets, orderedSyndicateBoard),
     [dashboard.soldAssets, orderedSyndicateBoard]
@@ -482,27 +517,28 @@ export function DashboardShell({
     () => [...dashboard.soldAssets].slice(-4).reverse(),
     [dashboard.soldAssets]
   );
-  const lastPurchaseTeam = dashboard.lastPurchase
+  const lastPurchaseTeam = !isViewerPayload && dashboard.lastPurchase
     ? teamLookup.get(
         dashboard.lastPurchase.projectionIds?.find((teamId) => teamLookup.has(teamId)) ??
           dashboard.lastPurchase.teamId
       ) ?? null
     : null;
-  const lastPurchaseBuyer = dashboard.lastPurchase
+  const lastPurchaseBuyer = !isViewerPayload && dashboard.lastPurchase
     ? syndicateLookup.get(dashboard.lastPurchase.buyerSyndicateId) ?? null
     : null;
+  const lastPurchaseTeamId = !isViewerPayload ? dashboard.lastPurchase?.teamId ?? null : null;
   const soldAssetLookup = useMemo(
     () => new Map(dashboard.soldAssets.map((entry) => [entry.asset.id, entry])),
     [dashboard.soldAssets]
   );
   const analysisRankIndexLookup = useMemo(
-    () => new Map(dashboard.analysis.ranking.map((row, index) => [row.teamId, index])),
-    [dashboard.analysis.ranking]
+    () => new Map(analysisRanking.map((row, index) => [row.teamId, index])),
+    [analysisRanking]
   );
   const analysisAssetRows = useMemo<AnalysisAssetTableRow[]>(() => {
     const rows = (dashboard.session.auctionAssets ?? [])
       .map((asset) => {
-        const memberRows = dashboard.analysis.ranking.filter((row) =>
+        const memberRows = analysisRanking.filter((row) =>
           asset.projectionIds.includes(row.teamId)
         );
         const representativeRow =
@@ -515,7 +551,7 @@ export function DashboardShell({
           return null;
         }
 
-        const memberBudgetRows = dashboard.analysis.budgetRows.filter((row) =>
+        const memberBudgetRows = analysisBudgetRows.filter((row) =>
           asset.projectionIds.includes(row.teamId)
         );
         const soldAsset = soldAssetLookup.get(asset.id) ?? null;
@@ -565,8 +601,8 @@ export function DashboardShell({
     return rows.sort((left, right) => left.rank - right.rank);
   }, [
     analysisRankIndexLookup,
-    dashboard.analysis.budgetRows,
-    dashboard.analysis.ranking,
+    analysisBudgetRows,
+    analysisRanking,
     dashboard.focusSyndicate.id,
     dashboard.session.auctionAssets,
     soldAssetLookup
@@ -585,38 +621,48 @@ export function DashboardShell({
   );
   const filteredRationale = useMemo(
     () =>
-      filterRecommendationRationale(
-        recommendation?.rationale,
-        recommendation?.forcedPassConflictTeamId
-      ),
-    [recommendation]
+      isViewerPayload
+        ? dashboard.viewerAuction.filteredRationale
+        : filterRecommendationRationale(
+            recommendation?.rationale,
+            recommendation?.forcedPassConflictTeamId
+          ),
+    [dashboard, isViewerPayload, recommendation]
   );
   const activeOverrideRows = useMemo(
     (): ActiveOverrideRow[] =>
-      Object.values(dashboard.session.projectionOverrides)
+      Object.values(projectionOverrides)
         .flatMap((override) => {
           const team = teamLookup.get(override.teamId);
           return team ? [{ override, team }] : [];
         })
         .sort((left, right) => left.team.name.localeCompare(right.team.name)),
-    [dashboard.session.projectionOverrides, teamLookup]
+    [projectionOverrides, teamLookup]
   );
+  const projectionOverrideCount = isViewerPayload ? 0 : dashboard.projectionOverrideCount;
   const titleOdds =
     (selectedTeam && snapshot?.teamResults[selectedTeam.id]?.roundProbabilities.champion) || 0;
   const nominatedTeamClassification =
-    (selectedTeam && dashboard.session.teamClassifications[selectedTeam.id]?.classification) || null;
+    isViewerPayload
+      ? dashboard.viewerAuction.nominatedTeamClassification
+      : (selectedTeam && dashboard.session.teamClassifications[selectedTeam.id]?.classification) ||
+        null;
   const nominatedTeamNote =
-    (selectedTeam && dashboard.session.teamNotes[selectedTeam.id]?.note) || null;
+    isViewerPayload
+      ? dashboard.viewerAuction.nominatedTeamNote
+      : (selectedTeam && dashboard.session.teamNotes[selectedTeam.id]?.note) || null;
   const focusFunding = useMemo(
     () =>
-      deriveMothershipFundingSnapshot(
-        dashboard.session.mothershipFunding,
-        dashboard.focusSyndicate.spend
-      ),
-    [dashboard.focusSyndicate.spend, dashboard.session.mothershipFunding]
+      isViewerPayload
+        ? null
+        : deriveMothershipFundingSnapshot(
+            dashboard.session.mothershipFunding,
+            dashboard.focusSyndicate.spend
+          ),
+    [dashboard, isViewerPayload]
   );
-  const projectedBaseRoom = focusFunding.baseBidRoom - currentBid;
-  const projectedStretchRoom = focusFunding.stretchBidRoom - currentBid;
+  const projectedBaseRoom = focusFunding ? focusFunding.baseBidRoom - currentBid : 0;
+  const projectedStretchRoom = focusFunding ? focusFunding.stretchBidRoom - currentBid : 0;
   const selectedSimulation = analysisDetailTeam
     ? snapshot?.teamResults[analysisDetailTeam.id] ?? null
     : null;
@@ -660,23 +706,22 @@ export function DashboardShell({
         return false;
     }
   });
-  const breakEvenStage = selectedTeam
-    ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
-    : null;
+  const breakEvenStage = isViewerPayload
+    ? dashboard.viewerAuction.breakEvenStage
+    : selectedTeam
+      ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
+      : null;
   const matchupSummary = useMemo(
     () =>
-      deriveAuctionMatchups({
-        bracket: dashboard.bracket,
-        snapshot: dashboard.session.simulationSnapshot,
-        nominatedTeam: selectedTeam,
-        ownedTeamIds: dashboard.focusSyndicate.ownedTeamIds
-      }),
-    [
-      dashboard.bracket,
-      dashboard.focusSyndicate.ownedTeamIds,
-      dashboard.session.simulationSnapshot,
-      selectedTeam
-    ]
+      isViewerPayload
+        ? dashboard.viewerAuction.matchupSummary
+        : deriveAuctionMatchups({
+            bracket: dashboard.bracket,
+            snapshot: dashboard.session.simulationSnapshot,
+            nominatedTeam: selectedTeam,
+            ownedTeamIds: dashboard.focusSyndicate.ownedTeamIds
+          }),
+    [dashboard, isViewerPayload, selectedTeam]
   );
   const targetBidDisplay = recommendation
     ? recommendation.forcedPassConflictTeamId
@@ -780,7 +825,7 @@ export function DashboardShell({
           bracketWorkspace
         ) : (
           <ViewerAuctionWorkspace
-            dashboard={dashboard}
+            dashboard={dashboard as ViewerDashboard}
             currentBid={currentBid}
             breakEvenStage={breakEvenStage}
             nominatedMatchup={matchupSummary.nominatedMatchup}
@@ -790,7 +835,11 @@ export function DashboardShell({
             filteredRationale={filteredRationale}
             ownershipConflicts={ownershipConflicts}
             teamLookup={teamLookup}
-            forcedPassConflictTeamId={recommendation?.forcedPassConflictTeamId ?? null}
+            forcedPassConflictTeamId={
+              isViewerPayload
+                ? dashboard.viewerAuction.forcedPassConflictTeamId
+                : recommendation?.forcedPassConflictTeamId ?? null
+            }
             ownershipSearch={ownershipSearch}
             onOwnershipSearchChange={setOwnershipSearch}
             ownershipGroups={ownershipGroups}
@@ -802,7 +851,7 @@ export function DashboardShell({
         <>
           {activeView === "auction" ? (
             <OperatorAuctionWorkspace
-              dashboard={dashboard}
+              dashboard={dashboard as AuctionDashboard}
               recommendation={recommendation}
               notice={notice}
               error={error}
@@ -820,7 +869,7 @@ export function DashboardShell({
               onBidKeyDown={handleBidKeyDown}
               onBuyerChange={setBuyerId}
               onUndoPurchase={() =>
-                void undoPurchase(lastPurchaseTeam?.name ?? dashboard.lastPurchase?.teamId ?? null)
+                void undoPurchase(lastPurchaseTeam?.name ?? lastPurchaseTeamId)
               }
               onRecordPurchase={() => void recordPurchase()}
               lastPurchaseTeamName={lastPurchaseTeam?.name ?? null}
@@ -861,7 +910,7 @@ export function DashboardShell({
               onCollapseAll={() => setExpandedSyndicateIds([])}
               recentSales={recentSales}
               syndicateLookup={syndicateLookup}
-              focusFundingImpliedSharePrice={focusFunding.impliedSharePrice}
+              focusFundingImpliedSharePrice={focusFunding?.impliedSharePrice ?? null}
             />
           ) : null}
 
@@ -1443,7 +1492,7 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Active Overrides</p>
-                    <h3>{dashboard.projectionOverrideCount} teams modified</h3>
+                    <h3>{projectionOverrideCount} teams modified</h3>
                   </div>
                 </div>
                 {activeOverrideRows.length ? (

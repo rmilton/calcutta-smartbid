@@ -2,11 +2,24 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
-import { AuctionDashboard } from "@/lib/types";
+import { LiveRoomDashboard } from "@/lib/types";
+import {
+  createDashboardRefreshCoordinator,
+  DashboardRealtimeHealth,
+  getDashboardPollIntervalMs
+} from "@/lib/hooks/use-session-dashboard-refresh";
 
-export function useSessionDashboard(sessionId: string, initialDashboard: AuctionDashboard) {
+function isDocumentVisible() {
+  return document.visibilityState === "visible";
+}
+
+export function useSessionDashboard<TDashboard extends LiveRoomDashboard>(
+  sessionId: string,
+  initialDashboard: TDashboard
+) {
   const [dashboard, setDashboard] = useState(initialDashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [realtimeHealth, setRealtimeHealth] = useState<DashboardRealtimeHealth>("degraded");
   const channelRef = useRef<{
     send: (payload: {
       type: "broadcast";
@@ -15,19 +28,54 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
     }) => Promise<unknown>;
   } | null>(null);
   const isBroadcastReadyRef = useRef(false);
+  const refreshCoordinatorRef = useRef(createDashboardRefreshCoordinator());
+
+  const fetchDashboard = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/dashboard`, {
+        cache: "no-store"
+      });
+
+      if (response.ok) {
+        const nextDashboard = (await response.json()) as TDashboard;
+        setDashboard(nextDashboard);
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [sessionId]);
+
+  const drainRefreshQueue = useCallback(async () => {
+    const coordinator = refreshCoordinatorRef.current;
+
+    while (true) {
+      await fetchDashboard();
+      if (coordinator.settleRefresh() !== "fetch") {
+        break;
+      }
+    }
+  }, [fetchDashboard]);
+
+  const requestRefresh = useCallback(
+    async (source: "manual" | "poll" | "realtime") => {
+      const action = refreshCoordinatorRef.current.requestRefresh({
+        source,
+        isVisible: isDocumentVisible()
+      });
+
+      if (action !== "fetch") {
+        return;
+      }
+
+      await drainRefreshQueue();
+    },
+    [drainRefreshQueue]
+  );
 
   const refresh = useCallback(async () => {
-    setIsRefreshing(true);
-    const response = await fetch(`/api/sessions/${sessionId}/dashboard`, {
-      cache: "no-store"
-    });
-
-    if (response.ok) {
-      const nextDashboard = (await response.json()) as AuctionDashboard;
-      setDashboard(nextDashboard);
-    }
-    setIsRefreshing(false);
-  }, [sessionId]);
+    await requestRefresh("manual");
+  }, [requestRefresh]);
 
   const broadcastRefresh = useCallback(
     async (reason: string) => {
@@ -49,28 +97,58 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
   );
 
   useEffect(() => {
+    refreshCoordinatorRef.current = createDashboardRefreshCoordinator();
+  }, [sessionId]);
+
+  useEffect(() => {
     const refreshInterval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        void refresh();
+      if (isDocumentVisible()) {
+        void requestRefresh("poll");
       }
-    }, 2500);
+    }, getDashboardPollIntervalMs(realtimeHealth));
+
+    return () => window.clearInterval(refreshInterval);
+  }, [realtimeHealth, requestRefresh]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!isDocumentVisible()) {
+        return;
+      }
+
+      if (refreshCoordinatorRef.current.resumeVisible() === "fetch") {
+        void drainRefreshQueue();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [drainRefreshQueue]);
+
+  useEffect(() => {
+    if (initialDashboard.storageBackend !== "supabase") {
+      setRealtimeHealth("degraded");
+      return;
+    }
 
     const client = createBrowserSupabaseClient();
     if (!client) {
+      setRealtimeHealth("degraded");
       if (initialDashboard.storageBackend === "supabase") {
-        window.clearInterval(refreshInterval);
         throw new Error(
           "Supabase backend is active, but the browser is missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY."
         );
       }
 
-      return () => window.clearInterval(refreshInterval);
+      return;
     }
+
+    setRealtimeHealth("degraded");
 
     const channel = client
       .channel(`calcutta-session-${sessionId}`)
       .on("broadcast", { event: "dashboard-refresh" }, () => {
-        void refresh();
+        void requestRefresh("realtime");
       })
       .on(
         "postgres_changes",
@@ -81,7 +159,7 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
           filter: `id=eq.${sessionId}`
         },
         () => {
-          void refresh();
+          void requestRefresh("realtime");
         }
       )
       .on(
@@ -93,7 +171,7 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
           filter: `session_id=eq.${sessionId}`
         },
         () => {
-          void refresh();
+          void requestRefresh("realtime");
         }
       )
       .on(
@@ -105,22 +183,23 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
           filter: `session_id=eq.${sessionId}`
         },
         () => {
-          void refresh();
+          void requestRefresh("realtime");
         }
       )
       .subscribe((status) => {
         isBroadcastReadyRef.current = status === "SUBSCRIBED";
+        setRealtimeHealth(status === "SUBSCRIBED" ? "healthy" : "degraded");
       });
 
     channelRef.current = channel;
 
     return () => {
-      window.clearInterval(refreshInterval);
       channelRef.current = null;
       isBroadcastReadyRef.current = false;
+      setRealtimeHealth("degraded");
       void client.removeChannel(channel);
     };
-  }, [initialDashboard.storageBackend, refresh, sessionId]);
+  }, [initialDashboard.storageBackend, requestRefresh, sessionId]);
 
   return {
     dashboard,

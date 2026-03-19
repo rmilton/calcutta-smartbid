@@ -56,6 +56,7 @@ import {
   AuctionSession,
   BracketState,
   CsvAnalysisPortfolio,
+  DashboardAudience,
   DataImportRun,
   DataSource,
   DataSourcePurpose,
@@ -82,6 +83,7 @@ import {
   TeamClassificationValue,
   TeamNoteTag,
   TeamProjection,
+  ViewerDashboard,
   createDataSourceSchema,
   createPlatformUserSchema,
   createSessionSchema,
@@ -150,6 +152,8 @@ export interface SessionRepository {
   getActiveSessionViewers(sessionId: string): Promise<ActiveSessionViewer[]>;
   getSession(sessionId: string): Promise<StoredAuctionSession | null>;
   getDashboard(sessionId: string): Promise<AuctionDashboard>;
+  getDashboard(sessionId: string, options: { audience: "operator" }): Promise<AuctionDashboard>;
+  getDashboard(sessionId: string, options: { audience: "viewer" }): Promise<ViewerDashboard>;
   getAccessMember(sessionId: string, memberId: string): Promise<AccessMember | null>;
   recordViewerPresence(
     sessionId: string,
@@ -320,9 +324,23 @@ class LocalSessionRepository implements SessionRepository {
     return store.sessions.find((session) => session.id === sessionId) ?? null;
   }
 
-  async getDashboard(sessionId: string) {
+  async getDashboard(sessionId: string): Promise<AuctionDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options: { audience: "operator" }
+  ): Promise<AuctionDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options: { audience: "viewer" }
+  ): Promise<ViewerDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options?: { audience?: DashboardAudience }
+  ): Promise<AuctionDashboard | ViewerDashboard> {
     const session = await this.requireSession(sessionId);
-    return buildDashboard(session, this.backend);
+    return options?.audience === "viewer"
+      ? buildDashboard(session, this.backend, { audience: "viewer" })
+      : buildDashboard(session, this.backend, { audience: "operator" });
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
@@ -1280,9 +1298,23 @@ class SupabaseSessionRepository implements SessionRepository {
     });
   }
 
-  async getDashboard(sessionId: string) {
+  async getDashboard(sessionId: string): Promise<AuctionDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options: { audience: "operator" }
+  ): Promise<AuctionDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options: { audience: "viewer" }
+  ): Promise<ViewerDashboard>;
+  async getDashboard(
+    sessionId: string,
+    options?: { audience?: DashboardAudience }
+  ): Promise<AuctionDashboard | ViewerDashboard> {
     const session = await this.requireSession(sessionId);
-    return buildDashboard(session, this.backend);
+    return options?.audience === "viewer"
+      ? buildDashboard(session, this.backend, { audience: "viewer" })
+      : buildDashboard(session, this.backend, { audience: "operator" });
   }
 
   async getAccessMember(sessionId: string, memberId: string) {

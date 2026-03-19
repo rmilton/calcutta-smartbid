@@ -1,19 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildOwnedAuctionCompleteAssets,
-  deriveProjectedFinalPot,
   findLeadingAuctionRegion,
-  RoundMatchup,
   summarizeAuctionProgress,
   ViewerOwnershipGroup
 } from "@/lib/live-room";
 import {
-  AuctionDashboard,
   MatchupConflict,
+  RoundMatchup,
   SoldAssetSummary,
   Stage,
   Syndicate,
-  TeamProjection
+  TeamProjection,
+  ViewerDashboard
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
@@ -30,7 +29,7 @@ import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
-  dashboard: AuctionDashboard;
+  dashboard: ViewerDashboard;
   currentBid: number;
   breakEvenStage: Stage | "negativeReturn" | null;
   nominatedMatchup: RoundMatchup | null;
@@ -98,23 +97,7 @@ export function ViewerAuctionWorkspace({
       dashboard.soldAssets
     ]
   );
-  const projectedFinalPot = useMemo(
-    () =>
-      deriveProjectedFinalPot({
-        ledger: dashboard.ledger ?? [],
-        availableAssets: dashboard.availableAssets ?? [],
-        budgetRows: dashboard.analysis?.budgetRows ?? [],
-        liveAssetId: nominatedAsset?.id ?? "",
-        liveBid: currentBid
-      }),
-    [
-      currentBid,
-      dashboard.analysis,
-      dashboard.availableAssets,
-      dashboard.ledger,
-      nominatedAsset?.id
-    ]
-  );
+  const projectedFinalPot = dashboard.viewerAuction.projectedFinalPot;
 
   useEffect(() => {
     if (typeof window === "undefined") {
