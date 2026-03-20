@@ -315,6 +315,11 @@ export function SessionAdminCenter({
     setAnalysisSourceKey(getSourceKeyForImport(config.session.analysisImport, activeAnalysisSources));
   }, [activeAnalysisSources, activeBracketSources, config]);
 
+  const totalAuctionAssets = config.session.auctionAssets?.length ?? 0;
+  const soldAssetCount = config.session.liveState?.soldAssetIds?.length ?? 0;
+  const isAuctionSoldOut = totalAuctionAssets > 0 && soldAssetCount >= totalAuctionAssets;
+  const showAuctionStatusControl = isAuctionSoldOut || config.session.auctionStatus === "complete";
+
   const refreshConfig = useCallback(async () => {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
       cache: "no-store"
@@ -813,6 +818,34 @@ export function SessionAdminCenter({
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "Unable to archive session."
+        );
+      }
+    });
+  }
+
+  function onUpdateAuctionStatus(action: "complete" | "reopen") {
+    startTransition(async () => {
+      try {
+        clearFeedback();
+        const response = await fetch(`/api/sessions/${config.session.id}/auction-status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ action })
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response, "Unable to update auction status."));
+        }
+
+        await refreshConfig();
+        showNotice(action === "complete" ? "Auction marked complete." : "Auction reopened.");
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to update auction status."
         );
       }
     });
@@ -1630,10 +1663,41 @@ export function SessionAdminCenter({
         <section className="surface-card admin-pane">
           <div className="admin-pane__header">
             <h2>Lifecycle</h2>
-            {config.session.archivedAt ? (
-              <span className="status-pill status-pill--muted">Archived</span>
-            ) : null}
+            <div className="button-row">
+              {config.session.auctionStatus === "complete" ? (
+                <span className="status-pill status-pill--positive">Auction complete</span>
+              ) : null}
+              {config.session.archivedAt ? (
+                <span className="status-pill status-pill--muted">Archived</span>
+              ) : null}
+            </div>
           </div>
+          {showAuctionStatusControl ? (
+            <div className="admin-pane__section">
+              <p className="eyebrow admin-pane__section-kicker">Auction status</p>
+              <p className="support-copy">
+                {config.session.auctionStatus === "complete"
+                  ? `Marked complete${config.session.auctionCompletedAt ? ` ${formatDateTime(config.session.auctionCompletedAt)}` : ""}${config.session.auctionCompletedByName ? ` by ${config.session.auctionCompletedByName}` : ""}. Reopen if you need to undo the last sale or resume bidding corrections.`
+                  : `All ${totalAuctionAssets} auction teams have been sold. You can mark the auction complete to stop dashboard polling and lock bidding changes until it is reopened.`}
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button button-secondary button--small"
+                  disabled={isPending}
+                  onClick={() =>
+                    onUpdateAuctionStatus(
+                      config.session.auctionStatus === "complete" ? "reopen" : "complete"
+                    )
+                  }
+                >
+                  {config.session.auctionStatus === "complete"
+                    ? "Reopen auction"
+                    : "Mark auction complete"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           {config.session.archivedAt ? (
             <>
               <p className="support-copy">

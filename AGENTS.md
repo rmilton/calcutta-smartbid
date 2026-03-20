@@ -107,7 +107,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/components/dashboard-shell.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx)
   - role-aware live room composition shell
   - owns shared session header, workspace routing, and `Analysis` / `Overrides` rendering
-  - builds the live-room recommendation payload used by operator and viewer auction workspaces
+  - branches cleanly between full operator dashboards and slimmer viewer dashboards
 - [src/components/dashboard-shell/use-live-room-controller.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts)
   - live-room local state and mutation orchestration
   - keyboard shortcuts, bid persistence, purchase actions, bracket saves, and analysis annotations
@@ -116,10 +116,11 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/components/dashboard-shell/operator-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx)
   - operator-only `Auction` workspace
   - live controls, decision board, decision context, model drivers, recent sales, and expandable syndicate holdings
-  - auction-complete recap state once every asset is sold
+  - sellout-only complete/reopen controls and auction-complete recap state once every asset is sold
 - [src/components/dashboard-shell/viewer-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx)
   - viewer-only `Auction` workspace
   - read-only decision board, ownership ledger, sold feed, and synchronized Mothership guidance
+  - powered by a slimmer server-computed `viewerAuction` payload instead of raw simulation payloads
   - team-focused auction-complete state without spend/equity recap
 - [src/components/dashboard-shell/shared.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx)
   - shared live-room presentation primitives, asset-formatting helpers, and shared auction-complete row rendering
@@ -135,7 +136,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
   - session/admin request schemas
   - bracket view model and last-purchase contract
 - [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts)
-  - builds the shared live-room payload
+  - builds audience-aware live-room payloads
   - injects bracket view and last-purchase state
 - [src/lib/config.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/config.ts)
   - environment validation
@@ -160,6 +161,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
   - admin-center CRUD
   - session admin mutations
   - session-managed Selection Sunday imports
+  - persisted auction completion state on `auction_sessions`
   - purchase undo and bracket winner persistence
 - [supabase/schema.sql](/Users/rmilton/Code/Calcutta-SmartBid/supabase/schema.sql)
   - auction sessions
@@ -190,6 +192,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - Platform admins create sessions. The public landing page should not expose session creation.
 - Session users authenticate with assigned email plus the session shared code.
 - Viewer mode is role-driven and read-only.
+- Viewer dashboard payloads are intentionally slimmer than operator payloads; preserve the `ViewerDashboard` / `viewerAuction` contract when changing the live-room read path.
 - Purchases are authoritative. Do not let UI-only state become the source of truth.
 - Only the most recent purchase can be undone in the current correction flow.
 - Session purchases are the owned-position truth for live recommendation math.
@@ -201,6 +204,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - `Bracket` must stay consistent with session purchases and imported field structure.
 - The active-team control must stay fast and low-friction under live auction use.
 - Once every auction asset is sold, the live decision boards should move into an explicit auction-complete state instead of a waiting-for-selection idle state.
+- `auctionStatus` is an explicit persisted room state. Completed auctions stop interval polling and block bidding mutations until reopened.
 - The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw schema errors should not leak to the operator if a clean domain message can be returned.
 
@@ -251,12 +255,15 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 16. Record a purchase and confirm ledger, sold-team state, and remaining bankroll update.
 17. After recording a purchase, confirm the board waits for the operator's next selection instead of auto-selecting the next team.
 18. Sell the final remaining asset and confirm the operator board flips to `Auction Complete`.
-19. Log in as a viewer after sellout and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
-20. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
-21. Advance a bracket winner and confirm the change persists after refresh.
-22. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
-23. Archive a session and confirm it is hidden until archived sessions are shown.
-24. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
+19. Mark the sold-out auction complete and confirm live bidding controls are replaced by completion messaging.
+20. Confirm live-state and purchase mutations are blocked while the auction is marked complete.
+21. Reopen the auction and confirm the last purchase can still be undone for correction.
+22. Log in as a viewer after sellout and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+23. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
+24. Advance a bracket winner and confirm the change persists after refresh.
+25. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
+26. Archive a session and confirm it is hidden until archived sessions are shown.
+27. Permanently delete an archived session only after exact name confirmation and confirm the session no longer loads.
 
 ## Test Commands
 
@@ -269,7 +276,7 @@ npm run build
 Focused live-room coverage:
 
 ```bash
-npm run test -- --run src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
+npm run test -- --run src/lib/hooks/use-session-dashboard.test.ts src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
 ```
 
 Fixture note:
@@ -318,5 +325,6 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - Purchase correction currently only supports undoing the most recent purchase.
 - `/csv-analysis` is now a compatibility redirect. The maintained workflow is the in-room `Analysis` tab.
 - the Selection Sunday path now depends on session-managed bracket and analysis imports rather than a single projection source
+- Supabase-backed environments now also depend on the persisted `auction_status` completion columns on `auction_sessions`
 - unresolved play-ins and regional `13-16` packages are supported as grouped auction teams, but deeper simulation/modeling should still be treated carefully when that logic changes
 - Session lifecycle now supports archive plus permanent delete. Permanent delete is intentionally gated behind archive plus typed confirmation.

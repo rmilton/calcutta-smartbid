@@ -1,19 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildOwnedAuctionCompleteAssets,
-  deriveProjectedFinalPot,
   findLeadingAuctionRegion,
-  RoundMatchup,
   summarizeAuctionProgress,
   ViewerOwnershipGroup
 } from "@/lib/live-room";
 import {
-  AuctionDashboard,
   MatchupConflict,
+  RoundMatchup,
   SoldAssetSummary,
   Stage,
   Syndicate,
-  TeamProjection
+  TeamProjection,
+  ViewerDashboard
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import {
@@ -30,7 +29,7 @@ import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface ViewerAuctionWorkspaceProps {
-  dashboard: AuctionDashboard;
+  dashboard: ViewerDashboard;
   currentBid: number;
   breakEvenStage: Stage | "negativeReturn" | null;
   nominatedMatchup: RoundMatchup | null;
@@ -46,6 +45,7 @@ interface ViewerAuctionWorkspaceProps {
   ownershipGroups: ViewerOwnershipGroup[];
   soldFeed: SoldAssetSummary[];
   syndicateLookup: Map<string, Syndicate>;
+  isAuctionMarkedComplete: boolean;
 }
 
 export function ViewerAuctionWorkspace({
@@ -64,7 +64,8 @@ export function ViewerAuctionWorkspace({
   onOwnershipSearchChange,
   ownershipGroups,
   soldFeed,
-  syndicateLookup
+  syndicateLookup,
+  isAuctionMarkedComplete
 }: ViewerAuctionWorkspaceProps) {
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
@@ -98,23 +99,7 @@ export function ViewerAuctionWorkspace({
       dashboard.soldAssets
     ]
   );
-  const projectedFinalPot = useMemo(
-    () =>
-      deriveProjectedFinalPot({
-        ledger: dashboard.ledger ?? [],
-        availableAssets: dashboard.availableAssets ?? [],
-        budgetRows: dashboard.analysis?.budgetRows ?? [],
-        liveAssetId: nominatedAsset?.id ?? "",
-        liveBid: currentBid
-      }),
-    [
-      currentBid,
-      dashboard.analysis,
-      dashboard.availableAssets,
-      dashboard.ledger,
-      nominatedAsset?.id
-    ]
-  );
+  const projectedFinalPot = dashboard.viewerAuction.projectedFinalPot;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -170,6 +155,9 @@ export function ViewerAuctionWorkspace({
                     ? "Auction complete"
                     : auctionProgress.remainingAssetsLabel}
                 </span>
+                {isAuctionMarkedComplete ? (
+                  <span className="status-pill status-pill--positive">Marked complete</span>
+                ) : null}
               </div>
             </div>
 
@@ -254,8 +242,14 @@ export function ViewerAuctionWorkspace({
                             auctionCompleteSummary.ownedAssets.length === 1
                               ? "auction team"
                               : "auction teams"
-                          }. The auction is over and the board has shifted from bidding to bracket sweat.`
-                        : "The auction is over. The room has moved from bidding to bracket sweat."}
+                          }. ${
+                            isAuctionMarkedComplete
+                              ? "The auction is officially closed and the board has shifted from bidding to bracket sweat."
+                              : "The room has shifted from bidding to bracket sweat."
+                          }`
+                        : isAuctionMarkedComplete
+                          ? "The auction is officially closed. The room has moved from bidding to bracket sweat."
+                          : "The auction is over. The room has moved from bidding to bracket sweat."}
                     </p>
                   ) : nominatedAsset && nominatedAsset.type !== "single_team" ? (
                     <p className="decision-panel__note">

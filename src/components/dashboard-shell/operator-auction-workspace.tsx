@@ -4,7 +4,6 @@ import {
   buildOwnedAuctionCompleteAssets,
   deriveProjectedFinalPot,
   findLeadingAuctionRegion,
-  RoundMatchup,
   summarizeAuctionProgress
 } from "@/lib/live-room";
 import {
@@ -12,6 +11,7 @@ import {
   AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
+  RoundMatchup,
   SoldAssetSummary,
   Stage,
   Syndicate,
@@ -28,8 +28,7 @@ import {
   formatAssetMembersCompact,
   formatAssetMembers,
   formatAssetSeed,
-  formatAssetSubtitle,
-  formatBreakEvenReachRound
+  formatAssetSubtitle
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
@@ -45,6 +44,8 @@ interface OperatorAuctionWorkspaceProps {
   buyerId: string;
   currentBid: number;
   isUndoingPurchase: boolean;
+  isUpdatingAuctionStatus: boolean;
+  isAuctionMarkedComplete: boolean;
   teamSelectRef: RefObject<HTMLInputElement | null>;
   bidInputRef: RefObject<HTMLInputElement | null>;
   onAssetChange: (nextAssetId: string) => void;
@@ -54,6 +55,7 @@ interface OperatorAuctionWorkspaceProps {
   onBuyerChange: (buyerId: string) => void;
   onUndoPurchase: () => void;
   onRecordPurchase: () => void;
+  onUpdateAuctionStatus: (action: "complete" | "reopen") => void;
   lastPurchaseTeamName: string | null;
   lastPurchaseBuyerName: string | null;
   signalLabel: string | null;
@@ -98,6 +100,8 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     buyerId,
     currentBid,
     isUndoingPurchase,
+    isUpdatingAuctionStatus,
+    isAuctionMarkedComplete,
     teamSelectRef,
     bidInputRef,
     onAssetChange,
@@ -107,6 +111,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     onBuyerChange,
     onUndoPurchase,
     onRecordPurchase,
+    onUpdateAuctionStatus,
     lastPurchaseTeamName,
     lastPurchaseBuyerName,
     signalLabel,
@@ -180,26 +185,129 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
       selectedAssetId
     ]
   );
+  const showAuctionStatusControl = auctionProgress.isAuctionComplete || isAuctionMarkedComplete;
 
   return (
     <section className="auction-layout">
       <article className="surface-card control-panel auction-controls">
-        <div className="section-headline auction-controls__headline">
-          <div>
-            <p className="eyebrow">Live Controls</p>
-          </div>
-          <div className="shortcut-legend">
-            <div className="shortcut-legend__row">
-              <kbd>/</kbd>
-              <span>Focus team</span>
+        {isAuctionMarkedComplete ? (
+          <p className="support-copy">
+            Auction is marked complete. Reopen it to resume bidding corrections or undo the last
+            sale.
+          </p>
+        ) : (
+          <>
+            <div className="section-headline auction-controls__headline">
+              <div>
+                <p className="eyebrow">Live Controls</p>
+              </div>
+              <div className="shortcut-legend">
+                <div className="shortcut-legend__row">
+                  <kbd>/</kbd>
+                  <span>Focus team</span>
+                </div>
+                <div className="shortcut-legend__row">
+                  <kbd>B</kbd>
+                  <span>Focus bid</span>
+                </div>
+                <div className="shortcut-legend__row">
+                  <kbd>↵</kbd>
+                  <span>Save board</span>
+                </div>
+              </div>
             </div>
-            <div className="shortcut-legend__row">
-              <kbd>B</kbd>
-              <span>Focus bid</span>
+
+            <div className="auction-controls__bar">
+              <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
+                <span>Active team</span>
+                <AssetCombobox
+                  assets={dashboard.availableAssets}
+                  soldAssets={dashboard.soldAssets}
+                  teamLookup={teamLookup}
+                  value={selectedAssetId}
+                  inputRef={teamSelectRef}
+                  disabled={isAuctionMarkedComplete}
+                  onChange={onAssetChange}
+                />
+              </label>
+
+              <label className="field-shell auction-controls__field auction-controls__field--bid">
+                <span>Current bid</span>
+                <div className="live-bid-field">
+                  <input
+                    ref={bidInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={bidInputValue}
+                    onChange={(event) => onBidInputChange(event.target.value)}
+                    onBlur={onBidBlur}
+                    onKeyDown={onBidKeyDown}
+                    onFocus={(event) => event.target.select()}
+                    onClick={(event) => event.currentTarget.select()}
+                    disabled={isAuctionMarkedComplete}
+                  />
+                </div>
+              </label>
+
+              <div className="auction-controls__field auction-controls__field--winner">
+                <span className="auction-controls__label">Winner</span>
+                <div className="auction-controls__winner-list" role="group" aria-label="Winner">
+                  {dashboard.ledger.map((syndicate) => {
+                    const isSelected = buyerId === syndicate.id;
+                    return (
+                      <button
+                        key={syndicate.id}
+                        type="button"
+                        className={cn(
+                          "button button-secondary auction-controls__winner-button",
+                          isSelected && "auction-controls__winner-button--selected"
+                        )}
+                        aria-pressed={isSelected}
+                        disabled={isAuctionMarkedComplete}
+                        onClick={() => onBuyerChange(syndicate.id)}
+                      >
+                        {syndicate.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-            <div className="shortcut-legend__row">
-              <kbd>↵</kbd>
-              <span>Save board</span>
+
+            <div className="auction-controls__footer">
+              <div className="auction-controls__history">
+                {dashboard.lastPurchase ? (
+                  <p>
+                    Last sale: <strong>{lastPurchaseTeamName ?? dashboard.lastPurchase.teamId}</strong> to{" "}
+                    <strong>
+                      {lastPurchaseBuyerName ?? dashboard.lastPurchase.buyerSyndicateId}
+                    </strong>{" "}
+                    for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
+                  </p>
+                ) : (
+                  <p>No purchases recorded yet.</p>
+                )}
+                <button
+                  type="button"
+                  className="button button-secondary button--small auction-controls__undo"
+                  data-live-bid-blur-ignore="true"
+                  disabled={!dashboard.lastPurchase || isUndoingPurchase || isAuctionMarkedComplete}
+                  onClick={onUndoPurchase}
+                >
+                  {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="button button-accent auction-controls__purchase"
+                data-live-bid-blur-ignore="true"
+                disabled={isAuctionMarkedComplete || parsedBidInputValue <= 0 || !selectedAssetId}
+                onClick={onRecordPurchase}
+              >
+                Record purchase
+              </button>
             </div>
             <button
               type="button"
@@ -210,99 +318,8 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             >
               Clear active
             </button>
-          </div>
-        </div>
-
-        <div className="auction-controls__bar">
-          <label className="field-shell field-shell--accent auction-controls__field auction-controls__field--team">
-            <span>Active team</span>
-            <AssetCombobox
-              assets={dashboard.availableAssets}
-              soldAssets={dashboard.soldAssets}
-              teamLookup={teamLookup}
-              value={selectedAssetId}
-              inputRef={teamSelectRef}
-              onChange={onAssetChange}
-            />
-          </label>
-
-          <label className="field-shell auction-controls__field auction-controls__field--bid">
-            <span>Current bid</span>
-            <div className="live-bid-field">
-              <input
-                ref={bidInputRef}
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={bidInputValue}
-                onChange={(event) => onBidInputChange(event.target.value)}
-                onBlur={onBidBlur}
-                onKeyDown={onBidKeyDown}
-                onFocus={(event) => event.target.select()}
-                onClick={(event) => event.currentTarget.select()}
-              />
-            </div>
-          </label>
-
-          <div className="auction-controls__field auction-controls__field--winner">
-            <span className="auction-controls__label">Winner</span>
-            <div className="auction-controls__winner-list" role="group" aria-label="Winner">
-              {dashboard.ledger.map((syndicate) => {
-                const isSelected = buyerId === syndicate.id;
-                return (
-                  <button
-                    key={syndicate.id}
-                    type="button"
-                    className={cn(
-                      "button button-secondary auction-controls__winner-button",
-                      isSelected && "auction-controls__winner-button--selected"
-                    )}
-                    aria-pressed={isSelected}
-                    onClick={() => onBuyerChange(syndicate.id)}
-                  >
-                    {syndicate.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="auction-controls__footer">
-          <div className="auction-controls__history">
-            {dashboard.lastPurchase ? (
-              <p>
-                Last sale: <strong>{lastPurchaseTeamName ?? dashboard.lastPurchase.teamId}</strong> to{" "}
-                <strong>
-                  {lastPurchaseBuyerName ?? dashboard.lastPurchase.buyerSyndicateId}
-                </strong>{" "}
-                for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
-              </p>
-            ) : (
-              <p>No purchases recorded yet.</p>
-            )}
-            <button
-              type="button"
-              className="button button-secondary button--small auction-controls__undo"
-              data-live-bid-blur-ignore="true"
-              disabled={!dashboard.lastPurchase || isUndoingPurchase}
-              onClick={onUndoPurchase}
-            >
-              {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="button button-accent auction-controls__purchase"
-            data-live-bid-blur-ignore="true"
-            disabled={parsedBidInputValue <= 0 || !selectedAssetId}
-            onClick={onRecordPurchase}
-          >
-            Record purchase
-          </button>
-        </div>
-
+          </>
+        )}
         {notice ? <p className="notice-text">{notice}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
       </article>
@@ -323,7 +340,32 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     ? "Auction complete"
                     : auctionProgress.remainingAssetsLabel}
                 </span>
+                {isAuctionMarkedComplete ? (
+                  <span className="status-pill status-pill--positive">Marked complete</span>
+                ) : null}
               </div>
+              {showAuctionStatusControl ? (
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    disabled={isUpdatingAuctionStatus}
+                    onClick={() =>
+                      onUpdateAuctionStatus(
+                        isAuctionMarkedComplete ? "reopen" : "complete"
+                      )
+                    }
+                  >
+                    {isUpdatingAuctionStatus
+                      ? isAuctionMarkedComplete
+                        ? "Reopening..."
+                        : "Completing..."
+                      : isAuctionMarkedComplete
+                        ? "Reopen auction"
+                        : "Mark complete"}
+                  </button>
+                </div>
+              ) : null}
               {!auctionProgress.isAuctionComplete && signalLabel ? (
                 <div
                   className={cn(
@@ -1389,6 +1431,7 @@ function AssetCombobox({
   teamLookup,
   value,
   inputRef,
+  disabled,
   onChange
 }: {
   assets: AuctionAsset[];
@@ -1396,6 +1439,7 @@ function AssetCombobox({
   teamLookup: Map<string, TeamProjection>;
   value: string;
   inputRef: RefObject<HTMLInputElement | null>;
+  disabled?: boolean;
   onChange: (assetId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1453,6 +1497,10 @@ function AssetCombobox({
   }, [open]);
 
   function handleFocus() {
+    if (disabled) {
+      return;
+    }
+
     setOpen(true);
     setSearch("");
     setHighlightIndex(0);
@@ -1489,10 +1537,11 @@ function AssetCombobox({
         value={displayValue}
         placeholder={open ? "Search teams..." : "Select a team"}
         readOnly={!open}
+        disabled={disabled}
         autoComplete="off"
         onFocus={handleFocus}
         onClick={() => {
-          if (!open) {
+          if (!open && !disabled) {
             handleFocus();
           }
         }}

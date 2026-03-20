@@ -19,6 +19,7 @@ export type DataSourcePurpose = "bracket" | "analysis";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
+export type AuctionStatus = "active" | "complete";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
 export type BracketRoundKey =
   | "roundOf64"
@@ -49,6 +50,7 @@ export interface PayoutRules {
 }
 
 export type AnalysisSettings = Record<string, never>;
+export type DashboardAudience = "operator" | "viewer";
 
 export interface MothershipFundingModel {
   targetSharePrice: number;
@@ -387,6 +389,19 @@ export interface BracketGame {
   winnerTeamId: string | null;
 }
 
+export interface RoundMatchup {
+  opponent: BracketGameTeam;
+  game?: BracketGame;
+  probability?: number;
+}
+
+export interface AuctionMatchupSummary {
+  nominatedMatchup: RoundMatchup | null;
+  likelyRound2Matchup: RoundMatchup | null;
+  hasOwnedRoundOneOpponent: boolean;
+  hasOwnedLikelyRoundTwoOpponent: boolean;
+}
+
 export interface BracketRound {
   key: BracketRoundKey;
   label: string;
@@ -527,6 +542,10 @@ export interface AuctionSession {
   archivedAt: string | null;
   archivedByName: string | null;
   archivedByEmail: string | null;
+  auctionStatus: AuctionStatus;
+  auctionCompletedAt: string | null;
+  auctionCompletedByName: string | null;
+  auctionCompletedByEmail: string | null;
   focusSyndicateId: string;
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
@@ -619,6 +638,47 @@ export interface AuctionDashboard {
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
 }
+
+export interface ViewerAuctionDetails {
+  projectedFinalPot: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
+  filteredRationale: string[];
+  ownershipConflicts: MatchupConflict[];
+  forcedPassConflictTeamId: string | null;
+  matchupSummary: AuctionMatchupSummary;
+  nominatedTeamClassification: TeamClassificationValue | null;
+  nominatedTeamNote: string | null;
+}
+
+export interface ViewerDashboardSession {
+  id: string;
+  name: string;
+  auctionStatus: AuctionStatus;
+  auctionCompletedAt: string | null;
+  auctionCompletedByName: string | null;
+  auctionCompletedByEmail: string | null;
+  payoutRules: PayoutRules;
+  projections: TeamProjection[];
+  teamClassifications: Record<string, TeamClassificationTag>;
+  teamNotes: Record<string, TeamNoteTag>;
+  auctionAssets?: AuctionAsset[];
+  liveState: TeamMarketState;
+}
+
+export interface ViewerDashboard {
+  session: ViewerDashboardSession;
+  focusSyndicate: Syndicate;
+  nominatedAsset: AuctionAsset | null;
+  nominatedTeam: TeamProjection | null;
+  availableAssets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
+  ledger: Syndicate[];
+  bracket: BracketViewModel;
+  viewerAuction: ViewerAuctionDetails;
+  storageBackend: StorageBackend;
+}
+
+export type LiveRoomDashboard = AuctionDashboard | ViewerDashboard;
 
 export interface SessionImportResult {
   config: SessionAdminConfig;
@@ -968,4 +1028,8 @@ export const archiveSessionSchema = z.object({
 
 export const deleteSessionSchema = z.object({
   confirmationName: z.string().min(1).max(120)
+});
+
+export const updateAuctionStatusSchema = z.object({
+  action: z.enum(["complete", "reopen"])
 });

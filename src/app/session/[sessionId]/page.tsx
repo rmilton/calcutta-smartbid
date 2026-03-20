@@ -15,9 +15,13 @@ export default async function SessionPage({ params, searchParams }: SessionPageP
   const { view } = await searchParams;
   const repository = getSessionRepository();
   const currentMember = await requireAuthenticatedPageSession(sessionId);
+  const audience = currentMember.role === "viewer" ? "viewer" : "operator";
 
   try {
-    const dashboard = await repository.getDashboard(sessionId);
+    const dashboard =
+      audience === "viewer"
+        ? await repository.getDashboard(sessionId, { audience: "viewer" })
+        : await repository.getDashboard(sessionId, { audience: "operator" });
     const initialView =
       view === "analysis" ||
       view === "bracket" ||

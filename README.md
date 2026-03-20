@@ -11,10 +11,13 @@ The current implementation ships with:
 - in-room `Analysis`, `Bracket`, and `Overrides` workspaces around the live auction view
 - a consolidated `Auction` workspace that now includes live decisioning, syndicate context, and Mothership position in one surface
 - a synchronized viewer mode with a read-only shared Mothership board plus bracket access
+- realtime-first live-room refresh with coalesced fallback polling to reduce repeated dashboard fetches
+- audience-aware live-room payloads so operators keep the full dashboard while viewers receive a slimmer server-computed board
 - Monte Carlo tournament simulation and Mothership-centered bid recommendations
 - a ledger for Mothership and opponent syndicate ownership, spend, and modeled remaining bankroll
 - a session-managed bracket import plus a separate session-managed analysis import
 - grouped auction-team support for unresolved play-ins and regional `13-16` packages
+- a sellout-only complete/reopen workflow that lets operators and platform admins close the room cleanly and pause polling once the auction is truly done
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
 Additional project context lives in:
@@ -26,12 +29,12 @@ Additional project context lives in:
 
 ## Live-room code map
 
-- [`src/components/dashboard-shell.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, shared recommendation payload, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
-- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, keyboard shortcuts, and the one-way sync from the auction active team into analysis
-- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including the auction-complete recap board once every asset is sold
-- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, including the read-only auction-complete rooting guide without spend/equity summaries
-- [`src/components/dashboard-shell/shared.tsx`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives, asset-formatting helpers, and shared auction-complete asset row rendering
-- [`src/lib/live-room.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.ts): pure live-room selectors, auction-progress helpers, and shared auction-complete summary helpers, with tests in [`src/lib/live-room.test.ts`](/Users/llewis/Code/side-projects/calcutta-smartbid/src/lib/live-room.test.ts)
+- [`src/components/dashboard-shell.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, role-aware live-room branches, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
+- [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, keyboard shortcuts, and the one-way sync from the auction active team into analysis
+- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including sellout-only complete/reopen controls and the auction-complete recap board
+- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, powered by a slimmer server-computed `viewerAuction` payload and including the read-only auction-complete rooting guide without spend/equity summaries
+- [`src/components/dashboard-shell/shared.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives, asset-formatting helpers, and shared auction-complete asset row rendering
+- [`src/lib/live-room.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.ts): pure live-room selectors, auction-progress helpers, and shared auction-complete summary helpers, with tests in [`src/lib/live-room.test.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.test.ts)
 
 ## Run locally
 
@@ -56,7 +59,7 @@ npm run build
 Live-room refactors are usually fastest to validate with the focused suites:
 
 ```bash
-npm run test -- --run src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
+npm run test -- --run src/lib/hooks/use-session-dashboard.test.ts src/lib/live-room.test.ts src/components/dashboard-shell/operator-auction-workspace.test.ts src/components/dashboard-shell/viewer-auction-workspace.test.ts src/components/dashboard-shell.test.ts
 ```
 
 When building `AuctionDashboard` fixtures in tests, include both `availableAssets` and `soldAssets`. They are part of the runtime dashboard contract, not optional fallback fields.
@@ -82,6 +85,7 @@ Use this when you want a real bracket plus separate team-metrics data to drive t
 1. Set `.env.local`:
    - `CALCUTTA_STORAGE_BACKEND=local` for quick local persistence, or `supabase` for production-like persistence
 2. If using `supabase`, run `supabase/schema.sql` in the Supabase SQL editor before starting the app.
+   - latest schema changes include the persisted auction completion fields on `auction_sessions`
 3. Start the dev server:
    - `npm run dev`
 4. Create a session:
@@ -149,6 +153,7 @@ The logo smoke check is now covered by [src/lib/team-logos.test.ts](/Users/llewi
   - viewer workspaces are `Auction` and `Bracket`
   - viewer `Auction` mirrors the operator decision-board language for the live call, rationale, ownership conflicts, recent sales, and ownership ledger, while staying read-only
   - when every auction asset is sold, both operator and viewer `Auction` boards switch from live bidding state into an `Auction Complete` recap
+  - once sold out, operators and platform admins can explicitly mark the auction complete or reopen it; complete stops live-room polling and locks bidding mutations until reopened
   - the operator `Auction Complete` board surfaces room-close portfolio recap, rooting priorities, and final board context
   - the viewer `Auction Complete` board stays read-only and team-focused, intentionally omitting spend, price, and equity recap language
   - active team can represent:
@@ -235,6 +240,9 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
 - selected syndicates in a session represent Mothership plus tracked room opponents
 - Mothership-owned purchases are the source of truth for owned-team position state in live analysis
 - `Auction` and `Analysis` read from the same session-native recommendation payload
+- dashboard reads are audience-aware:
+  - operators receive the full `AuctionDashboard`
+  - viewers receive a slimmer `ViewerDashboard` with server-computed `viewerAuction` data instead of raw simulation and analysis payloads
 - `Analysis` remains team-level for scouting depth, but now surfaces grouped auction-team context when a team belongs to a package
 - the in-room `Analysis` view now leads with a compact selected-team hero and searchable team selector above the ranking table
 - the analysis selector follows the live auction active team by default, but operators can temporarily inspect another team without changing the auction board
@@ -245,6 +253,11 @@ The live `Bracket` workspace requires a complete 64-team field. When the session
   - `maxSingleTeamPct` default `22`
 - viewer state should always reflect the same persisted session truth as operator state
 - viewer mode stays read-only but shows the same live current bid, decision call, and Mothership context as the operator board
+- live dashboard refresh is realtime-first with coalesced fallback polling:
+  - visible tabs fall back to fast polling only when realtime is unhealthy
+  - healthy realtime drops fallback polling to `30s`
+  - hidden tabs defer realtime-triggered fetches until visible again
+  - explicitly completed auctions stop interval polling entirely
 - archived sessions are hidden from the default admin sessions list but remain readable to platform admins
 - permanent delete is archive-gated and requires exact session-name confirmation
 

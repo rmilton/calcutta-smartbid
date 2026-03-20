@@ -1,28 +1,16 @@
 import {
+  AuctionMatchupSummary,
   AnalysisBudgetRow,
+  AuctionAsset,
   AuctionDashboard,
-  BracketGame,
-  BracketGameTeam,
   BracketViewModel,
+  BracketGameTeam,
   SimulationSnapshot,
   SoldAssetSummary,
   Syndicate,
   TeamProjection
 } from "@/lib/types";
 import { roundCurrency } from "@/lib/utils";
-
-export interface RoundMatchup {
-  opponent: BracketGameTeam;
-  game?: BracketGame;
-  probability?: number;
-}
-
-export interface AuctionMatchupSummary {
-  nominatedMatchup: RoundMatchup | null;
-  likelyRound2Matchup: RoundMatchup | null;
-  hasOwnedRoundOneOpponent: boolean;
-  hasOwnedLikelyRoundTwoOpponent: boolean;
-}
 
 export interface ViewerOwnershipGroup {
   syndicate: Syndicate;
@@ -60,7 +48,13 @@ export function orderSyndicateBoard(ledger: Syndicate[], focusSyndicateId: strin
 }
 
 export function summarizeAuctionProgress(
-  dashboard: Pick<AuctionDashboard, "availableAssets" | "soldAssets" | "session">
+  dashboard: {
+    availableAssets: AuctionAsset[];
+    soldAssets: SoldAssetSummary[];
+    session: {
+      auctionAssets?: AuctionAsset[];
+    };
+  }
 ): AuctionProgressSummary {
   const totalAuctionAssets = dashboard.session.auctionAssets?.length ?? 0;
   const soldAssetCount = dashboard.soldAssets.length;
