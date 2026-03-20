@@ -100,6 +100,7 @@ interface AssetRowProps {
 function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
   const netPositive = asset.netPerShare > 0;
   const netNeutral = asset.netPerShare === 0;
+  const hasNextGame = asset.isStillAlive && (asset.nextGameIsoDate ?? asset.nextGameNetwork ?? asset.nextGameOpponentId);
 
   return (
     <div className="tournament-tracker__asset-row">
@@ -120,12 +121,27 @@ function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
               {asset.region} · {asset.teamCount} teams
             </span>
           ) : null}
-          {asset.isStillAlive && (asset.nextGameIsoDate ?? asset.nextGameNetwork) ? (
-            <span className="tournament-tracker__next-game">
+        </div>
+      </div>
+
+      <div className="tournament-tracker__next-game-col">
+        {hasNextGame ? (
+          <>
+            <span className="tournament-tracker__next-game-broadcast">
               {formatNextGame(asset.nextGameIsoDate, asset.nextGameNetwork)}
             </span>
-          ) : null}
-        </div>
+            {asset.nextGameOpponentId ? (
+              <span className="tournament-tracker__next-game-opponent">
+                <TeamLogo teamId={asset.nextGameOpponentId} teamName={asset.nextGameOpponentName ?? ""} size="xs" />
+                <span className="tournament-tracker__next-game-opponent-name">{asset.nextGameOpponentName}</span>
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="tournament-tracker__next-game-broadcast tournament-tracker__next-game-broadcast--empty">
+            {asset.isEliminated ? "—" : "TBD"}
+          </span>
+        )}
       </div>
 
       <div className="tournament-tracker__spend-col">
@@ -246,6 +262,9 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
         <div className="tournament-tracker__asset-identity">
           <span className="tournament-tracker__col-label">Team</span>
         </div>
+        <div className="tournament-tracker__next-game-col">
+          <span className="tournament-tracker__col-label">Next Game</span>
+        </div>
         <div className="tournament-tracker__spend-col">
           <span className="tournament-tracker__col-label">% Spend</span>
         </div>
@@ -279,6 +298,7 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
         <div className="tournament-tracker__asset-identity">
           <span className="tournament-tracker__col-label">Total</span>
         </div>
+        <div className="tournament-tracker__next-game-col" />
         <div className="tournament-tracker__spend-col">
           <span className="tournament-tracker__stat-value">100%</span>
         </div>

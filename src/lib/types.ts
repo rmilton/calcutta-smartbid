@@ -1057,6 +1057,8 @@ export interface MothershipAssetResult {
   isStillAlive: boolean;
   nextGameIsoDate: string | null;
   nextGameNetwork: string | null;
+  nextGameOpponentId: string | null;
+  nextGameOpponentName: string | null;
 }
 
 export interface MothershipPortfolioResults {

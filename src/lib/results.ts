@@ -168,6 +168,8 @@ export function computeMothershipPortfolioResults(
     // Find next unplayed game for still-alive teams
     let nextGameIsoDate: string | null = null;
     let nextGameNetwork: string | null = null;
+    let nextGameOpponentId: string | null = null;
+    let nextGameOpponentName: string | null = null;
     if (isStillAlive) {
       const allGames = [
         ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
@@ -181,6 +183,9 @@ export function computeMothershipPortfolioResults(
       if (nextGame) {
         nextGameIsoDate = nextGame.broadcastIsoDate;
         nextGameNetwork = nextGame.broadcastNetwork;
+        const opponent = nextGame.entrants.find((e) => e && !projectionIds.includes(e.teamId));
+        nextGameOpponentId = opponent?.teamId ?? null;
+        nextGameOpponentName = opponent?.name ?? null;
       }
     }
 
@@ -202,7 +207,9 @@ export function computeMothershipPortfolioResults(
       isEliminated,
       isStillAlive,
       nextGameIsoDate,
-      nextGameNetwork
+      nextGameNetwork,
+      nextGameOpponentId,
+      nextGameOpponentName
     } satisfies MothershipAssetResult;
   });
 

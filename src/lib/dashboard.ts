@@ -10,7 +10,7 @@ import {
   filterRecommendationRationale
 } from "@/lib/live-room";
 import { computeMothershipPortfolioResults } from "@/lib/results";
-import { fetchEspnTournamentSchedule } from "@/lib/espn";
+import { fetchEspnTournamentSchedule, EspnScheduleMap } from "@/lib/espn";
 import {
   AuctionDashboard,
   AuctionSession,
@@ -353,8 +353,8 @@ export async function buildDashboardWithSchedule(
   options?: { audience?: DashboardAudience }
 ): Promise<AuctionDashboard | ViewerDashboard> {
   const scheduleMap = await fetchScheduleForSession(session);
-  return buildDashboard(session, storageBackend, {
-    audience: options?.audience as DashboardAudience | undefined,
-    scheduleMap
-  });
+  if (options?.audience === "viewer") {
+    return buildDashboard(session, storageBackend, { audience: "viewer", scheduleMap });
+  }
+  return buildDashboard(session, storageBackend, { scheduleMap });
 }

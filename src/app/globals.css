@@ -4767,6 +4767,7 @@ button.danger:disabled {
   display: grid;
   grid-template-columns:
     minmax(160px, 2fr)
+    minmax(160px, 1.5fr)
     80px
     90px
     minmax(220px, 1fr)
@@ -4836,11 +4837,38 @@ button.danger:disabled {
   color: var(--muted);
 }
 
-.tournament-tracker__next-game {
-  display: block;
+.tournament-tracker__next-game-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.tournament-tracker__next-game-broadcast {
   font: 400 0.70rem/1.2 var(--font-mono);
   color: var(--muted);
-  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tournament-tracker__next-game-broadcast--empty {
+  color: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.tournament-tracker__next-game-opponent {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.tournament-tracker__next-game-opponent-name {
+  font: 500 0.78rem/1.2 var(--font-display);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tournament-tracker__spend-col,
@@ -4922,12 +4950,16 @@ button.danger:disabled {
   .tournament-tracker__header-row,
   .tournament-tracker__asset-row,
   .tournament-tracker__totals-row {
-    grid-template-columns: minmax(120px, 1fr) 70px 1fr 80px;
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 1fr 80px;
   }
 
   .tournament-tracker__spend-col,
   .tournament-tracker__cost-col {
     display: none;
+  }
+
+  .tournament-tracker__next-game-col {
+    min-width: 0;
   }
 
   .tournament-tracker__rounds-col {
