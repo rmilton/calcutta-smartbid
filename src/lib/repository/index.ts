@@ -2556,6 +2556,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
       simulationSnapshot: null
     }),
     liveState: {
+      nominatedAssetId: null,
       nominatedTeamId: null,
       currentBid: 0,
       soldTeamIds: [],
@@ -2603,7 +2604,8 @@ async function applyProjectionImport(
   );
   session.liveState = {
     ...session.liveState,
-    nominatedTeamId: session.projections[0]?.id ?? null,
+    nominatedAssetId: null,
+    nominatedTeamId: null,
     currentBid: 0,
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
@@ -2633,6 +2635,7 @@ function applySessionManagedImports(
   session.simulationSnapshot = null;
   session.liveState = {
     ...session.liveState,
+    nominatedAssetId: null,
     nominatedTeamId: null,
     currentBid: 0,
     soldTeamIds: [],
@@ -2680,7 +2683,8 @@ function applySessionManagedImports(
   session.projections = applyProjectionOverrides(session.baseProjections, session.projectionOverrides);
   session.liveState = {
     ...session.liveState,
-    nominatedTeamId: session.projections[0]?.id ?? null,
+    nominatedAssetId: null,
+    nominatedTeamId: null,
     currentBid: 0,
     soldTeamIds: [],
     lastUpdatedAt: session.updatedAt
@@ -2720,7 +2724,8 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
   );
   session.liveState = {
     ...session.liveState,
-    nominatedTeamId: session.projections[0]?.id ?? null,
+    nominatedAssetId: null,
+    nominatedTeamId: null,
     currentBid: 0,
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
@@ -3859,7 +3864,6 @@ function normalizeLiveState(
   projections: TeamProjection[],
   purchases: PurchaseRecord[]
 ) {
-  const shouldDefaultNomination = liveState === undefined;
   const purchasedAssetIds = purchases
     .map((purchase) => findAuctionAssetForPurchase(auctionAssets, purchase)?.id ?? null)
     .filter((assetId): assetId is string => assetId !== null);
@@ -3891,11 +3895,6 @@ function normalizeLiveState(
     const matchingAsset =
       auctionAssets.find((asset) => asset.projectionIds.includes(normalized.nominatedTeamId!)) ?? null;
     normalized.nominatedAssetId = matchingAsset?.id ?? null;
-  } else if (shouldDefaultNomination) {
-    normalized.nominatedAssetId = auctionAssets[0]?.id ?? null;
-    normalized.nominatedTeamId = auctionAssets[0]
-      ? resolveRepresentativeProjectionId(auctionAssets[0], projections)
-      : null;
   }
 
   normalized.soldAssetIds = normalized.soldAssetIds.filter((assetId) =>

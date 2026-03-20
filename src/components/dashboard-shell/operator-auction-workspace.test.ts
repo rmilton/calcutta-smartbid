@@ -172,6 +172,7 @@ describe("OperatorAuctionWorkspace", () => {
             convictionScore: 0.5,
             investableShare: 0.05,
             openingBid: 1200,
+            plannedBudgetAllocation: 2000,
             targetBid: 1800,
             maxBid: 2400,
             tier: "depth"
@@ -218,6 +219,7 @@ describe("OperatorAuctionWorkspace", () => {
         breakEvenStage: null,
         targetBidDisplay: "--",
         maxBidDisplay: "--",
+        plannedBudgetAllocationDisplay: "--",
         filteredRationale: [],
         ownershipConflicts: [],
         teamLookup: new Map([["remaining", remainingTeam]]),
@@ -246,8 +248,9 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("1 Team Remaining");
     expect(markup).toContain("Current spend");
     expect(markup).toContain("Projected final pot");
+    expect(markup).toContain("Clear active");
     expect(markup).toContain("$7,000");
-    expect(markup).toContain("$8,800");
+    expect(markup).toContain("$15,000");
   });
 
   it("renders Nate Silver round reach probabilities with payout-if-reached values", () => {
@@ -347,6 +350,7 @@ describe("OperatorAuctionWorkspace", () => {
         breakEvenStage: "sweet16",
         targetBidDisplay: "$2,783",
         maxBidDisplay: "$3,647",
+        plannedBudgetAllocationDisplay: "$4,950",
         filteredRationale: [],
         ownershipConflicts: [],
         teamLookup: new Map([["purdue", nominatedTeam]]),
@@ -380,6 +384,8 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("$2,783");
     expect(markup).toContain("Max bid");
     expect(markup).toContain("$3,647");
+    expect(markup).toContain("Planned budget");
+    expect(markup).toContain("$4,950");
     expect(markup).toContain("$2,200");
     expect(markup).toContain("$5,500");
     expect(markup).toContain("$11,000");
@@ -551,6 +557,7 @@ describe("OperatorAuctionWorkspace", () => {
         breakEvenStage: null,
         targetBidDisplay: "--",
         maxBidDisplay: "--",
+        plannedBudgetAllocationDisplay: "--",
         filteredRationale: [],
         ownershipConflicts: [],
         teamLookup,

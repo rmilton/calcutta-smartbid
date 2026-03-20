@@ -173,6 +173,7 @@ describe("ViewerAuctionWorkspace", () => {
       assetId: asset.id,
       currentBid: 500,
       openingBid: 1800,
+      plannedBudgetAllocation: 2450,
       targetBid: 2783,
       maxBid: 3647,
       expectedGrossPayout: 5793,

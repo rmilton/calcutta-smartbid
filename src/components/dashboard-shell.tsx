@@ -10,6 +10,7 @@ import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import {
   buildOperatorSyndicateHoldings,
   buildViewerOwnershipGroups,
+  deriveProjectedAssetClose,
   deriveAuctionMatchups,
   filterRecommendationRationale,
   getFocusOwnedTeams,
@@ -498,6 +499,10 @@ export function DashboardShell({
 
     return {
       openingBid: matchingRows.reduce((total, row) => total + row.openingBid, 0),
+      plannedBudgetAllocation: matchingRows.reduce(
+        (total, row) => total + row.plannedBudgetAllocation,
+        0
+      ),
       targetBid: matchingRows.reduce((total, row) => total + row.targetBid, 0),
       maxBid: matchingRows.reduce((total, row) => total + row.maxBid, 0)
     };
@@ -736,6 +741,18 @@ export function DashboardShell({
       ? "Pass"
       : formatCurrency(recommendation.maxBid)
     : "--";
+  const plannedBudgetAllocationDisplay = selectedAsset
+    ? formatCurrency(
+        deriveProjectedAssetClose({
+          ledger: dashboard.ledger ?? [],
+          availableAssets: dashboard.availableAssets ?? [],
+          budgetRows: dashboard.analysis?.budgetRows ?? [],
+          asset: selectedAsset,
+          liveAssetId: selectedAssetId,
+          liveBid: currentBid
+        })
+      )
+    : "--";
   const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
   const ownershipGroups = useMemo(
     () =>
@@ -893,6 +910,7 @@ export function DashboardShell({
               breakEvenStage={breakEvenStage}
               targetBidDisplay={targetBidDisplay}
               maxBidDisplay={maxBidDisplay}
+              plannedBudgetAllocationDisplay={plannedBudgetAllocationDisplay}
               filteredRationale={filteredRationale}
               ownershipConflicts={ownershipConflicts}
               teamLookup={teamLookup}

@@ -70,6 +70,7 @@ interface OperatorAuctionWorkspaceProps {
   breakEvenStage: Stage | "negativeReturn" | null;
   targetBidDisplay: string;
   maxBidDisplay: string;
+  plannedBudgetAllocationDisplay: string;
   filteredRationale: string[];
   ownershipConflicts: MatchupConflict[];
   teamLookup: Map<string, TeamProjection>;
@@ -125,6 +126,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     breakEvenStage,
     targetBidDisplay,
     maxBidDisplay,
+    plannedBudgetAllocationDisplay,
     filteredRationale,
     ownershipConflicts,
     teamLookup,
@@ -307,6 +309,15 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                 Record purchase
               </button>
             </div>
+            <button
+              type="button"
+              className="button button-ghost button--small auction-controls__clear-active"
+              data-live-bid-blur-ignore="true"
+              disabled={!selectedAssetId}
+              onClick={() => onAssetChange("")}
+            >
+              Clear active
+            </button>
 
             {notice ? <p className="notice-text">{notice}</p> : null}
             {error ? <p className="error-text">{error}</p> : null}
@@ -571,11 +582,52 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   <div className="decision-panel__hero-bid-guide" aria-label="Bid guide">
                     <div className="decision-panel__hero-bid-line">
                       <span>Target bid</span>
-                      <strong>{targetBidDisplay}</strong>
+                      <span className="decision-panel__hero-bid-value">
+                        <strong>{targetBidDisplay}</strong>
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Target bid explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The model&apos;s normal buy price for this team based on conviction.
+                            Funding pressure shows up separately in the budget-room and stoplight
+                            signals.
+                          </span>
+                        </button>
+                      </span>
                     </div>
                     <div className="decision-panel__hero-bid-line">
                       <span>Max bid</span>
-                      <strong>{maxBidDisplay}</strong>
+                      <span className="decision-panel__hero-bid-value">
+                        <strong>{maxBidDisplay}</strong>
+                        <button type="button" className="tooltip-hint" aria-label="Max bid explanation">
+                          ?
+                          <span className="tooltip-content">
+                            The highest bid the model can justify from its value model after
+                            portfolio-overlap penalties. Funding pressure shows up separately in the
+                            budget-room and stoplight signals.
+                          </span>
+                        </button>
+                      </span>
+                    </div>
+                    <div className="decision-panel__hero-bid-line">
+                      <span>Planned budget</span>
+                      <span className="decision-panel__hero-bid-value">
+                        <strong>{plannedBudgetAllocationDisplay}</strong>
+                        <button
+                          type="button"
+                          className="tooltip-hint"
+                          aria-label="Planned budget explanation"
+                        >
+                          ?
+                          <span className="tooltip-content">
+                            The room-scaled planned close for this team based on syndicate budget
+                            expectations. This uses the same planning math as projected final pot.
+                          </span>
+                        </button>
+                      </span>
                     </div>
                   </div>
                 </div>

@@ -132,6 +132,7 @@ describe("recommendations", () => {
     expect(recommendation).not.toBeNull();
     expect(recommendation?.maxBid).toBeGreaterThan(0);
     expect(recommendation?.targetBid).toBeGreaterThan(0);
+    expect(recommendation?.plannedBudgetAllocation).toBeGreaterThan(0);
     expect(recommendation?.targetBid).toBeGreaterThan(
       (recommendation?.expectedGrossPayout ?? 0) * 0.35
     );
