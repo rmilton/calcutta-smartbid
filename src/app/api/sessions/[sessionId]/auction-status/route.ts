@@ -20,7 +20,17 @@ export async function PUT(request: Request, { params }: RouteProps) {
 
     const actor = await requireAuthenticatedMemberForSession(sessionId, "admin");
     const payload = updateAuctionStatusSchema.parse(await request.json());
-    const nextStatus = payload.action === "complete" ? "complete" : "active";
+
+    let nextStatus: import("@/lib/types").AuctionStatus;
+    if (payload.action === "complete") {
+      nextStatus = "complete";
+    } else if (payload.action === "enter_tournament") {
+      nextStatus = "tournament_active";
+    } else if (payload.action === "exit_tournament") {
+      nextStatus = "complete";
+    } else {
+      nextStatus = "active";
+    }
 
     await getSessionRepository().updateAuctionStatus(sessionId, nextStatus, actor);
     return jsonOk({

@@ -18,6 +18,9 @@ The current implementation ships with:
 - a session-managed bracket import plus a separate session-managed analysis import
 - grouped auction-team support for unresolved play-ins and regional `13-16` packages
 - a sellout-only complete/reopen workflow that lets operators and platform admins close the room cleanly and pause polling once the auction is truly done
+- a `tournament_active` state for transitioning from auction into live tournament tracking mode
+- a Mothership Portfolio Results tracker with per-asset round progress, realized payouts, return per share, and live next-game schedule pulled from the ESPN public scoreboard API
+- automatic ESPN broadcast data (date, time, network) on bracket game cards and tournament tracker rows, with fuzzy name normalization to handle ESPN naming differences
 - a local file-backed repository for immediate use, plus a Supabase-backed repository path with realtime schema and transactional purchase RPC support
 
 Additional project context lives in:
@@ -31,10 +34,13 @@ Additional project context lives in:
 
 - [`src/components/dashboard-shell.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell.tsx): shell that composes the session header, workspace routing, role-aware live-room branches, and the `Analysis` / `Overrides` workspaces, including the compact analysis hero with team context, round-probability ladder, note/classification controls, and the ranking table
 - [`src/components/dashboard-shell/use-live-room-controller.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/use-live-room-controller.ts): local live-room controller for bid state, purchases, bracket saves, notes, overrides, keyboard shortcuts, and the one-way sync from the auction active team into analysis
-- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including sellout-only complete/reopen controls and the auction-complete recap board
-- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, powered by a slimmer server-computed `viewerAuction` payload and including the read-only auction-complete rooting guide without spend/equity summaries
+- [`src/components/dashboard-shell/operator-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx): operator-only `Auction` workspace, including sellout-only complete/reopen/tournament controls and the auction-complete or tournament-active recap board with the Mothership portfolio tracker
+- [`src/components/dashboard-shell/viewer-auction-workspace.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx): viewer-only `Auction` workspace, powered by a slimmer server-computed `viewerAuction` payload; in tournament mode hides the live decision board, team highlights, recent sales, and rooting guide in favor of the portfolio tracker
+- [`src/components/dashboard-shell/tournament-tracker.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/tournament-tracker.tsx): Mothership Portfolio Results tracker shown in tournament mode; displays per-asset round progress pills, payout/return/net per share, and the next scheduled game from ESPN
 - [`src/components/dashboard-shell/shared.tsx`](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx): shared live-room display primitives, asset-formatting helpers, and shared auction-complete asset row rendering
 - [`src/lib/live-room.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.ts): pure live-room selectors, auction-progress helpers, and shared auction-complete summary helpers, with tests in [`src/lib/live-room.test.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/live-room.test.ts)
+- [`src/lib/results.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/results.ts): computes Mothership portfolio results from bracket state and purchases; derives round progression, realized payouts, and next-game info for each owned asset
+- [`src/lib/espn.ts`](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/espn.ts): fetches NCAA game schedules from the ESPN public scoreboard API (no key required); builds a normalized team-pair lookup map used to populate bracket card broadcast info and tournament tracker next-game rows
 
 ## Run locally
 
@@ -153,9 +159,11 @@ The logo smoke check is now covered by [src/lib/team-logos.test.ts](/Users/llewi
   - viewer workspaces are `Auction` and `Bracket`
   - viewer `Auction` mirrors the operator decision-board language for the live call, rationale, ownership conflicts, recent sales, and ownership ledger, while staying read-only
   - when every auction asset is sold, both operator and viewer `Auction` boards switch from live bidding state into an `Auction Complete` recap
-  - once sold out, operators and platform admins can explicitly mark the auction complete or reopen it; complete stops live-room polling and locks bidding mutations until reopened
+  - once sold out, operators and platform admins can explicitly mark the auction complete, reopen it, or enter tournament mode
   - the operator `Auction Complete` board surfaces room-close portfolio recap, rooting priorities, and final board context
   - the viewer `Auction Complete` board stays read-only and team-focused, intentionally omitting spend, price, and equity recap language
+  - in `tournament_active` state the operator and viewer boards replace the auction recap with the Mothership Portfolio Results tracker and a live bracket; the nav pill updates to "Tournament mode active"
+  - tournament mode fetches live ESPN broadcast data (game date, time, network) on each dashboard load and injects it into bracket cards and portfolio tracker rows
   - active team can represent:
     - a single school
     - an unresolved play-in team

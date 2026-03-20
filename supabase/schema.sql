@@ -48,6 +48,7 @@ alter table public.auction_sessions
 alter table public.auction_sessions
   add column if not exists archived_by_email text null;
 
+-- valid values: 'active', 'complete', 'tournament_active'
 alter table public.auction_sessions
   add column if not exists auction_status text not null default 'active';
 

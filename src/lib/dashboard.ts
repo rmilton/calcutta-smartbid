@@ -9,6 +9,8 @@ import {
   deriveProjectedFinalPot,
   filterRecommendationRationale
 } from "@/lib/live-room";
+import { computeMothershipPortfolioResults } from "@/lib/results";
+import { fetchEspnTournamentSchedule, EspnScheduleMap } from "@/lib/espn";
 import {
   AuctionDashboard,
   AuctionSession,
@@ -100,7 +102,8 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
 
 function buildDashboardContext(
   session: AuctionSession | StoredAuctionSession,
-  storageBackend: StorageBackend
+  storageBackend: StorageBackend,
+  scheduleMap?: EspnScheduleMap | null
 ) {
   const publicSession = sanitizeSessionForClient(session);
   if (
@@ -161,7 +164,10 @@ function buildDashboardContext(
 
   const focusSyndicate = requireMothershipPerspective(publicSession);
   const analysis = buildSessionAnalysisSnapshot(publicSession, focusSyndicate);
-  const bracket = buildBracketView(publicSession);
+  const bracket = buildBracketView(
+    publicSession,
+    publicSession.auctionStatus === "tournament_active" ? (scheduleMap ?? null) : null
+  );
   const recommendation = buildBidRecommendation(
     publicSession,
     nominatedTeam,
@@ -169,6 +175,10 @@ function buildDashboardContext(
     analysis,
     nominatedAsset
   );
+  const portfolioResults =
+    publicSession.auctionStatus === "tournament_active"
+      ? computeMothershipPortfolioResults(publicSession, bracket, focusSyndicate.id)
+      : null;
 
   return {
     publicSession,
@@ -182,6 +192,7 @@ function buildDashboardContext(
     analysis,
     bracket,
     recommendation,
+    portfolioResults,
     storageBackend
   };
 }
@@ -242,6 +253,7 @@ function buildViewerDashboardFromContext(
     soldAssets,
     ledger: publicSession.syndicates,
     bracket,
+    portfolioResults: context.portfolioResults,
     viewerAuction: {
       projectedFinalPot: deriveProjectedFinalPot({
         ledger: publicSession.syndicates,
@@ -267,24 +279,25 @@ function buildViewerDashboardFromContext(
 
 export function buildDashboard(
   session: AuctionSession | StoredAuctionSession,
-  storageBackend: StorageBackend
+  storageBackend: StorageBackend,
+  options?: { scheduleMap?: EspnScheduleMap | null }
 ): AuctionDashboard;
 export function buildDashboard(
   session: AuctionSession | StoredAuctionSession,
   storageBackend: StorageBackend,
-  options: { audience: "operator" }
+  options: { audience: "operator"; scheduleMap?: EspnScheduleMap | null }
 ): AuctionDashboard;
 export function buildDashboard(
   session: AuctionSession | StoredAuctionSession,
   storageBackend: StorageBackend,
-  options: { audience: "viewer" }
+  options: { audience: "viewer"; scheduleMap?: EspnScheduleMap | null }
 ): ViewerDashboard;
 export function buildDashboard(
   session: AuctionSession | StoredAuctionSession,
   storageBackend: StorageBackend,
-  options?: { audience?: DashboardAudience }
+  options?: { audience?: DashboardAudience; scheduleMap?: EspnScheduleMap | null }
 ): AuctionDashboard | ViewerDashboard {
-  const context = buildDashboardContext(session, storageBackend);
+  const context = buildDashboardContext(session, storageBackend, options?.scheduleMap);
 
   if (options?.audience === "viewer") {
     return buildViewerDashboardFromContext(context);
@@ -306,6 +319,42 @@ export function buildDashboard(
     lastPurchase:
       context.publicSession.purchases[context.publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(context.publicSession.projectionOverrides).length,
-    storageBackend: context.storageBackend
+    storageBackend: context.storageBackend,
+    portfolioResults: context.portfolioResults
   };
+}
+
+async function fetchScheduleForSession(session: AuctionSession | StoredAuctionSession) {
+  const publicStatus =
+    "auctionStatus" in session ? session.auctionStatus : null;
+  if (publicStatus === "tournament_active") {
+    return fetchEspnTournamentSchedule();
+  }
+  return null;
+}
+
+export async function buildDashboardWithSchedule(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend
+): Promise<AuctionDashboard>;
+export async function buildDashboardWithSchedule(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options: { audience: "operator" }
+): Promise<AuctionDashboard>;
+export async function buildDashboardWithSchedule(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options: { audience: "viewer" }
+): Promise<ViewerDashboard>;
+export async function buildDashboardWithSchedule(
+  session: AuctionSession | StoredAuctionSession,
+  storageBackend: StorageBackend,
+  options?: { audience?: DashboardAudience }
+): Promise<AuctionDashboard | ViewerDashboard> {
+  const scheduleMap = await fetchScheduleForSession(session);
+  if (options?.audience === "viewer") {
+    return buildDashboard(session, storageBackend, { audience: "viewer", scheduleMap });
+  }
+  return buildDashboard(session, storageBackend, { scheduleMap });
 }

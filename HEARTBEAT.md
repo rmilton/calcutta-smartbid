@@ -46,8 +46,14 @@ As of `2026-03-20`:
   - operator and viewer `Auction` boards now flip into an `Auction Complete` finish state once every asset is sold
   - live dashboard refresh is now realtime-first with adaptive fallback polling, duplicate refresh coalescing, and hidden-tab stale catch-up behavior
   - operators still receive the full live dashboard while viewers now receive a slimmer server-computed payload without raw simulation and analysis blobs
-  - once the room is sold out, operators and platform admins can explicitly mark the auction complete or reopen it
+  - once the room is sold out, operators and platform admins can explicitly mark the auction complete, reopen it, or enter tournament mode
   - completed auctions stop interval polling and block live bidding mutations until reopened
+  - `tournament_active` state transitions the room from auction recap into live tournament tracking mode
+  - tournament mode shows the Mothership Portfolio Results tracker with per-asset round progress, cost/return/net per share, and ESPN-sourced next-game schedule
+  - bracket cards and tournament tracker rows auto-populate with game date, time, and network from the ESPN public scoreboard API (no key required); fetched server-side on each dashboard load with a 5-minute cache
+  - ESPN team name normalization handles common NCAA naming differences (A&M suffix, St/State abbreviations, punctuation, parenthetical state identifiers, play-in group name splitting)
+  - viewer board in tournament mode hides the live decision board, team highlights, recent sales, and rooting guide in favor of the portfolio tracker
+  - nav pill updates to reflect "Tournament mode active" vs "Auction marked complete"
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
   - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
   - extracted live-room controller and dedicated operator/viewer auction workspace components
@@ -158,6 +164,17 @@ Key files:
 
 ## Important Recent Changes
 
+- `tournament_active` auction status added; operators can enter tournament mode from the auction-complete state, exit back to complete, and the `auction_status` column is now correctly deserialized for all three values in both read paths of the Supabase repository
+- Mothership Portfolio Results tracker added to operator and viewer `Auction` boards in tournament mode; shows per-asset round progress pills (green=win, red=loss, gray=not yet played), cost/return/net per share, % of spend, and next scheduled game from ESPN
+- `src/lib/results.ts` computes portfolio results from bracket state; `src/lib/espn.ts` fetches NCAA game schedule from the ESPN public scoreboard API
+- `buildDashboardWithSchedule` wraps `buildDashboard` and fetches ESPN data when status is `tournament_active`; broadcast info is injected into bracket games via `broadcastIsoDate` and `broadcastNetwork` fields on `BracketGame`
+- `MothershipAssetResult` extended with `nextGameIsoDate` and `nextGameNetwork`; tournament tracker rows show the next unplayed game for still-alive teams
+- bracket game cards now show date/time/network from ESPN; TBD shown when no data is available
+- ESPN team name normalization (`normalizeTeamName` in `espn.ts`) handles A&M suffix removal, St/State abbreviation, punctuation, parenthetical state names, and play-in group names like "Prairie View A&M / Lehigh" split into individual variants for matching
+- status-change buttons (mark complete, reopen, enter/exit tournament) moved into the live controls box with `window.confirm` guards on all four
+- viewer board hides the live decision board, team highlights, recent sales, and rooting guide when in tournament mode
+- nav pill updated: "Tournament mode active" in `tournament_active`, "Auction marked complete" in `complete`
+- summary stats grid on tournament tracker includes cost per half share in addition to per-share values
 - visual design overhauled to a premium minimal token system using CSS custom properties; all surfaces use `--bg`, `--panel`, `--panel-muted`, and semantic vars instead of hardcoded colours
 - dark/light theme toggle added via `ThemeToggle` component; toggle appears in session, admin center, and session admin headers; theme written to `data-theme` on `<html>` and persisted to `localStorage`
 - Inter + JetBrains Mono loaded via `next/font/google`; FOUC eliminated via inline bootstrap script in `<head>`
@@ -215,6 +232,8 @@ Key files:
 - old sessions created before the Mothership-first rule may need admin correction if Mothership is not in the room
 - lint still uses deprecated `next lint`
 - bracket view requires a complete 64-team field; incomplete session imports remain intentionally blocked
+- ESPN name matching has two known unresolved cases: "Miami (Ohio)" (ESPN uses "Miami OH") and "Cal Baptist" (ESPN uses "CA Baptist"); those bracket cards will show TBD for broadcast info
+- ESPN data is cached for 5 minutes via Next.js fetch cache; clearing `.next/cache/fetch-cache` forces a fresh fetch on next load
 
 ## Manual Regression Checklist
 
@@ -243,6 +262,11 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 21. Confirm a purchase/live-state change is rejected while the auction is marked complete.
 22. Reopen the auction and confirm the room accepts bidding corrections again.
 23. Log in as a viewer after the room is sold out and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+23a. Click "Enter tournament mode" and confirm the nav pill changes to "Tournament mode active".
+23b. Confirm the Mothership Portfolio Results tracker is visible on both operator and viewer boards.
+23c. Confirm bracket cards show game date/time/network for currently scheduled games, and "TBD" for unscheduled ones.
+23d. Confirm the viewer board hides the decision board, team highlights, recent sales, and rooting guide in tournament mode.
+23e. Click "Exit tournament mode" and confirm the room returns to auction-complete state.
 24. Try recording a purchase with `0` and confirm the friendly validation error.
 25. Refresh and confirm persistence.
 26. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
@@ -256,6 +280,9 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 
 - local development can still use `CALCUTTA_STORAGE_BACKEND=local`, but do not treat that path as deployable
 - if a Supabase environment is missing `auction_status` completion columns on `auction_sessions`, apply the latest `supabase/schema.sql` before testing completion flows
+- `tournament_active` is stored as a third value in the `auction_status` column; the repository read path explicitly handles all three values (`active`, `complete`, `tournament_active`) — do not add a default fallback that would collapse `tournament_active` to `active`
+- ESPN broadcast data is fetched server-side only when `auctionStatus === "tournament_active"`; no API key required; the endpoint is `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard`
+- if bracket cards show stale or missing broadcast data, clear `.next/cache/fetch-cache` and reload
 - if dev runtime gets strange after large route/component changes, clear `.next` and restart
 - old stored sessions may still contain legacy payout keys; the repository normalizes them
 - `MOTHERSHIP_SYNDICATE_NAME` defaults to `Mothership` and is now the canonical strategy subject

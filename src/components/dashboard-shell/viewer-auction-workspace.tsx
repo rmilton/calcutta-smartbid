@@ -7,6 +7,7 @@ import {
 } from "@/lib/live-room";
 import {
   MatchupConflict,
+  MothershipPortfolioResults,
   RoundMatchup,
   SoldAssetSummary,
   Stage,
@@ -27,6 +28,7 @@ import {
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
+import { TournamentTracker } from "@/components/dashboard-shell/tournament-tracker";
 
 interface ViewerAuctionWorkspaceProps {
   dashboard: ViewerDashboard;
@@ -46,6 +48,8 @@ interface ViewerAuctionWorkspaceProps {
   soldFeed: SoldAssetSummary[];
   syndicateLookup: Map<string, Syndicate>;
   isAuctionMarkedComplete: boolean;
+  isTournamentActive: boolean;
+  portfolioResults: MothershipPortfolioResults | null;
 }
 
 export function ViewerAuctionWorkspace({
@@ -65,7 +69,9 @@ export function ViewerAuctionWorkspace({
   ownershipGroups,
   soldFeed,
   syndicateLookup,
-  isAuctionMarkedComplete
+  isAuctionMarkedComplete,
+  isTournamentActive,
+  portfolioResults
 }: ViewerAuctionWorkspaceProps) {
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
@@ -137,9 +143,8 @@ export function ViewerAuctionWorkspace({
     };
   }, [filteredRationale.length, ownershipConflicts.length, soldFeed.length]);
 
-  return (
-    <section className="viewer-layout">
-      <section className="viewer-auction-grid">
+  const auctionGrid = !isTournamentActive ? (
+    <section className="viewer-auction-grid">
         <div ref={leftColumnRef} className="viewer-auction-grid__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
@@ -537,7 +542,15 @@ export function ViewerAuctionWorkspace({
             )}
           </article>
         </aside>
-      </section>
+    </section>
+  ) : null;
+
+  return (
+    <section className="viewer-layout">
+      {isTournamentActive && portfolioResults ? (
+        <TournamentTracker results={portfolioResults} />
+      ) : null}
+      {auctionGrid}
 
       <article className="surface-card">
         <div className="section-headline">
@@ -570,6 +583,7 @@ export function ViewerAuctionWorkspace({
           <p className="empty-copy">No matching teams in current syndicate holdings.</p>
         )}
       </article>
+
     </section>
   );
 }
