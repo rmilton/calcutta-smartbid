@@ -4,7 +4,7 @@ This is the current-state handoff document. Update it when behavior, architectur
 
 ## Last Known Good State
 
-As of `2026-03-15`:
+As of `2026-03-20`:
 
 - app runs locally against Supabase via `.env.local`
 - local smoke test passed:
@@ -44,12 +44,17 @@ As of `2026-03-15`:
   - consolidated `Auction` workspace with live decision board, syndicate board, Mothership position, and decision context
   - viewer `Auction` now uses the same live decision board, call, rationale, ownership-conflict, recent-sales, and ownership-ledger structure as the operator board without exposing controls
   - operator and viewer `Auction` boards now flip into an `Auction Complete` finish state once every asset is sold
+  - live dashboard refresh is now realtime-first with adaptive fallback polling, duplicate refresh coalescing, and hidden-tab stale catch-up behavior
+  - operators still receive the full live dashboard while viewers now receive a slimmer server-computed payload without raw simulation and analysis blobs
+  - once the room is sold out, operators and platform admins can explicitly mark the auction complete or reopen it
+  - completed auctions stop interval polling and block live bidding mutations until reopened
   - grouped auction teams for unresolved play-ins and regional `13-16` packages
   - grouped-team context in `Auction`, `Analysis`, and viewer surfaces
   - extracted live-room controller and dedicated operator/viewer auction workspace components
 - live-room recommendation math now derives from Mothership automatically instead of a selectable focus syndicate
 - live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
 - runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
+- Supabase schema now includes persisted auction completion fields on `auction_sessions`
 
 ## Surface Status
 
@@ -95,9 +100,11 @@ Current product surfaces and their roles:
   - one regional `13-16` package
 - viewer state must always derive from the same persisted session truth as operator state
 - viewer mode is read-only, but it does display the live current bid and the same Mothership decision context as the operator surface
+- viewer transport is intentionally slimmer than operator transport; viewers should not require raw `simulationSnapshot` or full `analysis` payloads to render the live board
 - `projectedPot` is provisional model input
 - a future `actual pot locked` state should override projected assumptions once the room closes
 - once the room is fully sold, `Auction` should present a closed-books finish state rather than an awaiting-selection idle state
+- once the sold-out room is explicitly marked complete, live bidding mutations should remain blocked until reopened
 - Mothership is the fixed recommendation lens for every session
 - Mothership purchases are the owned-position truth for live analysis and bid planning
 - `Auction` and `Analysis` must remain consistent because they share one analysis snapshot
@@ -158,6 +165,12 @@ Key files:
 - purchase route now returns a clean message when price is `<= 0`
 - operator local form state no longer resets while polling/realtime refresh is active
 - live dashboard now refreshes when session syndicates change
+- live-room dashboard refresh is now realtime-first, falls back to `30s` polling when healthy, and only uses `2.5s` polling while realtime is degraded
+- duplicate poll/broadcast/Postgres/manual refresh triggers now collapse into one trailing dashboard fetch instead of fanning out
+- hidden tabs no longer fetch on realtime events; they mark the board stale and refresh once visible again
+- viewer live-room reads now use a slim `ViewerDashboard` with server-computed `viewerAuction` fields instead of raw simulation and analysis payloads
+- session admins and operators can mark a sold-out auction complete or reopen it later
+- completed auctions stop interval polling, hide the live operator controls, and reject purchase/live-state mutations until reopened
 - live-room `Analysis` now shares the same recommendation engine as `Auction`
 - the separate `Portfolio` room tab was retired and folded into the main `Auction` surface
 - Selection Sunday imports are now split into bracket structure and team analysis
@@ -226,19 +239,23 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 17. Open `Analysis` and confirm the active auction team is selected by default.
 18. Change teams inside `Analysis` and confirm the auction active team does not change.
 19. Sell the final remaining asset and confirm the operator board flips to `Auction Complete`.
-20. Log in as a viewer after the room is sold out and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
-21. Try recording a purchase with `0` and confirm the friendly validation error.
-22. Refresh and confirm persistence.
-23. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
-24. Log in as a viewer and confirm the room is synchronized, bracket is viewable, and edits remain blocked.
-25. Archive a session and confirm it is hidden by default in the admin sessions list.
-26. Show archived sessions and confirm the archived session appears with archived state.
-27. Confirm permanent delete is blocked until the exact session name is entered.
-28. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
+20. Mark the sold-out auction complete and confirm the operator board collapses the live controls down to completion messaging.
+21. Confirm a purchase/live-state change is rejected while the auction is marked complete.
+22. Reopen the auction and confirm the room accepts bidding corrections again.
+23. Log in as a viewer after the room is sold out and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+24. Try recording a purchase with `0` and confirm the friendly validation error.
+25. Refresh and confirm persistence.
+26. Open `/csv-analysis?sessionId=<id>` and confirm redirect into the live-room `Analysis` tab.
+27. Log in as a viewer and confirm the room is synchronized, bracket is viewable, and edits remain blocked.
+28. Archive a session and confirm it is hidden by default in the admin sessions list.
+29. Show archived sessions and confirm the archived session appears with archived state.
+30. Confirm permanent delete is blocked until the exact session name is entered.
+31. Permanently delete an archived session and confirm the session no longer loads in admin or live-room routes.
 
 ## Operational Notes
 
 - local development can still use `CALCUTTA_STORAGE_BACKEND=local`, but do not treat that path as deployable
+- if a Supabase environment is missing `auction_status` completion columns on `auction_sessions`, apply the latest `supabase/schema.sql` before testing completion flows
 - if dev runtime gets strange after large route/component changes, clear `.next` and restart
 - old stored sessions may still contain legacy payout keys; the repository normalizes them
 - `MOTHERSHIP_SYNDICATE_NAME` defaults to `Mothership` and is now the canonical strategy subject
