@@ -192,6 +192,8 @@ describe("OperatorAuctionWorkspace", () => {
         buyerId: mothership.id,
         currentBid: 0,
         isUndoingPurchase: false,
+        isUpdatingAuctionStatus: false,
+        isAuctionMarkedComplete: false,
         teamSelectRef: { current: null },
         bidInputRef: { current: null },
         onAssetChange: () => undefined,
@@ -201,6 +203,7 @@ describe("OperatorAuctionWorkspace", () => {
         onBuyerChange: () => undefined,
         onUndoPurchase: () => undefined,
         onRecordPurchase: () => undefined,
+        onUpdateAuctionStatus: () => undefined,
         lastPurchaseTeamName: null,
         lastPurchaseBuyerName: null,
         signalLabel: null,
@@ -318,6 +321,8 @@ describe("OperatorAuctionWorkspace", () => {
         buyerId: mothership.id,
         currentBid: 8000,
         isUndoingPurchase: false,
+        isUpdatingAuctionStatus: false,
+        isAuctionMarkedComplete: false,
         teamSelectRef: { current: null },
         bidInputRef: { current: null },
         onAssetChange: () => undefined,
@@ -327,6 +332,7 @@ describe("OperatorAuctionWorkspace", () => {
         onBuyerChange: () => undefined,
         onUndoPurchase: () => undefined,
         onRecordPurchase: () => undefined,
+        onUpdateAuctionStatus: () => undefined,
         lastPurchaseTeamName: null,
         lastPurchaseBuyerName: null,
         signalLabel: null,
@@ -519,6 +525,8 @@ describe("OperatorAuctionWorkspace", () => {
         buyerId: mothership.id,
         currentBid: 0,
         isUndoingPurchase: false,
+        isUpdatingAuctionStatus: false,
+        isAuctionMarkedComplete: true,
         teamSelectRef: { current: null },
         bidInputRef: { current: null },
         onAssetChange: () => undefined,
@@ -528,6 +536,7 @@ describe("OperatorAuctionWorkspace", () => {
         onBuyerChange: () => undefined,
         onUndoPurchase: () => undefined,
         onRecordPurchase: () => undefined,
+        onUpdateAuctionStatus: () => undefined,
         lastPurchaseTeamName: null,
         lastPurchaseBuyerName: null,
         signalLabel: null,
@@ -577,6 +586,9 @@ describe("OperatorAuctionWorkspace", () => {
 
     expect(markup).toContain("Auction Complete");
     expect(markup).toContain("Books closed");
+    expect(markup).toContain("Marked complete");
+    expect(markup).toContain("Reopen auction");
+    expect(markup).toContain("Auction is marked complete. Reopen it to resume bidding corrections or undo the last sale.");
     expect(markup).toContain("Portfolio locked in");
     expect(markup).toContain("Best bargain");
     expect(markup).toContain("Rooting Guide");
@@ -586,5 +598,98 @@ describe("OperatorAuctionWorkspace", () => {
     expect(markup).toContain("Duke");
     expect(markup).toContain("Houston");
     expect(markup).not.toContain("Waiting for selection");
+    expect(markup).not.toContain("Live Controls");
+    expect(markup).not.toContain("Active team");
+    expect(markup).not.toContain("Current bid");
+    expect(markup).not.toContain("Record purchase");
+    expect(markup).not.toContain("Undo last purchase");
+  });
+
+  it("shows the complete control only after sellout", () => {
+    globalThis.React = React;
+
+    const mothership = buildSyndicate("focus", "Mothership", "#111111", 4000, 6000);
+    const remainingTeam = buildTeam("remaining", "Drake", "West", 11);
+    const remainingAsset = buildAsset(remainingTeam);
+    const dashboard = buildDashboard({
+      session: {
+        payoutRules: {
+          roundOf64: 1,
+          roundOf32: 1.5,
+          sweet16: 2.5,
+          elite8: 3,
+          finalFour: 4,
+          champion: 4,
+          projectedPot: 220000
+        },
+        auctionAssets: [remainingAsset],
+        auctionStatus: "active"
+      } as AuctionDashboard["session"],
+      availableAssets: [remainingAsset],
+      ledger: [mothership],
+      focusSyndicate: mothership,
+      analysis: {
+        budgetRows: []
+      } as AuctionDashboard["analysis"]
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(OperatorAuctionWorkspace, {
+        dashboard,
+        recommendation: null,
+        notice: null,
+        error: null,
+        selectedAssetId: remainingAsset.id,
+        bidInputValue: "",
+        parsedBidInputValue: 0,
+        buyerId: mothership.id,
+        currentBid: 0,
+        isUndoingPurchase: false,
+        isUpdatingAuctionStatus: false,
+        isAuctionMarkedComplete: false,
+        teamSelectRef: { current: null },
+        bidInputRef: { current: null },
+        onAssetChange: () => undefined,
+        onBidInputChange: () => undefined,
+        onBidBlur: () => undefined,
+        onBidKeyDown: () => undefined,
+        onBuyerChange: () => undefined,
+        onUndoPurchase: () => undefined,
+        onRecordPurchase: () => undefined,
+        onUpdateAuctionStatus: () => undefined,
+        lastPurchaseTeamName: null,
+        lastPurchaseBuyerName: null,
+        signalLabel: null,
+        nominatedAsset: remainingAsset,
+        nominatedTeam: remainingTeam,
+        nominatedTeamClassification: null,
+        nominatedTeamNote: null,
+        nominatedMatchup: null,
+        likelyRound2Matchup: null,
+        hasOwnedRoundOneOpponent: false,
+        hasOwnedLikelyRoundTwoOpponent: false,
+        breakEvenStage: null,
+        targetBidDisplay: "--",
+        maxBidDisplay: "--",
+        filteredRationale: [],
+        ownershipConflicts: [],
+        teamLookup: new Map([[remainingTeam.id, remainingTeam]]),
+        forcedPassConflictTeamId: null,
+        projectedBaseRoom: 0,
+        projectedStretchRoom: 0,
+        titleOdds: 0,
+        operatorSyndicateHoldings: [{ syndicate: mothership, sales: [] }],
+        expandedSyndicateIds: [],
+        onToggleSyndicate: () => undefined,
+        onExpandAll: () => undefined,
+        onCollapseAll: () => undefined,
+        recentSales: [],
+        syndicateLookup: new Map([[mothership.id, mothership]]),
+        focusFundingImpliedSharePrice: null
+      })
+    );
+
+    expect(markup).not.toContain("Mark complete");
+    expect(markup).not.toContain("Reopen auction");
   });
 });

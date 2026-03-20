@@ -101,14 +101,22 @@ export function useSessionDashboard<TDashboard extends LiveRoomDashboard>(
   }, [sessionId]);
 
   useEffect(() => {
+    const refreshIntervalMs = getDashboardPollIntervalMs(realtimeHealth, {
+      paused: dashboard.session.auctionStatus === "complete"
+    });
+
+    if (refreshIntervalMs === null) {
+      return;
+    }
+
     const refreshInterval = window.setInterval(() => {
       if (isDocumentVisible()) {
         void requestRefresh("poll");
       }
-    }, getDashboardPollIntervalMs(realtimeHealth));
+    }, refreshIntervalMs);
 
     return () => window.clearInterval(refreshInterval);
-  }, [realtimeHealth, requestRefresh]);
+  }, [dashboard.session.auctionStatus, realtimeHealth, requestRefresh]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {

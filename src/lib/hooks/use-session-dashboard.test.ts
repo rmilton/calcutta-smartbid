@@ -15,6 +15,11 @@ describe("useSessionDashboard refresh helpers", () => {
     expect(getDashboardPollIntervalMs("degraded")).toBe(FAST_DASHBOARD_POLL_MS);
   });
 
+  it("disables polling when the auction is marked complete", () => {
+    expect(getDashboardPollIntervalMs("healthy", { paused: true })).toBeNull();
+    expect(getDashboardPollIntervalMs("degraded", { paused: true })).toBeNull();
+  });
+
   it("collapses in-flight refresh bursts into one trailing fetch", () => {
     const coordinator = createDashboardRefreshCoordinator();
 

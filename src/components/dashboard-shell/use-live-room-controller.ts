@@ -59,6 +59,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [isSavingLiveState, setIsSavingLiveState] = useState(false);
   const [isUndoingPurchase, setIsUndoingPurchase] = useState(false);
+  const [isUpdatingAuctionStatus, setIsUpdatingAuctionStatus] = useState(false);
   const [isSavingClassification, setIsSavingClassification] = useState(false);
   const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
   const [isSavingBracket, setIsSavingBracket] = useState(false);
@@ -88,6 +89,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
   const liveNominatedAssetId = dashboard.session.liveState.nominatedAssetId ?? "";
   const liveNominatedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
+  const isAuctionMarkedComplete = dashboard.session.auctionStatus === "complete";
   const projectionOverrides = isViewerDashboard(dashboard)
     ? {}
     : dashboard.session.projectionOverrides;
@@ -180,6 +182,11 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
 
   const saveActiveAsset = useCallback(
     async (nextAssetId: string) => {
+      if (isAuctionMarkedComplete) {
+        showError("Auction is marked complete. Reopen it to continue.");
+        return;
+      }
+
       pendingActiveTeamIdRef.current = nextAssetId;
 
       if (activeTeamSaveInFlightRef.current) {
@@ -226,7 +233,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
 
       activeTeamSaveInFlightRef.current = false;
     },
-    [broadcastRefresh, clearFeedback, refresh, sessionId, showError]
+    [broadcastRefresh, clearFeedback, isAuctionMarkedComplete, refresh, sessionId, showError]
   );
 
   const handleAssetChange = useCallback(
@@ -244,6 +251,11 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   );
 
   const saveLiveState = useCallback(async () => {
+    if (isAuctionMarkedComplete) {
+      showError("Auction is marked complete. Reopen it to continue.");
+      return;
+    }
+
     clearFeedback();
     setIsSavingLiveState(true);
     const nextBid = parsedBidInputValue;
@@ -280,6 +292,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   }, [
     broadcastRefresh,
     clearFeedback,
+    isAuctionMarkedComplete,
     parsedBidInputValue,
     refresh,
     selectedAssetId,
@@ -360,10 +373,12 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
         (tagName === "INPUT" || !isEditable)
       ) {
         event.preventDefault();
-        void saveLiveState();
+        if (!isAuctionMarkedComplete) {
+          void saveLiveState();
+        }
       }
     },
-    [activeView, saveLiveState]
+    [activeView, isAuctionMarkedComplete, saveLiveState]
   );
 
   useEffect(() => {
@@ -376,6 +391,11 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   }, [handleShortcut, viewerMode]);
 
   const recordPurchase = useCallback(async () => {
+    if (isAuctionMarkedComplete) {
+      showError("Auction is marked complete. Reopen it to continue.");
+      return;
+    }
+
     clearFeedback();
     const nextBid = parsedBidInputValue;
 
@@ -420,6 +440,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     broadcastRefresh,
     buyerId,
     clearFeedback,
+    isAuctionMarkedComplete,
     parsedBidInputValue,
     replaceDashboard,
     selectedAssetId,
@@ -430,6 +451,11 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
 
   const undoPurchase = useCallback(
     async (lastPurchaseTeamName: string | null) => {
+      if (isAuctionMarkedComplete) {
+        showError("Auction is marked complete. Reopen it to continue.");
+        return;
+      }
+
       if (!lastPurchase) {
         showError("No purchase is available to undo.");
         return;
@@ -469,6 +495,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     [
       broadcastRefresh,
       clearFeedback,
+      isAuctionMarkedComplete,
       lastPurchase,
       replaceDashboard,
       sessionId,
@@ -742,6 +769,41 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     showNotice
   ]);
 
+  const updateAuctionStatus = useCallback(
+    async (action: "complete" | "reopen") => {
+      clearFeedback();
+      setIsUpdatingAuctionStatus(true);
+
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/auction-status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ action })
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json()) as { error?: string };
+          showError(payload.error ?? "Unable to update auction status.");
+          return;
+        }
+
+        showNotice(
+          action === "complete" ? "Auction marked complete." : "Auction reopened."
+        );
+        startTransition(() => {
+          void refresh();
+        });
+      } catch {
+        showError("Unable to update auction status.");
+      } finally {
+        setIsUpdatingAuctionStatus(false);
+      }
+    },
+    [clearFeedback, refresh, sessionId, showError, showNotice]
+  );
+
   return {
     dashboard,
     refresh,
@@ -757,6 +819,8 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     buyerId,
     isSavingLiveState,
     isUndoingPurchase,
+    isUpdatingAuctionStatus,
+    isAuctionMarkedComplete,
     isSavingClassification,
     isSavingTeamNote,
     isSavingBracket,
@@ -795,6 +859,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     saveTeamNote,
     clearTeamNote,
     saveBracketWinner,
+    updateAuctionStatus,
     saveLiveState
   };
 }

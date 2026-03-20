@@ -307,6 +307,8 @@ export function DashboardShell({
     parsedBidInputValue,
     buyerId,
     isUndoingPurchase,
+    isUpdatingAuctionStatus,
+    isAuctionMarkedComplete,
     isSavingClassification,
     isSavingTeamNote,
     isSavingBracket,
@@ -344,7 +346,8 @@ export function DashboardShell({
     clearTeamClassification,
     saveTeamNote,
     clearTeamNote,
-    saveBracketWinner
+    saveBracketWinner,
+    updateAuctionStatus
   } = controller;
 
   const sendPresenceHeartbeat = useCallback(async () => {
@@ -787,6 +790,9 @@ export function DashboardShell({
               <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
             </>
           ) : null}
+          {isAuctionMarkedComplete ? (
+            <div className="status-pill status-pill--positive">Auction marked complete</div>
+          ) : null}
           <div className="status-pill">
             {currentMember.name} · {getRoleLabel(currentMember.role, currentMember.scope)}
           </div>
@@ -845,6 +851,7 @@ export function DashboardShell({
             ownershipGroups={ownershipGroups}
             soldFeed={soldFeed}
             syndicateLookup={syndicateLookup}
+            isAuctionMarkedComplete={isAuctionMarkedComplete}
           />
         )
       ) : (
@@ -911,6 +918,9 @@ export function DashboardShell({
               recentSales={recentSales}
               syndicateLookup={syndicateLookup}
               focusFundingImpliedSharePrice={focusFunding?.impliedSharePrice ?? null}
+              isAuctionMarkedComplete={isAuctionMarkedComplete}
+              isUpdatingAuctionStatus={isUpdatingAuctionStatus}
+              onUpdateAuctionStatus={(action) => void updateAuctionStatus(action)}
             />
           ) : null}
 

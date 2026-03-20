@@ -51,6 +51,7 @@ import {
   AdminCenterData,
   AdminSessionSummary,
   AuthenticatedMember,
+  AuctionStatus,
   AuctionAsset,
   AuctionDashboard,
   AuctionSession,
@@ -218,6 +219,11 @@ export interface SessionRepository {
   ): Promise<SessionAdminConfig>;
   archiveSession(
     sessionId: string,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ): Promise<void>;
+  updateAuctionStatus(
+    sessionId: string,
+    status: AuctionStatus,
     actor: Pick<AuthenticatedMember, "name" | "email">
   ): Promise<void>;
   deleteSession(
@@ -620,6 +626,17 @@ class LocalSessionRepository implements SessionRepository {
     }
   }
 
+  async updateAuctionStatus(
+    sessionId: string,
+    status: AuctionStatus,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    applyAuctionStatusMutation(session, status, actor);
+    await this.writeStore(store);
+  }
+
   async deleteSession(
     sessionId: string,
     _actor: Pick<AuthenticatedMember, "name" | "email">,
@@ -806,6 +823,7 @@ class LocalSessionRepository implements SessionRepository {
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
+    assertAuctionBiddingIsOpen(session);
     applyLiveStatePatch(session, patch);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
@@ -817,6 +835,7 @@ class LocalSessionRepository implements SessionRepository {
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
+    assertAuctionBiddingIsOpen(session);
     applyPurchaseMutation(session, input);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
@@ -825,6 +844,7 @@ class LocalSessionRepository implements SessionRepository {
   async undoPurchase(sessionId: string, purchaseId?: string) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
+    assertAuctionBiddingIsOpen(session);
     undoPurchaseMutation(session, purchaseId);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
@@ -1229,6 +1249,17 @@ class SupabaseSessionRepository implements SessionRepository {
         : null,
       archivedByEmail: sessionResult.data.archived_by_email
         ? String(sessionResult.data.archived_by_email)
+        : null,
+      auctionStatus:
+        sessionResult.data.auction_status === "complete" ? "complete" : "active",
+      auctionCompletedAt: sessionResult.data.auction_completed_at
+        ? String(sessionResult.data.auction_completed_at)
+        : null,
+      auctionCompletedByName: sessionResult.data.auction_completed_by_name
+        ? String(sessionResult.data.auction_completed_by_name)
+        : null,
+      auctionCompletedByEmail: sessionResult.data.auction_completed_by_email
+        ? String(sessionResult.data.auction_completed_by_email)
         : null,
       focusSyndicateId: String(sessionResult.data.focus_syndicate_id),
       eventAccess: { sharedCodeConfigured: true },
@@ -1723,6 +1754,16 @@ class SupabaseSessionRepository implements SessionRepository {
     }
   }
 
+  async updateAuctionStatus(
+    sessionId: string,
+    status: AuctionStatus,
+    actor: Pick<AuthenticatedMember, "name" | "email">
+  ) {
+    const session = await this.requireSession(sessionId);
+    applyAuctionStatusMutation(session, status, actor);
+    await this.persistSessionMeta(session);
+  }
+
   async deleteSession(
     sessionId: string,
     _actor: Pick<AuthenticatedMember, "name" | "email">,
@@ -1906,6 +1947,7 @@ class SupabaseSessionRepository implements SessionRepository {
     patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const session = await this.requireSession(sessionId);
+    assertAuctionBiddingIsOpen(session);
     applyLiveStatePatch(session, patch);
 
     const client = requireSupabaseClient();
@@ -1926,6 +1968,7 @@ class SupabaseSessionRepository implements SessionRepository {
     input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ) {
     const session = await this.requireSession(sessionId);
+    assertAuctionBiddingIsOpen(session);
     const purchase = applyPurchaseMutation(session, input);
     const client = requireSupabaseClient();
 
@@ -1953,6 +1996,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async undoPurchase(sessionId: string, purchaseId?: string) {
     const session = await this.requireSession(sessionId);
+    assertAuctionBiddingIsOpen(session);
     const purchase = undoPurchaseMutation(session, purchaseId);
     const client = requireSupabaseClient();
 
@@ -2179,6 +2223,10 @@ class SupabaseSessionRepository implements SessionRepository {
       archived_at: session.archivedAt,
       archived_by_name: session.archivedByName,
       archived_by_email: session.archivedByEmail,
+      auction_status: session.auctionStatus,
+      auction_completed_at: session.auctionCompletedAt,
+      auction_completed_by_name: session.auctionCompletedByName,
+      auction_completed_by_email: session.auctionCompletedByEmail,
       payout_rules: session.payoutRules,
       analysis_settings: session.analysisSettings,
       mothership_funding: session.mothershipFunding,
@@ -2474,6 +2522,10 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
     archivedAt: null,
     archivedByName: null,
     archivedByEmail: null,
+    auctionStatus: "active",
+    auctionCompletedAt: null,
+    auctionCompletedByName: null,
+    auctionCompletedByEmail: null,
     focusSyndicateId: focusSyndicate.id,
     eventAccess: {
       sharedCodeConfigured: true
@@ -3760,6 +3812,10 @@ function normalizeSessionShape(
     archivedAt: session.archivedAt ?? null,
     archivedByName: session.archivedByName ?? null,
     archivedByEmail: session.archivedByEmail ?? null,
+    auctionStatus: session.auctionStatus === "complete" ? "complete" : "active",
+    auctionCompletedAt: session.auctionCompletedAt ?? null,
+    auctionCompletedByName: session.auctionCompletedByName ?? null,
+    auctionCompletedByEmail: session.auctionCompletedByEmail ?? null,
     sharedAccessCodeHash: session.sharedAccessCodeHash ?? "",
     sharedAccessCodeLookup: session.sharedAccessCodeLookup ?? "",
     sharedAccessCodeCiphertext: session.sharedAccessCodeCiphertext ?? "",
@@ -3890,6 +3946,46 @@ function resolveRepresentativeProjectionId(
   }
 
   return null;
+}
+
+function isAuctionSoldOut(session: StoredAuctionSession) {
+  const auctionAssets = session.auctionAssets ?? [];
+  return auctionAssets.length > 0 && session.purchases.length >= auctionAssets.length;
+}
+
+function assertAuctionCanBeMarkedComplete(session: StoredAuctionSession) {
+  if (!isAuctionSoldOut(session)) {
+    throw new Error("Auction can only be marked complete after all teams are sold.");
+  }
+}
+
+function assertAuctionBiddingIsOpen(session: StoredAuctionSession) {
+  if (session.auctionStatus === "complete") {
+    throw new Error("Auction is marked complete. Reopen it to continue.");
+  }
+}
+
+function applyAuctionStatusMutation(
+  session: StoredAuctionSession,
+  status: AuctionStatus,
+  actor: Pick<AuthenticatedMember, "name" | "email">
+) {
+  if (status === "complete") {
+    assertAuctionCanBeMarkedComplete(session);
+    const timestamp = new Date().toISOString();
+    session.auctionStatus = "complete";
+    session.auctionCompletedAt = timestamp;
+    session.auctionCompletedByName = actor.name;
+    session.auctionCompletedByEmail = actor.email;
+    session.updatedAt = timestamp;
+    return;
+  }
+
+  session.auctionStatus = "active";
+  session.auctionCompletedAt = null;
+  session.auctionCompletedByName = null;
+  session.auctionCompletedByEmail = null;
+  session.updatedAt = new Date().toISOString();
 }
 
 function normalizePayoutRules(

@@ -19,6 +19,7 @@ export type DataSourcePurpose = "bracket" | "analysis";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
+export type AuctionStatus = "active" | "complete";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
 export type BracketRoundKey =
   | "roundOf64"
@@ -540,6 +541,10 @@ export interface AuctionSession {
   archivedAt: string | null;
   archivedByName: string | null;
   archivedByEmail: string | null;
+  auctionStatus: AuctionStatus;
+  auctionCompletedAt: string | null;
+  auctionCompletedByName: string | null;
+  auctionCompletedByEmail: string | null;
   focusSyndicateId: string;
   eventAccess: EventAccess;
   payoutRules: PayoutRules;
@@ -646,6 +651,10 @@ export interface ViewerAuctionDetails {
 export interface ViewerDashboardSession {
   id: string;
   name: string;
+  auctionStatus: AuctionStatus;
+  auctionCompletedAt: string | null;
+  auctionCompletedByName: string | null;
+  auctionCompletedByEmail: string | null;
   payoutRules: PayoutRules;
   projections: TeamProjection[];
   teamClassifications: Record<string, TeamClassificationTag>;
@@ -1017,4 +1026,8 @@ export const archiveSessionSchema = z.object({
 
 export const deleteSessionSchema = z.object({
   confirmationName: z.string().min(1).max(120)
+});
+
+export const updateAuctionStatusSchema = z.object({
+  action: z.enum(["complete", "reopen"])
 });

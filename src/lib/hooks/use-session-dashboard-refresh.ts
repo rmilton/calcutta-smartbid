@@ -20,7 +20,14 @@ function startFetch(state: DashboardRefreshState): DashboardRefreshState {
   };
 }
 
-export function getDashboardPollIntervalMs(health: DashboardRealtimeHealth) {
+export function getDashboardPollIntervalMs(
+  health: DashboardRealtimeHealth,
+  options?: { paused?: boolean }
+) {
+  if (options?.paused) {
+    return null;
+  }
+
   return health === "healthy"
     ? HEALTHY_REALTIME_DASHBOARD_POLL_MS
     : FAST_DASHBOARD_POLL_MS;

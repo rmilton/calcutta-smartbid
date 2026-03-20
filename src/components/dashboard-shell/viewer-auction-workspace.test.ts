@@ -275,7 +275,8 @@ describe("ViewerAuctionWorkspace", () => {
         syndicateLookup: new Map([
           [mothership.id, mothership],
           [riverboat.id, riverboat]
-        ])
+        ]),
+        isAuctionMarkedComplete: false
       })
     );
 
@@ -334,7 +335,8 @@ describe("ViewerAuctionWorkspace", () => {
         onOwnershipSearchChange: () => undefined,
         ownershipGroups: [],
         soldFeed: [],
-        syndicateLookup: new Map([[mothership.id, mothership]])
+        syndicateLookup: new Map([[mothership.id, mothership]]),
+        isAuctionMarkedComplete: false
       })
     );
 
@@ -385,7 +387,8 @@ describe("ViewerAuctionWorkspace", () => {
         onOwnershipSearchChange: () => undefined,
         ownershipGroups: [],
         soldFeed: [],
-        syndicateLookup: new Map([[mothership.id, mothership]])
+        syndicateLookup: new Map([[mothership.id, mothership]]),
+        isAuctionMarkedComplete: false
       })
     );
 
@@ -448,7 +451,8 @@ describe("ViewerAuctionWorkspace", () => {
         onOwnershipSearchChange: () => undefined,
         ownershipGroups: [],
         soldFeed: [],
-        syndicateLookup: new Map([[mothership.id, mothership]])
+        syndicateLookup: new Map([[mothership.id, mothership]]),
+        isAuctionMarkedComplete: false
       })
     );
 
@@ -550,12 +554,14 @@ describe("ViewerAuctionWorkspace", () => {
         syndicateLookup: new Map([
           [mothership.id, mothership],
           [riverboat.id, riverboat]
-        ])
+        ]),
+        isAuctionMarkedComplete: true
       })
     );
 
     expect(markup).toContain("Auction Complete");
     expect(markup).toContain("Books closed");
+    expect(markup).toContain("Marked complete");
     expect(markup).toContain("Team Highlights");
     expect(markup).toContain("Rooting Guide");
     expect(markup).toContain("Assets sold");

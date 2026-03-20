@@ -49,6 +49,18 @@ alter table public.auction_sessions
   add column if not exists archived_by_email text null;
 
 alter table public.auction_sessions
+  add column if not exists auction_status text not null default 'active';
+
+alter table public.auction_sessions
+  add column if not exists auction_completed_at timestamptz null;
+
+alter table public.auction_sessions
+  add column if not exists auction_completed_by_name text null;
+
+alter table public.auction_sessions
+  add column if not exists auction_completed_by_email text null;
+
+alter table public.auction_sessions
   add column if not exists bracket_state jsonb not null default '{}'::jsonb;
 
 alter table public.auction_sessions

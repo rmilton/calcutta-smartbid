@@ -31,6 +31,10 @@ function buildSession(): AuctionSession {
     archivedAt: null,
     archivedByName: null,
     archivedByEmail: null,
+    auctionStatus: "active",
+    auctionCompletedAt: null,
+    auctionCompletedByName: null,
+    auctionCompletedByEmail: null,
     focusSyndicateId: "syn_focus",
     eventAccess: {
       sharedCodeConfigured: true
@@ -136,6 +140,7 @@ describe("buildDashboard audience split", () => {
     expect("lastPurchase" in viewer).toBe(false);
     expect("projectionOverrideCount" in viewer).toBe(false);
     expect("simulationSnapshot" in viewer.session).toBe(false);
+    expect(viewer.session.auctionStatus).toBe("active");
     expect(JSON.stringify(viewer)).not.toContain("matchupMatrix");
     expect(JSON.stringify(viewer)).not.toContain("teamResults");
     expect(JSON.stringify(viewer).length).toBeLessThan(JSON.stringify(operator).length);
