@@ -116,18 +116,25 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/components/dashboard-shell/operator-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/operator-auction-workspace.tsx)
   - operator-only `Auction` workspace
   - live controls, decision board, decision context, model drivers, recent sales, and expandable syndicate holdings
-  - sellout-only complete/reopen controls and auction-complete recap state once every asset is sold
+  - sellout-only complete/reopen/enter-tournament controls; all four status-change buttons require `window.confirm`
+  - auction-complete recap and tournament-active portfolio tracker state
 - [src/components/dashboard-shell/viewer-auction-workspace.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/viewer-auction-workspace.tsx)
   - viewer-only `Auction` workspace
   - read-only decision board, ownership ledger, sold feed, and synchronized Mothership guidance
   - powered by a slimmer server-computed `viewerAuction` payload instead of raw simulation payloads
   - team-focused auction-complete state without spend/equity recap
+  - in tournament mode hides the full auction grid (decision board, team highlights, recent sales, rooting guide) and shows the portfolio tracker
+- [src/components/dashboard-shell/tournament-tracker.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/tournament-tracker.tsx)
+  - Mothership Portfolio Results tracker rendered in tournament mode on both operator and viewer boards
+  - per-asset round progress pills (won/alive/eliminated-before/not-reached), cost/return/net per share, next scheduled game
+  - reads `MothershipPortfolioResults` from the dashboard payload; data is computed by `src/lib/results.ts`
 - [src/components/dashboard-shell/shared.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/dashboard-shell/shared.tsx)
   - shared live-room presentation primitives, asset-formatting helpers, and shared auction-complete row rendering
 - [src/components/session-bracket.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/session-bracket.tsx)
   - full-field tournament bracket surface
   - owned-team syndicate markers
   - operator winner advancement and viewer read-only mode
+  - bracket game cards show ESPN broadcast info (date, time, network) when in tournament mode; "TBD" otherwise
 
 ### Domain and orchestration
 
@@ -137,7 +144,8 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
   - bracket view model and last-purchase contract
 - [src/lib/dashboard.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/dashboard.ts)
   - builds audience-aware live-room payloads
-  - injects bracket view and last-purchase state
+  - injects bracket view, last-purchase state, and Mothership portfolio results
+  - `buildDashboardWithSchedule` fetches ESPN broadcast data when `auctionStatus === "tournament_active"` and passes it into the bracket build
 - [src/lib/config.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/config.ts)
   - environment validation
 - [src/lib/auth.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/auth.ts)
@@ -152,6 +160,14 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - [src/lib/bracket.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/bracket.ts)
   - builds the session-native 64-team bracket view
   - validates bracket readiness and winner advancement
+  - accepts optional `EspnScheduleMap` and injects broadcast info into each `BracketGame`; uses `normalizeTeamName` from `espn.ts` for fuzzy matching, and splits play-in group names on " / " to try each individual team
+- [src/lib/results.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/results.ts)
+  - computes `MothershipPortfolioResults` from bracket state and Mothership purchases
+  - derives round wins, elimination status, realized payouts, per-share math, and next unplayed game for each owned asset
+- [src/lib/espn.ts](/Users/rmilton/Code/Calcutta-SmartBid/src/lib/espn.ts)
+  - fetches today + 6 days of NCAA game schedules from the ESPN public scoreboard API
+  - builds an `EspnScheduleMap` keyed by normalized team-pair strings
+  - exports `normalizeTeamName` for consistent fuzzy matching across name sources
 
 ### Persistence
 
@@ -204,7 +220,9 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
 - `Bracket` must stay consistent with session purchases and imported field structure.
 - The active-team control must stay fast and low-friction under live auction use.
 - Once every auction asset is sold, the live decision boards should move into an explicit auction-complete state instead of a waiting-for-selection idle state.
-- `auctionStatus` is an explicit persisted room state. Completed auctions stop interval polling and block bidding mutations until reopened.
+- `auctionStatus` is an explicit persisted room state with three values: `active`, `complete`, `tournament_active`. Completed auctions stop interval polling and block bidding mutations until reopened. The repository read path must handle all three values explicitly — do not default `tournament_active` to `active`.
+- `portfolioResults` is included in both `AuctionDashboard` and `ViewerDashboard` and is non-null only when `auctionStatus === "tournament_active"` and Mothership has purchases.
+- ESPN broadcast data is fetched server-side only when `tournament_active`; it flows through `buildDashboardWithSchedule` → `buildBracketView` → `BracketGame.broadcastIsoDate` / `broadcastNetwork`. Do not persist broadcast data to the database.
 - The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw schema errors should not leak to the operator if a clean domain message can be returned.
 
@@ -259,6 +277,11 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 20. Confirm live-state and purchase mutations are blocked while the auction is marked complete.
 21. Reopen the auction and confirm the last purchase can still be undone for correction.
 22. Log in as a viewer after sellout and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
+22a. Click "Enter tournament mode" and confirm the nav pill changes to "Tournament mode active".
+22b. Confirm the Mothership Portfolio Results tracker appears on operator and viewer boards.
+22c. Confirm bracket cards show broadcast info for scheduled games and "TBD" for unscheduled ones.
+22d. Confirm the viewer board hides the decision board, team highlights, recent sales, and rooting guide in tournament mode.
+22e. Click "Exit tournament mode" and confirm the board returns to auction-complete state.
 23. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
 24. Advance a bracket winner and confirm the change persists after refresh.
 25. Open `/csv-analysis?sessionId=<id>` and confirm it redirects into the in-room `Analysis` tab.
@@ -325,6 +348,9 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - Purchase correction currently only supports undoing the most recent purchase.
 - `/csv-analysis` is now a compatibility redirect. The maintained workflow is the in-room `Analysis` tab.
 - the Selection Sunday path now depends on session-managed bracket and analysis imports rather than a single projection source
-- Supabase-backed environments now also depend on the persisted `auction_status` completion columns on `auction_sessions`
+- Supabase-backed environments now also depend on the persisted `auction_status` completion columns on `auction_sessions`; this column stores `active`, `complete`, or `tournament_active`
 - unresolved play-ins and regional `13-16` packages are supported as grouped auction teams, but deeper simulation/modeling should still be treated carefully when that logic changes
+- ESPN name matching uses `normalizeTeamName` on both sides; two known mismatches remain: "Miami (Ohio)" vs ESPN "Miami OH" and "Cal Baptist" vs ESPN "CA Baptist" — those bracket cards will show TBD
+- ESPN fetch results are cached by Next.js fetch cache for 5 minutes; stale data can be cleared by deleting `.next/cache/fetch-cache`
+- bracket game broadcast info is computed at dashboard-build time from the ESPN map; the `BracketGame` type carries `broadcastIsoDate` and `broadcastNetwork` — do not assume these are null in tournament mode
 - Session lifecycle now supports archive plus permanent delete. Permanent delete is intentionally gated behind archive plus typed confirmation.

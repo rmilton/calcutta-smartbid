@@ -477,7 +477,7 @@ const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Se
 
 function buildBracketBroadcastLabel(game: BracketGame): string {
   if (!game.broadcastIsoDate) {
-    return "DATE / TIME / TV TBD";
+    return "TBD";
   }
 
   // Parse ISO date and display as Eastern time (NCAA games are always scheduled in ET)

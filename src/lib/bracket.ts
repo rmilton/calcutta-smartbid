@@ -10,7 +10,7 @@ import {
   Syndicate,
   TeamProjection
 } from "@/lib/types";
-import { EspnScheduleMap } from "@/lib/espn";
+import { EspnScheduleMap, normalizeTeamName } from "@/lib/espn";
 
 const FIRST_ROUND_SEED_PAIRS: Array<[number, number]> = [
   [1, 16],
@@ -160,11 +160,20 @@ function createGame(
     const nameA = entrants[0]?.name;
     const nameB = entrants[1]?.name;
     if (nameA && nameB) {
-      const key = [nameA, nameB].map((n) => n.toLowerCase().trim()).sort().join("|");
-      const info = scheduleMap.get(key);
-      if (info) {
-        broadcastIsoDate = info.isoDate;
-        broadcastNetwork = info.network;
+      // Play-in groups have names like "Prairie View A&M / Lehigh" — try each individual
+      // team name so they can match ESPN's per-team names
+      const variantsA = nameA.includes(" / ") ? nameA.split(" / ").map((n) => n.trim()) : [nameA];
+      const variantsB = nameB.includes(" / ") ? nameB.split(" / ").map((n) => n.trim()) : [nameB];
+      outer: for (const va of variantsA) {
+        for (const vb of variantsB) {
+          const key = [normalizeTeamName(va), normalizeTeamName(vb)].sort().join("|");
+          const info = scheduleMap.get(key);
+          if (info) {
+            broadcastIsoDate = info.isoDate;
+            broadcastNetwork = info.network;
+            break outer;
+          }
+        }
       }
     }
   }
