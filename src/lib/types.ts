@@ -19,7 +19,7 @@ export type DataSourcePurpose = "bracket" | "analysis";
 export type SessionDataSourceKind = "builtin" | DataSourceKind;
 export type DataImportStatus = "success" | "failed";
 export type BudgetConfidence = "low" | "medium" | "high";
-export type AuctionStatus = "active" | "complete";
+export type AuctionStatus = "active" | "complete" | "tournament_active";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
 export type BracketRoundKey =
   | "roundOf64"
@@ -637,6 +637,7 @@ export interface AuctionDashboard {
   lastPurchase: PurchaseRecord | null;
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
+  portfolioResults: MothershipPortfolioResults | null;
 }
 
 export interface ViewerAuctionDetails {
@@ -676,6 +677,7 @@ export interface ViewerDashboard {
   bracket: BracketViewModel;
   viewerAuction: ViewerAuctionDetails;
   storageBackend: StorageBackend;
+  portfolioResults: MothershipPortfolioResults | null;
 }
 
 export type LiveRoomDashboard = AuctionDashboard | ViewerDashboard;
@@ -1031,5 +1033,35 @@ export const deleteSessionSchema = z.object({
 });
 
 export const updateAuctionStatusSchema = z.object({
-  action: z.enum(["complete", "reopen"])
+  action: z.enum(["complete", "reopen", "enter_tournament", "exit_tournament"])
 });
+
+export interface MothershipAssetResult {
+  assetId: string;
+  assetLabel: string;
+  teamId: string | null;
+  teamName: string | null;
+  seed: number | null;
+  region: string;
+  isGrouped: boolean;
+  teamCount: number;
+  percentOfSpend: number;
+  costPerShare: number;
+  roundsWon: Stage[];
+  realizedPayout: number;
+  returnPerShare: number;
+  netPerShare: number;
+  isEliminated: boolean;
+  isStillAlive: boolean;
+}
+
+export interface MothershipPortfolioResults {
+  assets: MothershipAssetResult[];
+  totalCost: number;
+  totalRealizedPayout: number;
+  netPnL: number;
+  equivalentShares: number;
+  costBasisPerShare: number;
+  currentReturnPerShare: number;
+  currentNetPerShare: number;
+}

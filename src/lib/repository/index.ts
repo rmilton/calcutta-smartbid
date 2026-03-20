@@ -1251,7 +1251,11 @@ class SupabaseSessionRepository implements SessionRepository {
         ? String(sessionResult.data.archived_by_email)
         : null,
       auctionStatus:
-        sessionResult.data.auction_status === "complete" ? "complete" : "active",
+        sessionResult.data.auction_status === "complete"
+          ? "complete"
+          : sessionResult.data.auction_status === "tournament_active"
+            ? "tournament_active"
+            : "active",
       auctionCompletedAt: sessionResult.data.auction_completed_at
         ? String(sessionResult.data.auction_completed_at)
         : null,
@@ -3817,7 +3821,12 @@ function normalizeSessionShape(
     archivedAt: session.archivedAt ?? null,
     archivedByName: session.archivedByName ?? null,
     archivedByEmail: session.archivedByEmail ?? null,
-    auctionStatus: session.auctionStatus === "complete" ? "complete" : "active",
+    auctionStatus:
+      session.auctionStatus === "complete"
+        ? "complete"
+        : session.auctionStatus === "tournament_active"
+          ? "tournament_active"
+          : "active",
     auctionCompletedAt: session.auctionCompletedAt ?? null,
     auctionCompletedByName: session.auctionCompletedByName ?? null,
     auctionCompletedByEmail: session.auctionCompletedByEmail ?? null,
@@ -3959,7 +3968,7 @@ function assertAuctionCanBeMarkedComplete(session: StoredAuctionSession) {
 }
 
 function assertAuctionBiddingIsOpen(session: StoredAuctionSession) {
-  if (session.auctionStatus === "complete") {
+  if (session.auctionStatus === "complete" || session.auctionStatus === "tournament_active") {
     throw new Error("Auction is marked complete. Reopen it to continue.");
   }
 }
@@ -3977,6 +3986,15 @@ function applyAuctionStatusMutation(
     session.auctionCompletedByName = actor.name;
     session.auctionCompletedByEmail = actor.email;
     session.updatedAt = timestamp;
+    return;
+  }
+
+  if (status === "tournament_active") {
+    if (session.auctionStatus !== "complete") {
+      throw new Error("Tournament mode can only be entered after the auction is marked complete.");
+    }
+    session.auctionStatus = "tournament_active";
+    session.updatedAt = new Date().toISOString();
     return;
   }
 

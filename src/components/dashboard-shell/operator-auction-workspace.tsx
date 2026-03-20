@@ -11,6 +11,7 @@ import {
   AuctionDashboard,
   BidRecommendation,
   MatchupConflict,
+  MothershipPortfolioResults,
   RoundMatchup,
   SoldAssetSummary,
   Stage,
@@ -32,6 +33,7 @@ import {
 } from "@/components/dashboard-shell/shared";
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
+import { TournamentTracker } from "@/components/dashboard-shell/tournament-tracker";
 
 interface OperatorAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
@@ -46,6 +48,8 @@ interface OperatorAuctionWorkspaceProps {
   isUndoingPurchase: boolean;
   isUpdatingAuctionStatus: boolean;
   isAuctionMarkedComplete: boolean;
+  isTournamentActive: boolean;
+  portfolioResults: MothershipPortfolioResults | null;
   teamSelectRef: RefObject<HTMLInputElement | null>;
   bidInputRef: RefObject<HTMLInputElement | null>;
   onAssetChange: (nextAssetId: string) => void;
@@ -55,7 +59,7 @@ interface OperatorAuctionWorkspaceProps {
   onBuyerChange: (buyerId: string) => void;
   onUndoPurchase: () => void;
   onRecordPurchase: () => void;
-  onUpdateAuctionStatus: (action: "complete" | "reopen") => void;
+  onUpdateAuctionStatus: (action: "complete" | "reopen" | "enter_tournament" | "exit_tournament") => void;
   lastPurchaseTeamName: string | null;
   lastPurchaseBuyerName: string | null;
   signalLabel: string | null;
@@ -102,6 +106,8 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     isUndoingPurchase,
     isUpdatingAuctionStatus,
     isAuctionMarkedComplete,
+    isTournamentActive,
+    portfolioResults,
     teamSelectRef,
     bidInputRef,
     onAssetChange,
@@ -191,10 +197,52 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     <section className="auction-layout">
       <article className="surface-card control-panel auction-controls">
         {isAuctionMarkedComplete ? (
-          <p className="support-copy">
-            Auction is marked complete. Reopen it to resume bidding corrections or undo the last
-            sale.
-          </p>
+          <>
+            <p className="support-copy">
+              {isTournamentActive
+                ? "Tournament mode is active. Exit tournament mode to return to the completed auction view."
+                : "Auction is marked complete. Reopen it to resume bidding corrections or undo the last sale."}
+            </p>
+            {showAuctionStatusControl ? (
+              <div className="button-row">
+                {!isTournamentActive ? (
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    disabled={isUpdatingAuctionStatus}
+                    onClick={() => {
+                      if (window.confirm("Reopen the auction? This will allow bidding corrections and undo.")) {
+                        onUpdateAuctionStatus("reopen");
+                      }
+                    }}
+                  >
+                    {isUpdatingAuctionStatus ? "Reopening..." : "Reopen auction"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="button button-secondary button--small"
+                  disabled={isUpdatingAuctionStatus}
+                  onClick={() => {
+                    const msg = isTournamentActive
+                      ? "Exit tournament mode and return to the completed auction view?"
+                      : "Enter tournament mode? The auction will remain closed.";
+                    if (window.confirm(msg)) {
+                      onUpdateAuctionStatus(isTournamentActive ? "exit_tournament" : "enter_tournament");
+                    }
+                  }}
+                >
+                  {isUpdatingAuctionStatus
+                    ? isTournamentActive
+                      ? "Exiting..."
+                      : "Entering..."
+                    : isTournamentActive
+                      ? "Exit tournament mode"
+                      : "Enter tournament mode"}
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : (
           <>
             <div className="section-headline auction-controls__headline">
@@ -318,11 +366,29 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             >
               Clear active
             </button>
+            {showAuctionStatusControl ? (
+              <button
+                type="button"
+                className="button button-secondary button--small"
+                disabled={isUpdatingAuctionStatus}
+                onClick={() => {
+                  if (window.confirm("Mark the auction complete? Bidding controls will be disabled.")) {
+                    onUpdateAuctionStatus("complete");
+                  }
+                }}
+              >
+                {isUpdatingAuctionStatus ? "Completing..." : "Mark auction complete"}
+              </button>
+            ) : null}
           </>
         )}
         {notice ? <p className="notice-text">{notice}</p> : null}
         {error ? <p className="error-text">{error}</p> : null}
       </article>
+
+      {isTournamentActive && portfolioResults ? (
+        <TournamentTracker results={portfolioResults} />
+      ) : null}
 
       <section className="operator-board-layout">
         <div className="operator-board-layout__main">
@@ -344,28 +410,6 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                   <span className="status-pill status-pill--positive">Marked complete</span>
                 ) : null}
               </div>
-              {showAuctionStatusControl ? (
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="button button-secondary button--small"
-                    disabled={isUpdatingAuctionStatus}
-                    onClick={() =>
-                      onUpdateAuctionStatus(
-                        isAuctionMarkedComplete ? "reopen" : "complete"
-                      )
-                    }
-                  >
-                    {isUpdatingAuctionStatus
-                      ? isAuctionMarkedComplete
-                        ? "Reopening..."
-                        : "Completing..."
-                      : isAuctionMarkedComplete
-                        ? "Reopen auction"
-                        : "Mark complete"}
-                  </button>
-                </div>
-              ) : null}
               {!auctionProgress.isAuctionComplete && signalLabel ? (
                 <div
                   className={cn(
@@ -1034,7 +1078,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         </div>
 
         <aside className="operator-board-layout__side">
-          <OperatorSyndicateBoardCard
+<OperatorSyndicateBoardCard
             holdings={operatorSyndicateHoldings}
             focusSyndicateId={dashboard.focusSyndicate.id}
             teamLookup={teamLookup}
@@ -1072,6 +1116,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
           </article>
         </aside>
       </section>
+
     </section>
   );
 }

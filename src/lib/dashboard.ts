@@ -9,6 +9,7 @@ import {
   deriveProjectedFinalPot,
   filterRecommendationRationale
 } from "@/lib/live-room";
+import { computeMothershipPortfolioResults } from "@/lib/results";
 import {
   AuctionDashboard,
   AuctionSession,
@@ -169,6 +170,10 @@ function buildDashboardContext(
     analysis,
     nominatedAsset
   );
+  const portfolioResults =
+    publicSession.auctionStatus === "tournament_active"
+      ? computeMothershipPortfolioResults(publicSession, bracket, focusSyndicate.id)
+      : null;
 
   return {
     publicSession,
@@ -182,6 +187,7 @@ function buildDashboardContext(
     analysis,
     bracket,
     recommendation,
+    portfolioResults,
     storageBackend
   };
 }
@@ -242,6 +248,7 @@ function buildViewerDashboardFromContext(
     soldAssets,
     ledger: publicSession.syndicates,
     bracket,
+    portfolioResults: context.portfolioResults,
     viewerAuction: {
       projectedFinalPot: deriveProjectedFinalPot({
         ledger: publicSession.syndicates,
@@ -306,6 +313,7 @@ export function buildDashboard(
     lastPurchase:
       context.publicSession.purchases[context.publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(context.publicSession.projectionOverrides).length,
-    storageBackend: context.storageBackend
+    storageBackend: context.storageBackend,
+    portfolioResults: context.portfolioResults
   };
 }

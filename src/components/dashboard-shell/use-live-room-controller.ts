@@ -89,7 +89,10 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
   const liveNominatedAssetId = dashboard.session.liveState.nominatedAssetId ?? "";
   const liveNominatedTeamId = dashboard.session.liveState.nominatedTeamId ?? "";
-  const isAuctionMarkedComplete = dashboard.session.auctionStatus === "complete";
+  const isAuctionMarkedComplete =
+    dashboard.session.auctionStatus === "complete" ||
+    dashboard.session.auctionStatus === "tournament_active";
+  const isTournamentActive = dashboard.session.auctionStatus === "tournament_active";
   const projectionOverrides = isViewerDashboard(dashboard)
     ? {}
     : dashboard.session.projectionOverrides;
@@ -770,7 +773,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
   ]);
 
   const updateAuctionStatus = useCallback(
-    async (action: "complete" | "reopen") => {
+    async (action: "complete" | "reopen" | "enter_tournament" | "exit_tournament") => {
       clearFeedback();
       setIsUpdatingAuctionStatus(true);
 
@@ -789,9 +792,13 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
           return;
         }
 
-        showNotice(
-          action === "complete" ? "Auction marked complete." : "Auction reopened."
-        );
+        const noticeMap: Record<typeof action, string> = {
+          complete: "Auction marked complete.",
+          reopen: "Auction reopened.",
+          enter_tournament: "Tournament mode enabled.",
+          exit_tournament: "Tournament mode disabled."
+        };
+        showNotice(noticeMap[action]);
         startTransition(() => {
           void refresh();
         });
@@ -860,6 +867,7 @@ export function useLiveRoomController(args: LiveRoomControllerArgs) {
     clearTeamNote,
     saveBracketWinner,
     updateAuctionStatus,
-    saveLiveState
+    saveLiveState,
+    isTournamentActive
   };
 }

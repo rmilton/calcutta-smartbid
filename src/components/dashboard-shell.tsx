@@ -310,6 +310,7 @@ export function DashboardShell({
     isUndoingPurchase,
     isUpdatingAuctionStatus,
     isAuctionMarkedComplete,
+    isTournamentActive,
     isSavingClassification,
     isSavingTeamNote,
     isSavingBracket,
@@ -669,6 +670,7 @@ export function DashboardShell({
           ),
     [dashboard, isViewerPayload]
   );
+  const portfolioResults = dashboard.portfolioResults ?? null;
   const projectedBaseRoom = focusFunding ? focusFunding.baseBidRoom - currentBid : 0;
   const projectedStretchRoom = focusFunding ? focusFunding.stretchBidRoom - currentBid : 0;
   const selectedSimulation = analysisDetailTeam
@@ -807,7 +809,9 @@ export function DashboardShell({
               <div className="status-pill">Spend · {formatCurrency(dashboard.focusSyndicate.spend)}</div>
             </>
           ) : null}
-          {isAuctionMarkedComplete ? (
+          {isTournamentActive ? (
+            <div className="status-pill status-pill--positive">Tournament mode active</div>
+          ) : isAuctionMarkedComplete ? (
             <div className="status-pill status-pill--positive">Auction marked complete</div>
           ) : null}
           <div className="status-pill">
@@ -869,6 +873,8 @@ export function DashboardShell({
             soldFeed={soldFeed}
             syndicateLookup={syndicateLookup}
             isAuctionMarkedComplete={isAuctionMarkedComplete}
+            isTournamentActive={isTournamentActive}
+            portfolioResults={portfolioResults}
           />
         )
       ) : (
@@ -937,6 +943,8 @@ export function DashboardShell({
               syndicateLookup={syndicateLookup}
               focusFundingImpliedSharePrice={focusFunding?.impliedSharePrice ?? null}
               isAuctionMarkedComplete={isAuctionMarkedComplete}
+              isTournamentActive={isTournamentActive}
+              portfolioResults={portfolioResults}
               isUpdatingAuctionStatus={isUpdatingAuctionStatus}
               onUpdateAuctionStatus={(action) => void updateAuctionStatus(action)}
             />
