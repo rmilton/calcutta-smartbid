@@ -22,6 +22,7 @@ const STAGE_ORDER: Stage[] = [
 ];
 
 const BRACKET_ROUND_TO_STAGE: Record<BracketRoundKey, Stage | null> = {
+  playIn: null,
   roundOf64: "roundOf64",
   roundOf32: "roundOf32",
   sweet16: "sweet16",
@@ -37,6 +38,7 @@ interface TeamProgression {
 
 function getBracketGames(bracket: BracketViewModel): BracketGame[] {
   return [
+    ...(bracket.playIns?.games ?? []),
     ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
     ...bracket.finals.flatMap((round) => round.games)
   ];

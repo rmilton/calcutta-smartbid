@@ -1,5 +1,14 @@
+import { buildAuctionAssets, buildPlayInProjectionId } from "@/lib/auction-assets";
 import { applyBracketWinnerMutation, buildBracketView, createEmptyBracketState } from "@/lib/bracket";
-import { AuctionSession, StoredAuctionSession, Syndicate, TeamProjection } from "@/lib/types";
+import { normalizeTeamName } from "@/lib/espn";
+import {
+  AuctionSession,
+  SessionBracketImport,
+  SessionImportReadiness,
+  StoredAuctionSession,
+  Syndicate,
+  TeamProjection
+} from "@/lib/types";
 
 function buildProjections() {
   const regions = ["South", "West", "East", "Midwest"];
@@ -20,6 +29,90 @@ function buildProjections() {
       } satisfies TeamProjection;
     })
   );
+}
+
+function buildResolvedBracketImport(): SessionBracketImport {
+  const projections = buildProjections();
+  return {
+    sourceName: "Resolved Bracket",
+    fileName: "resolved.csv",
+    importedAt: new Date().toISOString(),
+    teamCount: projections.length,
+    teams: projections.map((team) => ({
+      id: team.id,
+      name: team.name,
+      shortName: team.shortName,
+      region: team.region,
+      seed: team.seed,
+      regionSlot: `${team.region}-${team.seed}`,
+      site: null,
+      subregion: null,
+      isPlayIn: false,
+      playInGroup: null,
+      playInSeed: null
+    }))
+  };
+}
+
+function buildPlayInBracketImport(): SessionBracketImport {
+  const base = buildResolvedBracketImport();
+  const teams = base.teams.flatMap((team) => {
+    if (team.region === "East" && team.seed === 11) {
+      return [
+        {
+          ...team,
+          id: "east-11-a",
+          name: "East 11 A",
+          shortName: "E11A",
+          isPlayIn: true,
+          playInGroup: "east-11-playin",
+          playInSeed: 11
+        },
+        {
+          ...team,
+          id: "east-11-b",
+          name: "East 11 B",
+          shortName: "E11B",
+          isPlayIn: true,
+          playInGroup: "east-11-playin",
+          playInSeed: 11
+        }
+      ];
+    }
+
+    if (team.region === "West" && team.seed === 16) {
+      return [
+        {
+          ...team,
+          id: "west-16-a",
+          name: "West 16 A",
+          shortName: "W16A",
+          isPlayIn: true,
+          playInGroup: "west-16-playin",
+          playInSeed: 16
+        },
+        {
+          ...team,
+          id: "west-16-b",
+          name: "West 16 B",
+          shortName: "W16B",
+          isPlayIn: true,
+          playInGroup: "west-16-playin",
+          playInSeed: 16
+        }
+      ];
+    }
+
+    return [team];
+  });
+
+  return {
+    ...base,
+    sourceName: "Play-In Bracket",
+    fileName: "playin.csv",
+    teamCount: teams.length,
+    teams
+  };
 }
 
 function buildSyndicates(): Syndicate[] {
@@ -55,8 +148,27 @@ function buildSyndicates(): Syndicate[] {
   ];
 }
 
-function buildSession(): StoredAuctionSession {
+function buildImportReadiness(): SessionImportReadiness {
+  return {
+    mode: "session-imports",
+    status: "ready",
+    summary: "ready",
+    issues: [],
+    warnings: [],
+    hasBracket: true,
+    hasAnalysis: true,
+    mergedProjectionCount: 64,
+    lastBracketImportAt: new Date().toISOString(),
+    lastAnalysisImportAt: new Date().toISOString()
+  };
+}
+
+function buildSession(args?: {
+  bracketImport?: SessionBracketImport | null;
+  purchases?: StoredAuctionSession["purchases"];
+}): StoredAuctionSession {
   const projections = buildProjections();
+  const bracketImport = args?.bracketImport ?? null;
   const session: AuctionSession = {
     id: "session_bracket",
     name: "Bracket Test",
@@ -65,6 +177,10 @@ function buildSession(): StoredAuctionSession {
     archivedAt: null,
     archivedByName: null,
     archivedByEmail: null,
+    auctionStatus: "active",
+    auctionCompletedAt: null,
+    auctionCompletedByName: null,
+    auctionCompletedByEmail: null,
     focusSyndicateId: "syn_focus",
     eventAccess: {
       sharedCodeConfigured: true
@@ -104,6 +220,13 @@ function buildSession(): StoredAuctionSession {
       ["South", "West"],
       ["East", "Midwest"]
     ],
+    bracketImport,
+    analysisImport: null,
+    importReadiness: buildImportReadiness(),
+    auctionAssets: buildAuctionAssets({
+      baseProjections: projections,
+      bracketImport
+    }),
     liveState: {
       nominatedTeamId: projections[0]?.id ?? null,
       currentBid: 0,
@@ -111,16 +234,18 @@ function buildSession(): StoredAuctionSession {
       lastUpdatedAt: new Date().toISOString()
     },
     bracketState: createEmptyBracketState(),
-    purchases: [
-      {
-        id: "purchase_1",
-        sessionId: "session_bracket",
-        teamId: "south-1",
-        buyerSyndicateId: "syn_focus",
-        price: 2500,
-        createdAt: new Date().toISOString()
-      }
-    ],
+    purchases:
+      args?.purchases ??
+      [
+        {
+          id: "purchase_1",
+          sessionId: "session_bracket",
+          teamId: "south-1",
+          buyerSyndicateId: "syn_focus",
+          price: 2500,
+          createdAt: new Date().toISOString()
+        }
+      ],
     simulationSnapshot: null
   };
 
@@ -139,6 +264,7 @@ describe("bracket view", () => {
     const bracket = buildBracketView(buildSession());
 
     expect(bracket.isSupported).toBe(true);
+    expect(bracket.playIns).toBeNull();
     expect(bracket.regions.map((region) => region.name)).toEqual([
       "South",
       "West",
@@ -186,6 +312,114 @@ describe("bracket view", () => {
     expect(ownedEntrants).toEqual(expect.arrayContaining(["east-13", "east-14", "east-15", "east-16"]));
   });
 
+  it("builds explicit play-in games and leaves unresolved slots out of the main bracket", () => {
+    const bracket = buildBracketView(buildSession({ bracketImport: buildPlayInBracketImport() }));
+
+    expect(bracket.isSupported).toBe(true);
+    expect(bracket.playIns?.games.map((game) => game.id)).toEqual([
+      "play-in-west-16-playin",
+      "play-in-east-11-playin"
+    ]);
+    expect(bracket.playIns?.games[0]?.entrants.map((entrant) => entrant?.teamId)).toEqual([
+      "west-16-a",
+      "west-16-b"
+    ]);
+
+    const eastSixVsEleven = bracket.regions
+      .find((region) => region.name === "East")
+      ?.rounds[0]?.games.find((game) => game.id === "east-round-of-64-5");
+    expect(eastSixVsEleven?.entrants.map((entrant) => entrant?.teamId ?? null)).toEqual([
+      "east-6",
+      null
+    ]);
+    expect(eastSixVsEleven?.sourceGameIds).toEqual([null, "play-in-east-11-playin"]);
+  });
+
+  it("threads schedule data into import-based play-in and regional games", () => {
+    const session = buildSession({ bracketImport: buildPlayInBracketImport() });
+    const scheduleMap = new Map([
+      [
+        [normalizeTeamName("West 16 A"), normalizeTeamName("West 16 B")].sort().join("|"),
+        { isoDate: "2026-03-18T23:10:00Z", network: "truTV" }
+      ],
+      [
+        [normalizeTeamName("South Team 1"), normalizeTeamName("South Team 16")].sort().join("|"),
+        { isoDate: "2026-03-20T17:15:00Z", network: "CBS" }
+      ]
+    ]);
+
+    const bracket = buildBracketView(session, scheduleMap);
+    const westPlayIn = bracket.playIns?.games.find((game) => game.id === "play-in-west-16-playin");
+    const southRoundOf64 = bracket.regions
+      .find((region) => region.name === "South")
+      ?.rounds[0]?.games.find((game) => game.id === "south-round-of-64-1");
+
+    expect(westPlayIn?.broadcastIsoDate).toBe("2026-03-18T23:10:00Z");
+    expect(westPlayIn?.broadcastNetwork).toBe("truTV");
+    expect(southRoundOf64?.broadcastIsoDate).toBe("2026-03-20T17:15:00Z");
+    expect(southRoundOf64?.broadcastNetwork).toBe("CBS");
+  });
+
+  it("promotes a selected play-in winner into the corresponding round-of-64 slot", () => {
+    const session = buildSession({ bracketImport: buildPlayInBracketImport() });
+
+    applyBracketWinnerMutation(session, "play-in-east-11-playin", "east-11-a");
+
+    const bracket = buildBracketView(session);
+    const eastPlayIn = bracket.playIns?.games.find((game) => game.id === "play-in-east-11-playin");
+    const eastSixVsEleven = bracket.regions
+      .find((region) => region.name === "East")
+      ?.rounds[0]?.games.find((game) => game.id === "east-round-of-64-5");
+
+    expect(eastPlayIn?.winnerTeamId).toBe("east-11-a");
+    expect(eastSixVsEleven?.entrants.map((entrant) => entrant?.teamId ?? null)).toEqual([
+      "east-6",
+      "east-11-a"
+    ]);
+  });
+
+  it("shows grouped purchase ownership on unresolved play-in entrants and the promoted winner", () => {
+    const bracketImport = buildPlayInBracketImport();
+    const playInProjectionId = buildPlayInProjectionId({
+      playInGroup: "east-11-playin",
+      region: "East",
+      seed: 11,
+      regionSlot: "East-11"
+    });
+    const session = buildSession({
+      bracketImport,
+      purchases: [
+        {
+          id: "purchase_playin",
+          sessionId: "session_bracket",
+          teamId: playInProjectionId,
+          assetId: "play-in:east-11-playin",
+          assetLabel: "East 11 A / East 11 B",
+          projectionIds: [playInProjectionId],
+          buyerSyndicateId: "syn_other",
+          price: 1200,
+          createdAt: new Date().toISOString()
+        }
+      ]
+    });
+
+    const unresolvedBracket = buildBracketView(session);
+    const eastPlayIn = unresolvedBracket.playIns?.games.find(
+      (game) => game.id === "play-in-east-11-playin"
+    );
+    expect(eastPlayIn?.entrants[0]?.buyerSyndicateName).toBe("Riverboat");
+    expect(eastPlayIn?.entrants[1]?.buyerSyndicateName).toBe("Riverboat");
+
+    applyBracketWinnerMutation(session, "play-in-east-11-playin", "east-11-b");
+
+    const resolvedBracket = buildBracketView(session);
+    const eastSixVsEleven = resolvedBracket.regions
+      .find((region) => region.name === "East")
+      ?.rounds[0]?.games.find((game) => game.id === "east-round-of-64-5");
+    expect(eastSixVsEleven?.entrants[1]?.teamId).toBe("east-11-b");
+    expect(eastSixVsEleven?.entrants[1]?.buyerSyndicateName).toBe("Riverboat");
+  });
+
   it("returns an unsupported state for incomplete fields", () => {
     const session = buildSession();
     session.projections = session.projections.slice(0, 32);
@@ -219,5 +453,20 @@ describe("bracket winner mutation", () => {
 
     expect(session.bracketState.winnersByGameId["south-round-of-64-1"]).toBe("south-16");
     expect(session.bracketState.winnersByGameId["south-round-of-32-1"]).toBeUndefined();
+  });
+
+  it("clears downstream winners when a play-in result changes", () => {
+    const session = buildSession({ bracketImport: buildPlayInBracketImport() });
+    session.bracketState.winnersByGameId = {
+      "play-in-east-11-playin": "east-11-a",
+      "east-round-of-64-5": "east-11-a",
+      "east-round-of-32-3": "east-11-a"
+    };
+
+    applyBracketWinnerMutation(session, "play-in-east-11-playin", "east-11-b");
+
+    expect(session.bracketState.winnersByGameId["play-in-east-11-playin"]).toBe("east-11-b");
+    expect(session.bracketState.winnersByGameId["east-round-of-64-5"]).toBeUndefined();
+    expect(session.bracketState.winnersByGameId["east-round-of-32-3"]).toBeUndefined();
   });
 });

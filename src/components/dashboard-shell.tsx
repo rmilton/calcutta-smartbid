@@ -784,6 +784,7 @@ export function DashboardShell({
     <SessionBracket
       bracket={dashboard.bracket}
       syndicates={dashboard.ledger}
+      mothershipSyndicateId={dashboard.focusSyndicate.id}
       canEdit={!viewerMode}
       isSaving={viewerMode ? false : isSavingBracket}
       notice={notice}

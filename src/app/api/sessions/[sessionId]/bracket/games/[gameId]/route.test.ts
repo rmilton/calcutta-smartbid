@@ -78,4 +78,33 @@ describe("PUT /api/sessions/[sessionId]/bracket/games/[gameId]", () => {
       "south-1"
     );
   });
+
+  it("accepts play-in game ids through the same bracket endpoint", async () => {
+    mocks.buildAuthErrorResponse.mockResolvedValue(null);
+    mocks.updateBracketGame.mockResolvedValue({
+      session: {
+        id: "session_1"
+      }
+    });
+
+    const response = await PUT(
+      new Request("http://localhost/api/test", {
+        method: "PUT",
+        body: JSON.stringify({ winnerTeamId: "east-11-a" })
+      }),
+      {
+        params: Promise.resolve({
+          sessionId: "session_1",
+          gameId: "play-in-east-11-playin"
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateBracketGame).toHaveBeenCalledWith(
+      "session_1",
+      "play-in-east-11-playin",
+      "east-11-a"
+    );
+  });
 });

@@ -22,6 +22,7 @@ export type BudgetConfidence = "low" | "medium" | "high";
 export type AuctionStatus = "active" | "complete" | "tournament_active";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
 export type BracketRoundKey =
+  | "playIn"
   | "roundOf64"
   | "roundOf32"
   | "sweet16"
@@ -419,6 +420,7 @@ export interface BracketRegion {
 export interface BracketViewModel {
   isSupported: boolean;
   unsupportedReason: string | null;
+  playIns: BracketRound | null;
   regions: BracketRegion[];
   finals: BracketRound[];
 }

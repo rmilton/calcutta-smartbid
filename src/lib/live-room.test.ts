@@ -116,6 +116,7 @@ const soldAssets: SoldAssetSummary[] = [
 const bracket: BracketViewModel = {
   isSupported: true,
   unsupportedReason: null,
+  playIns: null,
   finals: [],
   regions: [
     {
