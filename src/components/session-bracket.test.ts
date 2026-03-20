@@ -56,6 +56,8 @@ describe("SessionBracket", () => {
               region: "East",
               slot: 1,
               sourceGameIds: [null, null],
+              broadcastIsoDate: "2026-03-18T23:10:00Z",
+              broadcastNetwork: "truTV",
               entrants: [
                 {
                   teamId: "east-11-a",
@@ -128,6 +130,8 @@ describe("SessionBracket", () => {
               region: "West",
               slot: 1,
               sourceGameIds: [null, null],
+              broadcastIsoDate: "2026-03-19T01:10:00Z",
+              broadcastNetwork: "TNT",
               entrants: [
                 {
                   teamId: "west-16-a",
@@ -164,6 +168,7 @@ describe("SessionBracket", () => {
     );
 
     expect(markup).toContain("Read-only viewer mode");
+    expect(markup).toContain("TNT");
     expect(markup).not.toContain("<button");
   });
 });

@@ -573,13 +573,11 @@ function BracketEntrantRow({
 
   const content = (
     <>
-      {density === "regular" ? (
-        <div className="bracket-entrant__meta">
-          <span className="bracket-owner-pill" title={broadcastLabel}>
-            {broadcastLabel}
-          </span>
-        </div>
-      ) : null}
+      <div className="bracket-entrant__meta">
+        <span className="bracket-owner-pill" title={broadcastLabel}>
+          {broadcastLabel}
+        </span>
+      </div>
       <div className="bracket-entrant__identity">
         <TeamLogo
           teamId={team.teamId}

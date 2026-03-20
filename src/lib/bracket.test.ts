@@ -1,5 +1,6 @@
 import { buildAuctionAssets, buildPlayInProjectionId } from "@/lib/auction-assets";
 import { applyBracketWinnerMutation, buildBracketView, createEmptyBracketState } from "@/lib/bracket";
+import { normalizeTeamName } from "@/lib/espn";
 import {
   AuctionSession,
   SessionBracketImport,
@@ -332,6 +333,31 @@ describe("bracket view", () => {
       null
     ]);
     expect(eastSixVsEleven?.sourceGameIds).toEqual([null, "play-in-east-11-playin"]);
+  });
+
+  it("threads schedule data into import-based play-in and regional games", () => {
+    const session = buildSession({ bracketImport: buildPlayInBracketImport() });
+    const scheduleMap = new Map([
+      [
+        [normalizeTeamName("West 16 A"), normalizeTeamName("West 16 B")].sort().join("|"),
+        { isoDate: "2026-03-18T23:10:00Z", network: "truTV" }
+      ],
+      [
+        [normalizeTeamName("South Team 1"), normalizeTeamName("South Team 16")].sort().join("|"),
+        { isoDate: "2026-03-20T17:15:00Z", network: "CBS" }
+      ]
+    ]);
+
+    const bracket = buildBracketView(session, scheduleMap);
+    const westPlayIn = bracket.playIns?.games.find((game) => game.id === "play-in-west-16-playin");
+    const southRoundOf64 = bracket.regions
+      .find((region) => region.name === "South")
+      ?.rounds[0]?.games.find((game) => game.id === "south-round-of-64-1");
+
+    expect(westPlayIn?.broadcastIsoDate).toBe("2026-03-18T23:10:00Z");
+    expect(westPlayIn?.broadcastNetwork).toBe("truTV");
+    expect(southRoundOf64?.broadcastIsoDate).toBe("2026-03-20T17:15:00Z");
+    expect(southRoundOf64?.broadcastNetwork).toBe("CBS");
   });
 
   it("promotes a selected play-in winner into the corresponding round-of-64 slot", () => {

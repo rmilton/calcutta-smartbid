@@ -327,7 +327,8 @@ function buildImportRegionalGames(
   region: string,
   slotGroups: BracketImportTeam[][],
   winnersByGameId: Record<string, string | null>,
-  purchaseLookup: Map<string, PurchaseLookupRow>
+  purchaseLookup: Map<string, PurchaseLookupRow>,
+  scheduleMap?: EspnScheduleMap | null
 ) {
   const gameLookup = new Map<string, BracketGame>();
   const rounds: RegionRoundBuild[] = [];
@@ -354,7 +355,8 @@ function buildImportRegionalGames(
           slotGroup[0] ? toBracketTeam(slotGroup[0], purchaseLookup) : null,
           slotGroup[1] ? toBracketTeam(slotGroup[1], purchaseLookup) : null
         ],
-        winnersByGameId
+        winnersByGameId,
+        scheduleMap
       );
       playInGames.push(playInGame);
       gameLookup.set(playInGame.id, playInGame);
@@ -393,7 +395,8 @@ function buildImportRegionalGames(
       index + 1,
       [leftSlot?.sourceGameId ?? null, rightSlot?.sourceGameId ?? null],
       entrants,
-      winnersByGameId
+      winnersByGameId,
+      scheduleMap
     );
     gameLookup.set(gameId, game);
     return game;
@@ -422,7 +425,8 @@ function buildImportRegionalGames(
         index + 1,
         [leftSource?.id ?? null, rightSource?.id ?? null],
         entrants,
-        winnersByGameId
+        winnersByGameId,
+        scheduleMap
       );
       gameLookup.set(gameId, game);
       return game;
@@ -691,7 +695,8 @@ function buildBracket(session: AuctionSession, scheduleMap?: EspnScheduleMap | n
         region,
         support.slotGroupsByRegion.get(region) ?? [],
         session.bracketState.winnersByGameId,
-        purchaseLookup
+        purchaseLookup,
+        scheduleMap
       );
 
       for (const [gameId, game] of build.gameLookup) {

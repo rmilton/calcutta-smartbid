@@ -3008,11 +3008,15 @@ kbd {
 .bracket-board[data-density="condensed"] .bracket-entrant {
   gap: 0.22rem;
   padding: 0.42rem 0.46rem;
+  height: auto;
 }
 
 .bracket-board[data-density="compact"] .bracket-entrant {
-  height: auto;
-  min-height: 2.7rem;
+  min-height: 3.35rem;
+}
+
+.bracket-board[data-density="condensed"] .bracket-entrant {
+  min-height: 3.1rem;
 }
 
 .bracket-entrant--button {
@@ -3135,6 +3139,11 @@ kbd {
   line-height: 1.2;
 }
 
+.bracket-board[data-density="compact"] .bracket-entrant__meta,
+.bracket-board[data-density="condensed"] .bracket-entrant__meta {
+  padding-bottom: 0.12rem;
+}
+
 .bracket-entrant__detail {
   font-size: 0.78rem;
   line-height: 1.15;
@@ -3177,6 +3186,10 @@ kbd {
 .bracket-board[data-density="compact"] .bracket-owner-pill,
 .bracket-board[data-density="condensed"] .bracket-owner-pill {
   font-size: 0.5rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.2;
 }
 
 .bracket-owner-pill--muted {
