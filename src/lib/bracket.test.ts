@@ -260,6 +260,12 @@ function buildSession(args?: {
 }
 
 describe("bracket view", () => {
+  it("normalizes ESPN short-name mismatches for Miami (Ohio) and CA Baptist", () => {
+    expect(normalizeTeamName("Miami (Ohio)")).toBe(normalizeTeamName("Miami OH"));
+    expect(normalizeTeamName("Miami (OH)")).toBe(normalizeTeamName("Miami OH"));
+    expect(normalizeTeamName("Cal Baptist")).toBe(normalizeTeamName("CA Baptist"));
+  });
+
   it("assembles a supported 64-team bracket with seeded first-round pairings and ownership markers", () => {
     const bracket = buildBracketView(buildSession());
 
@@ -358,6 +364,53 @@ describe("bracket view", () => {
     expect(westPlayIn?.broadcastNetwork).toBe("truTV");
     expect(southRoundOf64?.broadcastIsoDate).toBe("2026-03-20T17:15:00Z");
     expect(southRoundOf64?.broadcastNetwork).toBe("CBS");
+  });
+
+  it("matches Miami (Ohio) against ESPN's Miami OH schedule naming", () => {
+    const session = buildSession({ bracketImport: buildResolvedBracketImport() });
+    session.bracketImport = {
+      ...session.bracketImport!,
+      teams: session.bracketImport!.teams.map((team) => {
+        if (team.region === "Midwest" && team.seed === 6) {
+          return {
+            ...team,
+            id: "midwest-6",
+            name: "Tennessee",
+            shortName: "TENN"
+          };
+        }
+
+        if (team.region === "Midwest" && team.seed === 11) {
+          return {
+            ...team,
+            id: "midwest-11",
+            name: "Miami (Ohio)",
+            shortName: "MIAOH"
+          };
+        }
+
+        return team;
+      })
+    };
+
+    const scheduleMap = new Map([
+      [
+        [normalizeTeamName("Tennessee"), normalizeTeamName("Miami OH")].sort().join("|"),
+        { isoDate: "2026-03-20T20:25:00Z", network: "TBS" }
+      ]
+    ]);
+
+    const bracket = buildBracketView(session, scheduleMap);
+    const midwestSixVsEleven = bracket.regions
+      .find((region) => region.name === "Midwest")
+      ?.rounds[0]?.games.find((game) => game.id === "midwest-round-of-64-5");
+
+    expect(midwestSixVsEleven?.entrants.map((entrant) => entrant?.name)).toEqual([
+      "Tennessee",
+      "Miami (Ohio)"
+    ]);
+    expect(midwestSixVsEleven?.broadcastIsoDate).toBe("2026-03-20T20:25:00Z");
+    expect(midwestSixVsEleven?.broadcastNetwork).toBe("TBS");
   });
 
   it("promotes a selected play-in winner into the corresponding round-of-64 slot", () => {

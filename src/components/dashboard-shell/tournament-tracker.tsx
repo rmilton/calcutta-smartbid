@@ -202,7 +202,7 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
       <div className="section-headline">
         <div>
           <p className="eyebrow">Live Tournament</p>
-          <h3>Mothership Portfolio Results</h3>
+          <h3>Mothership Portfolio Tracker</h3>
         </div>
         {results.equivalentShares > 0 ? (
           <span className="tournament-tracker__share-badge">

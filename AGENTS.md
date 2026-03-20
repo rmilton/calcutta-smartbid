@@ -350,7 +350,7 @@ Use separate git worktrees if two Codex sessions are editing in parallel.
 - the Selection Sunday path now depends on session-managed bracket and analysis imports rather than a single projection source
 - Supabase-backed environments now also depend on the persisted `auction_status` completion columns on `auction_sessions`; this column stores `active`, `complete`, or `tournament_active`
 - unresolved play-ins and regional `13-16` packages are supported as grouped auction teams, but deeper simulation/modeling should still be treated carefully when that logic changes
-- ESPN name matching uses `normalizeTeamName` on both sides; two known mismatches remain: "Miami (Ohio)" vs ESPN "Miami OH" and "Cal Baptist" vs ESPN "CA Baptist" — those bracket cards will show TBD
+- ESPN name matching uses `normalizeTeamName` on both sides; if new schools surface with source-specific abbreviations, add an explicit alias in `src/lib/espn.ts` rather than broadening the generic normalization rules.
 - ESPN fetch results are cached by Next.js fetch cache for 5 minutes; stale data can be cleared by deleting `.next/cache/fetch-cache`
 - bracket game broadcast info is computed at dashboard-build time from the ESPN map; the `BracketGame` type carries `broadcastIsoDate` and `broadcastNetwork` — do not assume these are null in tournament mode
 - Session lifecycle now supports archive plus permanent delete. Permanent delete is intentionally gated behind archive plus typed confirmation.
