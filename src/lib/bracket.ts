@@ -10,6 +10,7 @@ import {
   Syndicate,
   TeamProjection
 } from "@/lib/types";
+import { EspnScheduleMap } from "@/lib/espn";
 
 const FIRST_ROUND_SEED_PAIRS: Array<[number, number]> = [
   [1, 16],
@@ -149,8 +150,25 @@ function createGame(
   slot: number,
   sourceGameIds: [string | null, string | null],
   entrants: [BracketGameTeam | null, BracketGameTeam | null],
-  winnersByGameId: Record<string, string | null>
+  winnersByGameId: Record<string, string | null>,
+  scheduleMap?: EspnScheduleMap | null
 ): BracketGame {
+  let broadcastIsoDate: string | null = null;
+  let broadcastNetwork: string | null = null;
+
+  if (scheduleMap) {
+    const nameA = entrants[0]?.name;
+    const nameB = entrants[1]?.name;
+    if (nameA && nameB) {
+      const key = [nameA, nameB].map((n) => n.toLowerCase().trim()).sort().join("|");
+      const info = scheduleMap.get(key);
+      if (info) {
+        broadcastIsoDate = info.isoDate;
+        broadcastNetwork = info.network;
+      }
+    }
+  }
+
   return {
     id,
     round,
@@ -159,7 +177,9 @@ function createGame(
     slot,
     sourceGameIds,
     entrants,
-    winnerTeamId: findWinner(entrants, winnersByGameId[id])
+    winnerTeamId: findWinner(entrants, winnersByGameId[id]),
+    broadcastIsoDate,
+    broadcastNetwork
   };
 }
 
@@ -180,7 +200,8 @@ function buildRegionalGames(
   region: string,
   teams: TeamProjection[],
   winnersByGameId: Record<string, string | null>,
-  purchaseLookup: Map<string, PurchaseLookupRow>
+  purchaseLookup: Map<string, PurchaseLookupRow>,
+  scheduleMap?: EspnScheduleMap | null
 ) {
   const gameLookup = new Map<string, BracketGame>();
   const seedLookup = new Map(teams.map((team) => [team.seed, team]));
@@ -201,7 +222,8 @@ function buildRegionalGames(
       index + 1,
       [null, null],
       entrants,
-      winnersByGameId
+      winnersByGameId,
+      scheduleMap
     );
     gameLookup.set(gameId, game);
     return game;
@@ -230,7 +252,8 @@ function buildRegionalGames(
         index + 1,
         [leftSource?.id ?? null, rightSource?.id ?? null],
         entrants,
-        winnersByGameId
+        winnersByGameId,
+        scheduleMap
       );
       gameLookup.set(gameId, game);
       return game;
@@ -343,7 +366,7 @@ function pruneInvalidWinners(session: StoredAuctionSession) {
   }
 }
 
-function buildBracket(session: AuctionSession): BracketBuildResult {
+function buildBracket(session: AuctionSession, scheduleMap?: EspnScheduleMap | null): BracketBuildResult {
   const support = validateBracketSupport(session);
   if (!support.isSupported) {
     return buildUnsupportedBracket(support.reason);
@@ -356,7 +379,8 @@ function buildBracket(session: AuctionSession): BracketBuildResult {
       region,
       support.regionLookup.get(region) ?? [],
       session.bracketState.winnersByGameId,
-      purchaseLookup
+      purchaseLookup,
+      scheduleMap
     );
     for (const [gameId, game] of build.gameLookup) {
       gameLookup.set(gameId, game);
@@ -390,7 +414,8 @@ function buildBracket(session: AuctionSession): BracketBuildResult {
       1,
       [leftFinalists[0]?.id ?? null, leftFinalists[1]?.id ?? null],
       [leftFinalists[0] ? getWinnerTeam(leftFinalists[0]) : null, leftFinalists[1] ? getWinnerTeam(leftFinalists[1]) : null],
-      session.bracketState.winnersByGameId
+      session.bracketState.winnersByGameId,
+      scheduleMap
     ),
     createGame(
       "final-four-2",
@@ -400,7 +425,8 @@ function buildBracket(session: AuctionSession): BracketBuildResult {
       2,
       [rightFinalists[0]?.id ?? null, rightFinalists[1]?.id ?? null],
       [rightFinalists[0] ? getWinnerTeam(rightFinalists[0]) : null, rightFinalists[1] ? getWinnerTeam(rightFinalists[1]) : null],
-      session.bracketState.winnersByGameId
+      session.bracketState.winnersByGameId,
+      scheduleMap
     )
   ];
 
@@ -416,7 +442,8 @@ function buildBracket(session: AuctionSession): BracketBuildResult {
     1,
     [finalFourGames[0].id, finalFourGames[1].id],
     [getWinnerTeam(finalFourGames[0]), getWinnerTeam(finalFourGames[1])],
-    session.bracketState.winnersByGameId
+    session.bracketState.winnersByGameId,
+    scheduleMap
   );
   gameLookup.set(championshipGame.id, championshipGame);
 
@@ -465,9 +492,9 @@ export function normalizeBracketState(
   };
 }
 
-export function buildBracketView(session: AuctionSession): BracketViewModel {
+export function buildBracketView(session: AuctionSession, scheduleMap?: EspnScheduleMap | null): BracketViewModel {
   session.bracketState = normalizeBracketState(session.bracketState);
-  return buildBracket(session).view;
+  return buildBracket(session, scheduleMap).view;
 }
 
 export function applyBracketWinnerMutation(

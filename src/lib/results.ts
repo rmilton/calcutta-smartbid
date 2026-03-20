@@ -165,6 +165,25 @@ export function computeMothershipPortfolioResults(
 
     const percentOfSpend = totalCost > 0 ? roundCurrency((purchase.price / totalCost) * 100) : 0;
 
+    // Find next unplayed game for still-alive teams
+    let nextGameIsoDate: string | null = null;
+    let nextGameNetwork: string | null = null;
+    if (isStillAlive) {
+      const allGames = [
+        ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
+        ...bracket.finals.flatMap((round) => round.games)
+      ];
+      const nextGame = allGames.find(
+        (game) =>
+          game.winnerTeamId === null &&
+          game.entrants.some((e) => e && projectionIds.includes(e.teamId))
+      );
+      if (nextGame) {
+        nextGameIsoDate = nextGame.broadcastIsoDate;
+        nextGameNetwork = nextGame.broadcastNetwork;
+      }
+    }
+
     return {
       assetId: purchase.assetId ?? purchase.teamId,
       assetLabel,
@@ -181,7 +200,9 @@ export function computeMothershipPortfolioResults(
       returnPerShare,
       netPerShare,
       isEliminated,
-      isStillAlive
+      isStillAlive,
+      nextGameIsoDate,
+      nextGameNetwork
     } satisfies MothershipAssetResult;
   });
 

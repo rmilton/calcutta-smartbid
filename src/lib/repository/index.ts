@@ -18,7 +18,7 @@ import {
   getConfiguredMothershipSyndicateName,
   getConfiguredStorageBackend
 } from "@/lib/config";
-import { buildDashboard } from "@/lib/dashboard";
+import { buildDashboardWithSchedule } from "@/lib/dashboard";
 import { simulateAuctionField } from "@/lib/engine/simulation";
 import { getDefaultFinalFourPairings, getDefaultPayoutRules } from "@/lib/sample-data";
 import {
@@ -345,8 +345,8 @@ class LocalSessionRepository implements SessionRepository {
   ): Promise<AuctionDashboard | ViewerDashboard> {
     const session = await this.requireSession(sessionId);
     return options?.audience === "viewer"
-      ? buildDashboard(session, this.backend, { audience: "viewer" })
-      : buildDashboard(session, this.backend, { audience: "operator" });
+      ? await buildDashboardWithSchedule(session, this.backend, { audience: "viewer" })
+      : await buildDashboardWithSchedule(session, this.backend, { audience: "operator" });
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
@@ -806,7 +806,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     await applyProjectionImportLegacy(session, provider);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async rebuildSimulation(sessionId: string, iterations?: number) {
@@ -814,7 +814,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     recalculateSessionState(session, iterations);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async updateLiveState(
@@ -826,7 +826,7 @@ class LocalSessionRepository implements SessionRepository {
     assertAuctionBiddingIsOpen(session);
     applyLiveStatePatch(session, patch);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async recordPurchase(
@@ -838,7 +838,7 @@ class LocalSessionRepository implements SessionRepository {
     assertAuctionBiddingIsOpen(session);
     applyPurchaseMutation(session, input);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async undoPurchase(sessionId: string, purchaseId?: string) {
@@ -847,7 +847,7 @@ class LocalSessionRepository implements SessionRepository {
     assertAuctionBiddingIsOpen(session);
     undoPurchaseMutation(session, purchaseId);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
@@ -855,7 +855,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyProjectionOverrideMutation(session, teamId, input);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearProjectionOverride(sessionId: string, teamId: string) {
@@ -863,7 +863,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     clearProjectionOverrideMutation(session, teamId);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveTeamClassification(
@@ -875,7 +875,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyTeamClassificationMutation(session, teamId, input);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearTeamClassification(sessionId: string, teamId: string) {
@@ -883,7 +883,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     clearTeamClassificationMutation(session, teamId);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
@@ -891,7 +891,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     applyTeamNoteMutation(session, teamId, input);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearTeamNote(sessionId: string, teamId: string) {
@@ -899,7 +899,7 @@ class LocalSessionRepository implements SessionRepository {
     const session = findSession(store.sessions, sessionId);
     clearTeamNoteMutation(session, teamId);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
@@ -908,7 +908,7 @@ class LocalSessionRepository implements SessionRepository {
     const parsed = updateBracketGameSchema.parse({ winnerTeamId });
     applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
     await this.writeStore(store);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
@@ -1348,8 +1348,8 @@ class SupabaseSessionRepository implements SessionRepository {
   ): Promise<AuctionDashboard | ViewerDashboard> {
     const session = await this.requireSession(sessionId);
     return options?.audience === "viewer"
-      ? buildDashboard(session, this.backend, { audience: "viewer" })
-      : buildDashboard(session, this.backend, { audience: "operator" });
+      ? await buildDashboardWithSchedule(session, this.backend, { audience: "viewer" })
+      : await buildDashboardWithSchedule(session, this.backend, { audience: "operator" });
   }
 
   async getAccessMember(sessionId: string, memberId: string) {
@@ -1936,14 +1936,14 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     await applyProjectionImportLegacy(session, provider);
     await this.persistProjectionImport(session);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async rebuildSimulation(sessionId: string, iterations?: number) {
     const session = await this.requireSession(sessionId);
     recalculateSessionState(session, iterations);
     await this.persistDerivedState(session);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async updateLiveState(
@@ -1964,7 +1964,7 @@ class SupabaseSessionRepository implements SessionRepository {
       .eq("id", sessionId);
 
     throwOnSupabaseError(result.error);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async recordPurchase(
@@ -1995,7 +1995,7 @@ class SupabaseSessionRepository implements SessionRepository {
     });
 
     throwOnSupabaseError(result.error);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async undoPurchase(sessionId: string, purchaseId?: string) {
@@ -2019,21 +2019,21 @@ class SupabaseSessionRepository implements SessionRepository {
     });
 
     throwOnSupabaseError(result.error);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
     const session = await this.requireSession(sessionId);
     applyProjectionOverrideMutation(session, teamId, input);
     await this.persistProjectionState(session, teamId);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearProjectionOverride(sessionId: string, teamId: string) {
     const session = await this.requireSession(sessionId);
     clearProjectionOverrideMutation(session, teamId);
     await this.persistProjectionState(session, teamId, true);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveTeamClassification(
@@ -2044,28 +2044,28 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     applyTeamClassificationMutation(session, teamId, input);
     await this.persistTeamClassificationState(session, teamId);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearTeamClassification(sessionId: string, teamId: string) {
     const session = await this.requireSession(sessionId);
     clearTeamClassificationMutation(session, teamId);
     await this.persistTeamClassificationState(session, teamId, true);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput) {
     const session = await this.requireSession(sessionId);
     applyTeamNoteMutation(session, teamId, input);
     await this.persistTeamNoteState(session, teamId);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async clearTeamNote(sessionId: string, teamId: string) {
     const session = await this.requireSession(sessionId);
     clearTeamNoteMutation(session, teamId);
     await this.persistTeamNoteState(session, teamId, true);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
@@ -2073,7 +2073,7 @@ class SupabaseSessionRepository implements SessionRepository {
     const parsed = updateBracketGameSchema.parse({ winnerTeamId });
     applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
     await this.persistBracketState(session);
-    return buildDashboard(session, this.backend);
+    return buildDashboardWithSchedule(session, this.backend);
   }
 
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {

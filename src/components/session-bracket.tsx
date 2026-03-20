@@ -359,6 +359,7 @@ function BracketGameCard({
   onSelectWinner,
   className
 }: BracketGameCardProps) {
+  const broadcastLabel = buildBracketBroadcastLabel(game);
   return (
     <article className={cn("bracket-game-card", className)}>
       <div className="bracket-game-card__matchup">
@@ -366,6 +367,7 @@ function BracketGameCard({
           <BracketEntrantRow
             key={`${game.id}-${entrant?.teamId ?? `empty-${index}`}`}
             team={entrant}
+            broadcastLabel={broadcastLabel}
             isWinner={Boolean(entrant && game.winnerTeamId === entrant.teamId)}
             canEdit={canEdit}
             isSaving={isSaving}
@@ -386,6 +388,7 @@ function BracketGameCard({
 
 interface BracketEntrantRowProps {
   team: BracketGameTeam | null;
+  broadcastLabel: string;
   isWinner: boolean;
   canEdit: boolean;
   isSaving: boolean;
@@ -394,6 +397,7 @@ interface BracketEntrantRowProps {
 
 function BracketEntrantRow({
   team,
+  broadcastLabel,
   isWinner,
   canEdit,
   isSaving,
@@ -410,7 +414,6 @@ function BracketEntrantRow({
   const ownerStyle = {
     ["--bracket-owner-accent" as string]: team.buyerColor ?? "transparent"
   } as CSSProperties;
-  const broadcastLabel = buildBracketBroadcastLabel();
 
   const content = (
     <>
@@ -469,6 +472,43 @@ function BracketEntrantRow({
   );
 }
 
-function buildBracketBroadcastLabel() {
-  return "Date / Time / TV TBD";
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function buildBracketBroadcastLabel(game: BracketGame): string {
+  if (!game.broadcastIsoDate) {
+    return "DATE / TIME / TV TBD";
+  }
+
+  // Parse ISO date and display as Eastern time (NCAA games are always scheduled in ET)
+  // Format: "Thu Mar 20 · 5:10 PM ET"
+  const date = new Date(game.broadcastIsoDate);
+
+  // Convert to Eastern time offset manually (-5 EST, -4 EDT)
+  // For simplicity, use UTC offset for Eastern: subtract 4 hours for EDT (March-November) or 5 for EST
+  // March 8 – November 1 is EDT (-4), rest is EST (-5)
+  const utcMonth = date.getUTCMonth(); // 0-indexed
+  const utcDay = date.getUTCDate();
+  // DST starts second Sunday of March (approx March 8+) and ends first Sunday of November
+  const isDst = utcMonth > 2 && utcMonth < 10 || (utcMonth === 2 && utcDay >= 8);
+  const offsetHours = isDst ? -4 : -5;
+  const tzLabel = isDst ? "EDT" : "EST";
+
+  const etMs = date.getTime() + offsetHours * 60 * 60 * 1000;
+  const etDate = new Date(etMs);
+
+  const dayName = DAY_NAMES[etDate.getUTCDay()];
+  const monthName = MONTH_NAMES[etDate.getUTCMonth()];
+  const dayNum = etDate.getUTCDate();
+  const hours = etDate.getUTCHours();
+  const minutes = etDate.getUTCMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+  const displayMin = String(minutes).padStart(2, "0");
+
+  const dateStr = `${dayName} ${monthName} ${dayNum}`;
+  const timeStr = `${displayHour}:${displayMin} ${ampm} ${tzLabel}`;
+  const networkStr = game.broadcastNetwork ?? "TV TBD";
+
+  return `${dateStr} · ${timeStr} · ${networkStr}`;
 }

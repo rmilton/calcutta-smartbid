@@ -387,6 +387,8 @@ export interface BracketGame {
   sourceGameIds: [string | null, string | null];
   entrants: [BracketGameTeam | null, BracketGameTeam | null];
   winnerTeamId: string | null;
+  broadcastIsoDate: string | null;
+  broadcastNetwork: string | null;
 }
 
 export interface RoundMatchup {
@@ -1053,6 +1055,8 @@ export interface MothershipAssetResult {
   netPerShare: number;
   isEliminated: boolean;
   isStillAlive: boolean;
+  nextGameIsoDate: string | null;
+  nextGameNetwork: string | null;
 }
 
 export interface MothershipPortfolioResults {

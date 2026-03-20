@@ -2,6 +2,28 @@ import { MothershipAssetResult, MothershipPortfolioResults, Stage } from "@/lib/
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import { TeamLogo } from "@/components/team-logo";
 
+function formatNextGame(isoDate: string | null, network: string | null): string {
+  if (!isoDate && !network) return "TBD";
+
+  if (!isoDate) {
+    return network ?? "TBD";
+  }
+
+  const date = new Date(isoDate);
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short"
+  }).format(date);
+
+  return network ? `${formatted} · ${network}` : formatted;
+}
+
 const STAGE_LABELS: Record<Stage, string> = {
   roundOf64: "R64",
   roundOf32: "R32",
@@ -96,6 +118,11 @@ function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
           ) : asset.isGrouped ? (
             <span className="tournament-tracker__asset-meta">
               {asset.region} · {asset.teamCount} teams
+            </span>
+          ) : null}
+          {asset.isStillAlive && (asset.nextGameIsoDate ?? asset.nextGameNetwork) ? (
+            <span className="tournament-tracker__next-game">
+              {formatNextGame(asset.nextGameIsoDate, asset.nextGameNetwork)}
             </span>
           ) : null}
         </div>
