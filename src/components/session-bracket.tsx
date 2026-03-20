@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties } from "react";
+import { CSSProperties, useEffect, useState } from "react";
 import {
   BracketGame,
   BracketGameTeam,
@@ -12,9 +12,14 @@ import {
 import { TeamLogo } from "@/components/team-logo";
 import { cn } from "@/lib/utils";
 
+const CONDENSED_BRACKET_BREAKPOINT = 1600;
+const COMPACT_BRACKET_BREAKPOINT = 1440;
+type BracketDensity = "regular" | "condensed" | "compact";
+
 interface SessionBracketProps {
   bracket: BracketViewModel;
   syndicates: Syndicate[];
+  mothershipSyndicateId: string;
   canEdit: boolean;
   isSaving: boolean;
   notice: string | null;
@@ -25,12 +30,37 @@ interface SessionBracketProps {
 export function SessionBracket({
   bracket,
   syndicates,
+  mothershipSyndicateId,
   canEdit,
   isSaving,
   notice,
   error,
   onSelectWinner
 }: SessionBracketProps) {
+  const [density, setDensity] = useState<BracketDensity>("regular");
+
+  useEffect(() => {
+    const updateDensity = () => {
+      if (window.innerWidth <= COMPACT_BRACKET_BREAKPOINT) {
+        setDensity("compact");
+        return;
+      }
+
+      if (window.innerWidth <= CONDENSED_BRACKET_BREAKPOINT) {
+        setDensity("condensed");
+        return;
+      }
+
+      setDensity("regular");
+    };
+
+    updateDensity();
+    window.addEventListener("resize", updateDensity);
+    return () => {
+      window.removeEventListener("resize", updateDensity);
+    };
+  }, []);
+
   return (
     <section className="bracket-shell">
       <article className="surface-card bracket-hero">
@@ -83,6 +113,8 @@ export function SessionBracket({
               isSaving={isSaving}
               notice={notice}
               error={error}
+              mothershipSyndicateId={mothershipSyndicateId}
+              density={density}
               onSelectWinner={onSelectWinner}
             />
           </div>
@@ -98,6 +130,8 @@ interface BracketBoardProps {
   isSaving: boolean;
   notice: string | null;
   error: string | null;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
 }
 
@@ -107,10 +141,13 @@ function BracketBoard({
   isSaving,
   notice,
   error,
+  mothershipSyndicateId,
+  density,
   onSelectWinner
 }: BracketBoardProps) {
   const regions = organizeBoardRegions(bracket.regions);
   const semifinals = organizeSemifinals(bracket.finals);
+  const playInGames = bracket.playIns?.games ?? [];
   const championshipRound = bracket.finals.find((round) => round.key === "championship") ?? null;
   const championshipGame = championshipRound?.games[0] ?? null;
   const champion =
@@ -118,18 +155,22 @@ function BracketBoard({
     null;
 
   return (
-    <article className="surface-card bracket-board">
+    <article className="surface-card bracket-board" data-density={density}>
       <div className="bracket-board__half bracket-board__half--top">
-        <BracketBoardRegion
-          region={regions.south}
-          canEdit={canEdit}
-          isSaving={isSaving}
-          onSelectWinner={onSelectWinner}
-        />
         <BracketBoardRegion
           region={regions.east}
           canEdit={canEdit}
           isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
+          onSelectWinner={onSelectWinner}
+        />
+        <BracketBoardRegion
+          region={regions.west}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
           onSelectWinner={onSelectWinner}
           mirror
         />
@@ -142,6 +183,8 @@ function BracketBoard({
             game={semifinals.top}
             canEdit={canEdit}
             isSaving={isSaving}
+            mothershipSyndicateId={mothershipSyndicateId}
+            density={density}
             onSelectWinner={onSelectWinner}
           />
           <div className="bracket-board__championship-core">
@@ -152,6 +195,8 @@ function BracketBoard({
                 game={championshipGame}
                 canEdit={canEdit}
                 isSaving={isSaving}
+                mothershipSyndicateId={mothershipSyndicateId}
+                density={density}
                 onSelectWinner={onSelectWinner}
                 className="bracket-game-card--championship"
               />
@@ -175,6 +220,8 @@ function BracketBoard({
             game={semifinals.bottom}
             canEdit={canEdit}
             isSaving={isSaving}
+            mothershipSyndicateId={mothershipSyndicateId}
+            density={density}
             onSelectWinner={onSelectWinner}
           />
         </div>
@@ -182,19 +229,34 @@ function BracketBoard({
 
       <div className="bracket-board__half bracket-board__half--bottom">
         <BracketBoardRegion
-          region={regions.west}
+          region={regions.south}
           canEdit={canEdit}
           isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
           onSelectWinner={onSelectWinner}
         />
         <BracketBoardRegion
           region={regions.midwest}
           canEdit={canEdit}
           isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
           onSelectWinner={onSelectWinner}
           mirror
         />
       </div>
+
+      {playInGames.length > 0 ? (
+        <BracketBoardPlayIns
+          games={playInGames}
+          canEdit={canEdit}
+          isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
+          onSelectWinner={onSelectWinner}
+        />
+      ) : null}
 
       {notice ? <p className="notice-text">{notice}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
@@ -206,6 +268,8 @@ interface BracketBoardRegionProps {
   region: BracketRegion | null;
   canEdit: boolean;
   isSaving: boolean;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
   mirror?: boolean;
 }
@@ -214,6 +278,8 @@ function BracketBoardRegion({
   region,
   canEdit,
   isSaving,
+  mothershipSyndicateId,
+  density,
   onSelectWinner,
   mirror = false
 }: BracketBoardRegionProps) {
@@ -251,6 +317,8 @@ function BracketBoardRegion({
                     game={game}
                     canEdit={canEdit}
                     isSaving={isSaving}
+                    mothershipSyndicateId={mothershipSyndicateId}
+                    density={density}
                     onSelectWinner={onSelectWinner}
                   />
                 </div>
@@ -268,6 +336,8 @@ interface BracketBoardSemifinalProps {
   game: BracketGame | null;
   canEdit: boolean;
   isSaving: boolean;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
 }
 
@@ -276,6 +346,8 @@ function BracketBoardSemifinal({
   game,
   canEdit,
   isSaving,
+  mothershipSyndicateId,
+  density,
   onSelectWinner
 }: BracketBoardSemifinalProps) {
   return (
@@ -288,9 +360,62 @@ function BracketBoardSemifinal({
           game={game}
           canEdit={canEdit}
           isSaving={isSaving}
+          mothershipSyndicateId={mothershipSyndicateId}
+          density={density}
           onSelectWinner={onSelectWinner}
         />
       ) : null}
+    </section>
+  );
+}
+
+interface BracketBoardPlayInsProps {
+  games: BracketGame[];
+  canEdit: boolean;
+  isSaving: boolean;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
+  onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
+}
+
+function BracketBoardPlayIns({
+  games,
+  canEdit,
+  isSaving,
+  mothershipSyndicateId,
+  density,
+  onSelectWinner
+}: BracketBoardPlayInsProps) {
+  return (
+    <section className="bracket-board__play-ins">
+      <header className="bracket-board__play-ins-header">
+        <div>
+          <p className="eyebrow">First Four</p>
+          <h3>Play-in winners</h3>
+        </div>
+        <p className="bracket-board__play-ins-copy">
+          Pick the winner below to cascade that team into the main bracket.
+        </p>
+      </header>
+      <div className="bracket-board__play-in-grid">
+        {games.map((game) => (
+          <article key={game.id} className="bracket-board__play-in-card">
+            <header className="bracket-board__play-in-header">
+              <strong>{buildPlayInTitle(game)}</strong>
+              <span>{buildPlayInFeedLabel(game)}</span>
+            </header>
+            <BracketGameCard
+              game={game}
+              canEdit={canEdit}
+              isSaving={isSaving}
+              mothershipSyndicateId={mothershipSyndicateId}
+              density={density}
+              onSelectWinner={onSelectWinner}
+              className="bracket-game-card--play-in"
+            />
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -344,10 +469,30 @@ function normalizeRegionName(regionName: string) {
   return regionName.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "-");
 }
 
+function buildPlayInTitle(game: BracketGame) {
+  const firstEntrant = game.entrants.find((entrant) => entrant) ?? null;
+  if (!firstEntrant) {
+    return "Play-in matchup";
+  }
+
+  return `${firstEntrant.region} · ${firstEntrant.seed}-seed play-in`;
+}
+
+function buildPlayInFeedLabel(game: BracketGame) {
+  const firstEntrant = game.entrants.find((entrant) => entrant) ?? null;
+  if (!firstEntrant) {
+    return "Feeds the Round of 64";
+  }
+
+  return `Winner advances to ${firstEntrant.region}'s Round of 64`;
+}
+
 interface BracketGameCardProps {
   game: BracketGame;
   canEdit: boolean;
   isSaving: boolean;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
   onSelectWinner: (gameId: string, winnerTeamId: string | null) => void;
   className?: string;
 }
@@ -356,6 +501,8 @@ function BracketGameCard({
   game,
   canEdit,
   isSaving,
+  mothershipSyndicateId,
+  density,
   onSelectWinner,
   className
 }: BracketGameCardProps) {
@@ -371,6 +518,8 @@ function BracketGameCard({
             isWinner={Boolean(entrant && game.winnerTeamId === entrant.teamId)}
             canEdit={canEdit}
             isSaving={isSaving}
+            mothershipSyndicateId={mothershipSyndicateId}
+            density={density}
             onClick={() =>
               entrant
                 ? onSelectWinner(
@@ -392,6 +541,8 @@ interface BracketEntrantRowProps {
   isWinner: boolean;
   canEdit: boolean;
   isSaving: boolean;
+  mothershipSyndicateId: string;
+  density: BracketDensity;
   onClick: () => void;
 }
 
@@ -401,6 +552,8 @@ function BracketEntrantRow({
   isWinner,
   canEdit,
   isSaving,
+  mothershipSyndicateId,
+  density,
   onClick
 }: BracketEntrantRowProps) {
   if (!team) {
@@ -414,25 +567,32 @@ function BracketEntrantRow({
   const ownerStyle = {
     ["--bracket-owner-accent" as string]: team.buyerColor ?? "transparent"
   } as CSSProperties;
+  const isMothershipOwned = team.buyerSyndicateId === mothershipSyndicateId;
+  const syndicateLabel = buildBracketSyndicateLabel(team.buyerSyndicateName, density !== "regular");
+  const displayName = density === "compact" ? team.shortName : team.name;
 
   const content = (
     <>
-      <div className="bracket-entrant__meta">
-        <span className="bracket-owner-pill" title={broadcastLabel}>
-          {broadcastLabel}
-        </span>
-      </div>
+      {density === "regular" ? (
+        <div className="bracket-entrant__meta">
+          <span className="bracket-owner-pill" title={broadcastLabel}>
+            {broadcastLabel}
+          </span>
+        </div>
+      ) : null}
       <div className="bracket-entrant__identity">
-        <TeamLogo teamId={team.teamId} teamName={team.name} size="sm" decorative />
+        <TeamLogo
+          teamId={team.teamId}
+          teamName={team.name}
+          size={density === "regular" ? "sm" : "xs"}
+          decorative
+        />
         <div className="team-label__copy bracket-entrant__copy">
           <strong className="bracket-entrant__seed-name" title={`${team.seed}. ${team.name}`}>
-            {team.seed}. {team.name}
+            {team.seed}. {displayName}
           </strong>
-          <span
-            className="bracket-entrant__detail"
-            title={team.buyerSyndicateName ?? "Unsold"}
-          >
-            {team.buyerSyndicateName ?? "Unsold"}
+          <span className="bracket-entrant__detail" title={team.buyerSyndicateName ?? "Unsold"}>
+            {syndicateLabel}
           </span>
         </div>
       </div>
@@ -445,6 +605,7 @@ function BracketEntrantRow({
         className={cn(
           "bracket-entrant",
           team.buyerSyndicateName && "bracket-entrant--owned",
+          isMothershipOwned && "bracket-entrant--mothership-owned",
           isWinner && "bracket-entrant--winner"
         )}
         style={ownerStyle}
@@ -461,6 +622,7 @@ function BracketEntrantRow({
         "bracket-entrant",
         "bracket-entrant--button",
         team.buyerSyndicateName && "bracket-entrant--owned",
+        isMothershipOwned && "bracket-entrant--mothership-owned",
         isWinner && "bracket-entrant--winner"
       )}
       style={ownerStyle}
@@ -511,4 +673,28 @@ function buildBracketBroadcastLabel(game: BracketGame): string {
   const networkStr = game.broadcastNetwork ?? "TV TBD";
 
   return `${dateStr} · ${timeStr} · ${networkStr}`;
+}
+
+function buildBracketSyndicateLabel(name: string | null, compact: boolean) {
+  if (!name) {
+    return "Unsold";
+  }
+
+  if (!compact || name.length <= 10) {
+    return name;
+  }
+
+  const parts = name
+    .split(/[^A-Za-z0-9]+/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return parts
+      .slice(0, 4)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("");
+  }
+
+  return `${name.slice(0, 7)}.`;
 }

@@ -356,6 +356,7 @@ describe("DashboardShell analysis hero", () => {
       bracket: {
         isSupported: false,
         unsupportedReason: null,
+        playIns: null,
         regions: [],
         finals: []
       },
@@ -595,6 +596,7 @@ describe("DashboardShell analysis hero", () => {
       bracket: {
         isSupported: false,
         unsupportedReason: null,
+        playIns: null,
         regions: [],
         finals: []
       },
@@ -798,6 +800,7 @@ describe("DashboardShell analysis hero", () => {
       bracket: {
         isSupported: false,
         unsupportedReason: null,
+        playIns: null,
         regions: [],
         finals: []
       },
