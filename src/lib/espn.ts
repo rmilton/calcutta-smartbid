@@ -14,10 +14,15 @@ export type EspnScheduleMap = Map<string, EspnBroadcastInfo>;
  *   "Wright State" / "Wright St" → "wright st"
  *   "Tennessee State" / "Tennessee St" → "tennessee st"
  *   "Queens (N.C.)" → "queens"
+ *   "Miami (Ohio)" / "Miami OH" → "miami oh"
+ *   "Cal Baptist" / "CA Baptist" → "cal baptist"
  */
 export function normalizeTeamName(name: string): string {
   return name
     .toLowerCase()
+    .replace(/\bmiami\s*\((?:oh|ohio)\)/g, "miami oh")
+    .replace(/\bmiami\s+(?:oh|ohio)\b/g, "miami oh")
+    .replace(/\b(?:ca|cal)\s+baptist\b/g, "cal baptist")
     .replace(/\(.*?\)/g, "")         // Remove parenthetical "(Ohio)", "(N.C.)" etc.
     .replace(/\ba\s*&\s*m\b/g, "")   // Remove A&M entirely
     .replace(/&/g, "")               // Remove remaining &
