@@ -746,7 +746,7 @@ export function DashboardShell({
         deriveProjectedAssetClose({
           ledger: dashboard.ledger ?? [],
           availableAssets: dashboard.availableAssets ?? [],
-          budgetRows: dashboard.analysis?.budgetRows ?? [],
+          budgetRows: analysisBudgetRows,
           asset: selectedAsset,
           liveAssetId: selectedAssetId,
           liveBid: currentBid
