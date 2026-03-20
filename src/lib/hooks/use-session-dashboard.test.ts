@@ -68,4 +68,22 @@ describe("useSessionDashboard refresh helpers", () => {
     expect(coordinator.settleRefresh()).toBe("noop");
     expect(coordinator.resumeVisible()).toBe("noop");
   });
+
+  it("clears the in-flight lock after a failed refresh", () => {
+    const coordinator = createDashboardRefreshCoordinator();
+
+    expect(coordinator.requestRefresh({ source: "manual", isVisible: true })).toBe("fetch");
+    expect(coordinator.getState()).toMatchObject({
+      inFlight: true,
+      hasPendingRefresh: false
+    });
+
+    coordinator.failRefresh();
+
+    expect(coordinator.getState()).toMatchObject({
+      inFlight: false,
+      hasPendingRefresh: false
+    });
+    expect(coordinator.requestRefresh({ source: "poll", isVisible: true })).toBe("fetch");
+  });
 });

@@ -79,6 +79,12 @@ export function createDashboardRefreshCoordinator() {
       };
       return "noop";
     },
+    failRefresh(): void {
+      state = {
+        ...state,
+        inFlight: false
+      };
+    },
     resumeVisible(): DashboardRefreshAction {
       if (!state.isStaleWhileHidden) {
         return "noop";

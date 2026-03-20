@@ -50,7 +50,13 @@ export function useSessionDashboard<TDashboard extends LiveRoomDashboard>(
     const coordinator = refreshCoordinatorRef.current;
 
     while (true) {
-      await fetchDashboard();
+      try {
+        await fetchDashboard();
+      } catch {
+        coordinator.failRefresh();
+        break;
+      }
+
       if (coordinator.settleRefresh() !== "fetch") {
         break;
       }

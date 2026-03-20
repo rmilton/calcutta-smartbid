@@ -318,11 +318,10 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             >
               Clear active
             </button>
-
-            {notice ? <p className="notice-text">{notice}</p> : null}
-            {error ? <p className="error-text">{error}</p> : null}
           </>
         )}
+        {notice ? <p className="notice-text">{notice}</p> : null}
+        {error ? <p className="error-text">{error}</p> : null}
       </article>
 
       <section className="operator-board-layout">
