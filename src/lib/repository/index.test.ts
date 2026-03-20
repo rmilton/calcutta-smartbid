@@ -844,6 +844,82 @@ describe("repository funding model", () => {
   });
 });
 
+describe("repository auction status transitions", () => {
+  beforeEach(async () => {
+    storeFile = path.join(
+      os.tmpdir(),
+      `calcutta-smartbid-auction-status-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
+    );
+    process.env.CALCUTTA_STORAGE_BACKEND = "local";
+    process.env.CALCUTTA_STORE_FILE = storeFile;
+    process.env.MOTHERSHIP_SYNDICATE_NAME = "Mothership";
+    await fs.rm(storeFile, { force: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(storeFile, { force: true });
+    delete process.env.CALCUTTA_STORE_FILE;
+    delete process.env.CALCUTTA_STORAGE_BACKEND;
+    delete process.env.MOTHERSHIP_SYNDICATE_NAME;
+    vi.resetModules();
+  });
+
+  it("preserves the original completion audit trail when exiting tournament mode", async () => {
+    const { repository, session } = await createBaselineSession();
+    const rawStore = JSON.parse(await fs.readFile(storeFile, "utf8")) as {
+      sessions: Array<{
+        id: string;
+        auctionStatus: string;
+        auctionCompletedAt: string | null;
+        auctionCompletedByName: string | null;
+        auctionCompletedByEmail: string | null;
+        updatedAt: string;
+        auctionAssets?: Array<{ id: string }>;
+        purchases: Array<unknown>;
+      }>;
+    };
+    const storedSession = rawStore.sessions.find((entry) => entry.id === session.id);
+
+    expect(storedSession).toBeDefined();
+    if (!storedSession) {
+      throw new Error("Expected stored session.");
+    }
+
+    const originalCompletedAt = "2026-03-19T20:00:00.000Z";
+    const originalUpdatedAt = "2026-03-19T20:05:00.000Z";
+    storedSession.auctionStatus = "tournament_active";
+    storedSession.auctionCompletedAt = originalCompletedAt;
+    storedSession.auctionCompletedByName = "Original Operator";
+    storedSession.auctionCompletedByEmail = "original@example.com";
+    storedSession.updatedAt = originalUpdatedAt;
+    storedSession.purchases = (storedSession.auctionAssets ?? []).map((asset, index) => ({
+      id: `purchase_${index + 1}`,
+      sessionId: session.id,
+      teamId: asset.id,
+      assetId: asset.id,
+      buyerSyndicateId: "syn_focus",
+      price: 1000 + index,
+      createdAt: `2026-03-19T20:${String(index).padStart(2, "0")}:00.000Z`
+    }));
+
+    await fs.writeFile(storeFile, JSON.stringify(rawStore, null, 2), "utf8");
+
+    await repository.updateAuctionStatus(session.id, "complete", {
+      name: "Exit Tournament Operator",
+      email: "exit@example.com"
+    });
+
+    const reloadedRepository = await loadRepository();
+    const reloadedSession = await reloadedRepository.getSession(session.id);
+
+    expect(reloadedSession?.auctionStatus).toBe("complete");
+    expect(reloadedSession?.auctionCompletedAt).toBe(originalCompletedAt);
+    expect(reloadedSession?.auctionCompletedByName).toBe("Original Operator");
+    expect(reloadedSession?.auctionCompletedByEmail).toBe("original@example.com");
+    expect(reloadedSession?.updatedAt).not.toBe(originalUpdatedAt);
+  });
+});
+
 describe("repository authentication", () => {
   beforeEach(async () => {
     storeFile = path.join(

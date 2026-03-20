@@ -1,5 +1,6 @@
 import {
   AuctionSession,
+  BracketGame,
   BracketRoundKey,
   BracketViewModel,
   MothershipAssetResult,
@@ -34,6 +35,22 @@ interface TeamProgression {
   isEliminated: boolean;
 }
 
+function getBracketGames(bracket: BracketViewModel): BracketGame[] {
+  return [
+    ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
+    ...bracket.finals.flatMap((round) => round.games)
+  ];
+}
+
+function getBroadcastTimestamp(game: Pick<BracketGame, "broadcastIsoDate">): number | null {
+  if (!game.broadcastIsoDate) {
+    return null;
+  }
+
+  const timestamp = Date.parse(game.broadcastIsoDate);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 /**
  * Derives the rounds a single team won by traversing the bracket view.
  * A team is eliminated when it appears as an entrant in a game that has
@@ -50,12 +67,7 @@ export function deriveTeamRoundProgression(
   const roundsWon: Stage[] = [];
   let isEliminated = false;
 
-  const allGames = [
-    ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
-    ...bracket.finals.flatMap((round) => round.games)
-  ];
-
-  for (const game of allGames) {
+  for (const game of getBracketGames(bracket)) {
     const isEntrant = game.entrants.some((e) => e?.teamId === teamId);
     if (!isEntrant) continue;
 
@@ -171,15 +183,26 @@ export function computeMothershipPortfolioResults(
     let nextGameOpponentId: string | null = null;
     let nextGameOpponentName: string | null = null;
     if (isStillAlive) {
-      const allGames = [
-        ...bracket.regions.flatMap((region) => region.rounds.flatMap((round) => round.games)),
-        ...bracket.finals.flatMap((round) => round.games)
-      ];
-      const nextGame = allGames.find(
+      const candidateGames = getBracketGames(bracket).filter(
         (game) =>
           game.winnerTeamId === null &&
-          game.entrants.some((e) => e && projectionIds.includes(e.teamId))
+          game.entrants.some((entrant) => entrant && projectionIds.includes(entrant.teamId))
       );
+      let nextGame = candidateGames[0];
+      let nextGameTimestamp = nextGame ? getBroadcastTimestamp(nextGame) : null;
+
+      for (const game of candidateGames.slice(1)) {
+        const gameTimestamp = getBroadcastTimestamp(game);
+        if (gameTimestamp === null) {
+          continue;
+        }
+
+        if (nextGameTimestamp === null || gameTimestamp < nextGameTimestamp) {
+          nextGame = game;
+          nextGameTimestamp = gameTimestamp;
+        }
+      }
+
       if (nextGame) {
         nextGameIsoDate = nextGame.broadcastIsoDate;
         nextGameNetwork = nextGame.broadcastNetwork;

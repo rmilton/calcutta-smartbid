@@ -3980,11 +3980,19 @@ function applyAuctionStatusMutation(
 ) {
   if (status === "complete") {
     assertAuctionCanBeMarkedComplete(session);
+    const previousStatus = session.auctionStatus;
     const timestamp = new Date().toISOString();
     session.auctionStatus = "complete";
-    session.auctionCompletedAt = timestamp;
-    session.auctionCompletedByName = actor.name;
-    session.auctionCompletedByEmail = actor.email;
+    if (
+      previousStatus === "active" ||
+      session.auctionCompletedAt === null ||
+      session.auctionCompletedByName === null ||
+      session.auctionCompletedByEmail === null
+    ) {
+      session.auctionCompletedAt = timestamp;
+      session.auctionCompletedByName = actor.name;
+      session.auctionCompletedByEmail = actor.email;
+    }
     session.updatedAt = timestamp;
     return;
   }
