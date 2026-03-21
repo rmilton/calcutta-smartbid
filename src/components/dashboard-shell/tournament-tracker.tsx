@@ -105,8 +105,7 @@ function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
     asset.isStillAlive &&
     !netPositive &&
     asset.breakEvenStage !== null &&
-    asset.breakEvenStage !== "negativeReturn" &&
-    STAGE_ORDER.indexOf(asset.breakEvenStage) > 0;
+    asset.breakEvenStage !== "negativeReturn";
   const hasNextGame = asset.isStillAlive && (asset.nextGameIsoDate ?? asset.nextGameNetwork ?? asset.nextGameOpponentId);
 
   return (
