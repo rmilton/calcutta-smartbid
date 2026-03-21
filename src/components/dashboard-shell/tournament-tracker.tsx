@@ -1,3 +1,4 @@
+import React from "react";
 import { MothershipAssetResult, MothershipPortfolioResults, Stage } from "@/lib/types";
 import { cn, formatCurrency, formatPercent } from "@/lib/utils";
 import { TeamLogo } from "@/components/team-logo";
@@ -100,6 +101,12 @@ interface AssetRowProps {
 function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
   const netPositive = asset.netPerShare > 0;
   const netNeutral = asset.netPerShare === 0;
+  const showBreakEven =
+    asset.isStillAlive &&
+    !netPositive &&
+    asset.breakEvenStage !== null &&
+    asset.breakEvenStage !== "negativeReturn" &&
+    STAGE_ORDER.indexOf(asset.breakEvenStage) > 0;
   const hasNextGame = asset.isStillAlive && (asset.nextGameIsoDate ?? asset.nextGameNetwork ?? asset.nextGameOpponentId);
 
   return (
@@ -154,11 +161,15 @@ function AssetRow({ asset, showTeamLogo }: AssetRowProps) {
 
       <div className="tournament-tracker__rounds-col">
         {STAGE_ORDER.map((stage) => (
-          <RoundPill
-            key={stage}
-            stage={stage}
-            status={getRoundPillStatus(stage, asset.roundsWon, asset.isEliminated, asset.isStillAlive)}
-          />
+          <React.Fragment key={stage}>
+            {showBreakEven && stage === asset.breakEvenStage && (
+              <span className="tournament-tracker__break-even-marker" title="Net positive from here" />
+            )}
+            <RoundPill
+              stage={stage}
+              status={getRoundPillStatus(stage, asset.roundsWon, asset.isEliminated, asset.isStillAlive)}
+            />
+          </React.Fragment>
         ))}
       </div>
 

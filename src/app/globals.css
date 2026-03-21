@@ -5146,6 +5146,18 @@ button.danger:disabled {
   color: color-mix(in srgb, var(--muted) 40%, transparent);
 }
 
+.tournament-tracker__break-even-marker {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 7px solid var(--success);
+  flex-shrink: 0;
+  opacity: 0.85;
+  align-self: center;
+}
+
 .tournament-tracker__expansion-anchor {
   height: 0.5rem;
 }

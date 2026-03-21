@@ -9,7 +9,7 @@ import {
   TeamProjection
 } from "@/lib/types";
 import { deriveEquivalentShares } from "@/lib/funding";
-import { getCumulativeStagePayouts } from "@/lib/payouts";
+import { getCumulativeStagePayouts, getBreakEvenStage } from "@/lib/payouts";
 import { roundCurrency } from "@/lib/utils";
 
 const STAGE_ORDER: Stage[] = [
@@ -173,6 +173,9 @@ export function computeMothershipPortfolioResults(
     const costPerShare = roundCurrency(purchase.price / equivalentShares);
     const returnPerShare = roundCurrency(realizedPayout / equivalentShares);
     const netPerShare = roundCurrency(returnPerShare - costPerShare);
+    const breakEvenStage = !isGrouped
+      ? getBreakEvenStage(purchase.price, session.payoutRules)
+      : null;
 
     const assetLabel = asset?.label ?? singleTeam?.name ?? purchase.teamId;
     const region = singleTeam?.region ?? asset?.region ?? teams[0]?.region ?? "";
@@ -225,6 +228,7 @@ export function computeMothershipPortfolioResults(
       teamCount: projectionIds.length,
       percentOfSpend,
       costPerShare,
+      breakEvenStage,
       roundsWon,
       realizedPayout,
       returnPerShare,
