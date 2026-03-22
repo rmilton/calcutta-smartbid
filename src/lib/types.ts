@@ -683,6 +683,7 @@ export interface ViewerDashboard {
   viewerAuction: ViewerAuctionDetails;
   storageBackend: StorageBackend;
   portfolioResults: MothershipPortfolioResults | null;
+  calcuttaStandings: CalcuttaSyndicateResult[] | null;
 }
 
 export type LiveRoomDashboard = AuctionDashboard | ViewerDashboard;

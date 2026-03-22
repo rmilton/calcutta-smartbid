@@ -260,6 +260,7 @@ function buildViewerDashboardFromContext(
     ledger: publicSession.syndicates,
     bracket,
     portfolioResults: context.portfolioResults,
+    calcuttaStandings: context.calcuttaStandings,
     viewerAuction: {
       projectedFinalPot: deriveProjectedFinalPot({
         ledger: publicSession.syndicates,

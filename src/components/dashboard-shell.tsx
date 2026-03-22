@@ -876,6 +876,7 @@ export function DashboardShell({
             isAuctionMarkedComplete={isAuctionMarkedComplete}
             isTournamentActive={isTournamentActive}
             portfolioResults={portfolioResults}
+            calcuttaStandings={(dashboard as ViewerDashboard).calcuttaStandings ?? null}
           />
         )
       ) : (
