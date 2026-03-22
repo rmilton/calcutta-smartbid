@@ -560,37 +560,39 @@ export function ViewerAuctionWorkspace({
       ) : null}
       {auctionGrid}
 
-      <article className="surface-card">
-        <div className="section-headline">
-          <div>
-            <p className="eyebrow">Ownership Ledger</p>
-            <h3>Syndicate Holdings</h3>
-          </div>
-          <div className="viewer-ledger-search">
-            <input
-              type="search"
-              value={ownershipSearch}
-              onChange={(event) => onOwnershipSearchChange(event.target.value)}
-              placeholder="Filter by team name"
-            />
-          </div>
-        </div>
-        {ownershipGroups.length ? (
-          <div className="viewer-ledger">
-            {ownershipGroups.map((group) => (
-              <ViewerOwnershipLedgerGroup
-                key={group.syndicate.id}
-                group={group}
-                teamLookup={teamLookup}
-                isMothership={group.highlight}
-                hasActiveSearch={ownershipSearch.trim().length > 0}
+      {!isTournamentActive && (
+        <article className="surface-card">
+          <div className="section-headline">
+            <div>
+              <p className="eyebrow">Ownership Ledger</p>
+              <h3>Syndicate Holdings</h3>
+            </div>
+            <div className="viewer-ledger-search">
+              <input
+                type="search"
+                value={ownershipSearch}
+                onChange={(event) => onOwnershipSearchChange(event.target.value)}
+                placeholder="Filter by team name"
               />
-            ))}
+            </div>
           </div>
-        ) : (
-          <p className="empty-copy">No matching teams in current syndicate holdings.</p>
-        )}
-      </article>
+          {ownershipGroups.length ? (
+            <div className="viewer-ledger">
+              {ownershipGroups.map((group) => (
+                <ViewerOwnershipLedgerGroup
+                  key={group.syndicate.id}
+                  group={group}
+                  teamLookup={teamLookup}
+                  isMothership={group.highlight}
+                  hasActiveSearch={ownershipSearch.trim().length > 0}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="empty-copy">No matching teams in current syndicate holdings.</p>
+          )}
+        </article>
+      )}
 
     </section>
   );

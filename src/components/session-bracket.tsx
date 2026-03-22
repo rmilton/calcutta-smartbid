@@ -636,6 +636,10 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function buildBracketBroadcastLabel(game: BracketGame): string {
+  if (game.winnerTeamId) {
+    return "Final";
+  }
+
   if (!game.broadcastIsoDate) {
     return "TBD";
   }
@@ -668,9 +672,8 @@ function buildBracketBroadcastLabel(game: BracketGame): string {
 
   const dateStr = `${dayName} ${monthName} ${dayNum}`;
   const timeStr = `${displayHour}:${displayMin} ${ampm} ${tzLabel}`;
-  const networkStr = game.broadcastNetwork ?? "TV TBD";
 
-  return `${dateStr} · ${timeStr} · ${networkStr}`;
+  return `${dateStr} · ${timeStr}`;
 }
 
 function buildBracketSyndicateLabel(name: string | null, compact: boolean) {
