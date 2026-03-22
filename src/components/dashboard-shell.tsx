@@ -876,6 +876,7 @@ export function DashboardShell({
             isAuctionMarkedComplete={isAuctionMarkedComplete}
             isTournamentActive={isTournamentActive}
             portfolioResults={portfolioResults}
+            calcuttaStandings={(dashboard as ViewerDashboard).calcuttaStandings ?? null}
           />
         )
       ) : (
@@ -946,6 +947,7 @@ export function DashboardShell({
               isAuctionMarkedComplete={isAuctionMarkedComplete}
               isTournamentActive={isTournamentActive}
               portfolioResults={portfolioResults}
+              calcuttaStandings={(dashboard as AuctionDashboard).calcuttaStandings ?? null}
               isUpdatingAuctionStatus={isUpdatingAuctionStatus}
               onUpdateAuctionStatus={(action) => void updateAuctionStatus(action)}
             />

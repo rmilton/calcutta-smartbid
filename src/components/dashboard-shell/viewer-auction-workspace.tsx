@@ -6,6 +6,7 @@ import {
   ViewerOwnershipGroup
 } from "@/lib/live-room";
 import {
+  CalcuttaSyndicateResult,
   MatchupConflict,
   MothershipPortfolioResults,
   RoundMatchup,
@@ -29,6 +30,7 @@ import {
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 import { TournamentTracker } from "@/components/dashboard-shell/tournament-tracker";
+import { CalcuttaStandings } from "@/components/dashboard-shell/calcutta-standings";
 
 interface ViewerAuctionWorkspaceProps {
   dashboard: ViewerDashboard;
@@ -50,6 +52,7 @@ interface ViewerAuctionWorkspaceProps {
   isAuctionMarkedComplete: boolean;
   isTournamentActive: boolean;
   portfolioResults: MothershipPortfolioResults | null;
+  calcuttaStandings: CalcuttaSyndicateResult[] | null;
 }
 
 export function ViewerAuctionWorkspace({
@@ -71,7 +74,8 @@ export function ViewerAuctionWorkspace({
   syndicateLookup,
   isAuctionMarkedComplete,
   isTournamentActive,
-  portfolioResults
+  portfolioResults,
+  calcuttaStandings
 }: ViewerAuctionWorkspaceProps) {
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const [salesCardHeight, setSalesCardHeight] = useState<number | null>(null);
@@ -549,6 +553,10 @@ export function ViewerAuctionWorkspace({
     <section className="viewer-layout">
       {isTournamentActive && portfolioResults ? (
         <TournamentTracker results={portfolioResults} />
+      ) : null}
+
+      {isTournamentActive && calcuttaStandings && calcuttaStandings.length > 0 ? (
+        <CalcuttaStandings standings={calcuttaStandings} />
       ) : null}
       {auctionGrid}
 

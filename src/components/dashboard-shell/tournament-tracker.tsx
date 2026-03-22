@@ -259,7 +259,13 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
         </div>
         <div className="tournament-tracker__summary-stat">
           <span className="insight-label">Net return</span>
-          <strong className="tournament-tracker__summary-value">
+          <strong
+            className={cn(
+              "tournament-tracker__summary-value",
+              netPositive && "tournament-tracker__net-value--positive",
+              !netPositive && !netNeutral && "tournament-tracker__net-value--negative"
+            )}
+          >
             {results.totalCost > 0
               ? `${results.netPnL >= 0 ? "+" : ""}${Math.round((results.netPnL / results.totalCost) * 100)}%`
               : "—"}

@@ -5295,3 +5295,332 @@ button.danger:disabled {
     display: none;
   }
 }
+
+/* ===== Calcutta Standings ===== */
+
+.calcutta-standings {
+  margin-top: 1.6rem;
+}
+
+.calcutta-standings .section-headline {
+  margin-bottom: 1.2rem;
+}
+
+/* Main row grid: rank | name | teams | return | chevron */
+.calcutta-standings__header-row,
+.calcutta-standings__syndicate-row {
+  display: grid;
+  grid-template-columns:
+    44px
+    minmax(140px, 2fr)
+    90px
+    76px
+    32px;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+}
+
+.calcutta-standings__header-row {
+  padding: 0 0.6rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.25rem;
+}
+
+.calcutta-standings__syndicate-block {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+}
+
+.calcutta-standings__syndicate-block:last-child {
+  border-bottom: none;
+}
+
+.calcutta-standings__syndicate-block--focus {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  border-radius: var(--radius-md);
+  margin: 0.1rem 0;
+}
+
+.calcutta-standings__syndicate-row {
+  padding: 0.65rem 0.6rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-md);
+  transition: background 0.1s;
+}
+
+.calcutta-standings__syndicate-row:hover {
+  background: color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+/* Rank badge */
+.calcutta-standings__rank-badge {
+  font: 600 0.8rem/1 var(--font-mono);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.calcutta-standings__rank-badge--gold,
+.calcutta-standings__rank-badge--silver,
+.calcutta-standings__rank-badge--bronze {
+  font-size: 1rem;
+  background: transparent;
+}
+
+/* Name column */
+.calcutta-standings__name-col {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.calcutta-standings__color-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.calcutta-standings__syndicate-name {
+  font: 600 0.88rem/1.2 var(--font-display);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calcutta-standings__focus-tag {
+  font: 600 0.65rem/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Teams alive */
+.calcutta-standings__alive-col {
+  display: flex;
+  align-items: center;
+}
+
+.calcutta-standings__teams-alive {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: 600 0.78rem/1 var(--font-mono);
+  color: var(--success);
+}
+
+.calcutta-standings__alive-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+  animation: calcutta-pulse 2s ease-in-out infinite;
+}
+
+@keyframes calcutta-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.calcutta-standings__alive-label {
+  font-weight: 400;
+  color: color-mix(in srgb, var(--success) 70%, var(--muted));
+}
+
+.calcutta-standings__teams-out {
+  font: 500 0.78rem/1 var(--font-mono);
+  color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+
+/* Stat columns (removed: spend, payout, net) */
+
+.calcutta-standings__stat {
+  font: 500 0.85rem/1.2 var(--font-mono);
+  color: var(--fg);
+}
+
+.calcutta-standings__net-stat {
+  font-weight: 600;
+}
+
+/* Return badge */
+.calcutta-standings__return-col {
+  text-align: right;
+}
+
+.calcutta-standings__return-badge {
+  display: inline-block;
+  font: 700 0.8rem/1 var(--font-mono);
+  padding: 0.25rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.calcutta-standings__return-badge--positive {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+}
+
+.calcutta-standings__return-badge--negative {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+/* Chevron */
+.calcutta-standings__chevron-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calcutta-standings__chevron {
+  font-size: 0.9rem;
+  color: var(--muted);
+  display: inline-block;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+
+.calcutta-standings__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Expanded team rows */
+.calcutta-standings__team-rows {
+  padding: 0 0.6rem 0.75rem 1.2rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+}
+
+.calcutta-standings__team-header-row,
+.calcutta-standings__team-row {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 1.5fr)
+    minmax(200px, 1fr)
+    76px;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.45rem 0.2rem;
+}
+
+.calcutta-standings__team-header-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+  margin-bottom: 0.1rem;
+}
+
+.calcutta-standings__team-row + .calcutta-standings__team-row {
+  border-top: 1px solid color-mix(in srgb, var(--line) 30%, transparent);
+}
+
+.calcutta-standings__team-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.calcutta-standings__team-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.calcutta-standings__team-status-dot--alive {
+  background: var(--success);
+}
+
+.calcutta-standings__team-status-dot--eliminated {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.calcutta-standings__team-name {
+  font: 500 0.85rem/1.2 var(--font-display);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.calcutta-standings__team-seed {
+  font: 600 0.72rem/1 var(--font-mono);
+  color: var(--muted);
+}
+
+.calcutta-standings__team-rounds-col {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.calcutta-standings__team-cost-col,
+.calcutta-standings__team-payout-col,
+.calcutta-standings__team-net-col {
+  text-align: right;
+}
+
+.calcutta-standings__team-stat {
+  font: 500 0.82rem/1.2 var(--font-mono);
+  color: var(--fg);
+}
+
+.calcutta-standings__team-net {
+  font: 600 0.82rem/1.2 var(--font-mono);
+  color: var(--muted);
+}
+
+.calcutta-standings__team-return {
+  font: 600 0.82rem/1.2 var(--font-mono);
+  color: var(--muted);
+}
+
+.calcutta-standings__team-return.tournament-tracker__net-value--positive {
+  color: var(--success);
+}
+
+.calcutta-standings__team-return.tournament-tracker__net-value--negative {
+  color: var(--danger);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .calcutta-standings__header-row,
+  .calcutta-standings__syndicate-row {
+    grid-template-columns:
+      36px
+      minmax(100px, 2fr)
+      72px
+      60px
+      28px;
+  }
+
+  .calcutta-standings__team-header-row,
+  .calcutta-standings__team-row {
+    grid-template-columns: minmax(100px, 1.5fr) minmax(160px, 1fr) 60px;
+  }
+}

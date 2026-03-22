@@ -642,6 +642,7 @@ export interface AuctionDashboard {
   projectionOverrideCount: number;
   storageBackend: StorageBackend;
   portfolioResults: MothershipPortfolioResults | null;
+  calcuttaStandings: CalcuttaSyndicateResult[] | null;
 }
 
 export interface ViewerAuctionDetails {
@@ -682,6 +683,7 @@ export interface ViewerDashboard {
   viewerAuction: ViewerAuctionDetails;
   storageBackend: StorageBackend;
   portfolioResults: MothershipPortfolioResults | null;
+  calcuttaStandings: CalcuttaSyndicateResult[] | null;
 }
 
 export type LiveRoomDashboard = AuctionDashboard | ViewerDashboard;
@@ -1062,6 +1064,33 @@ export interface MothershipAssetResult {
   nextGameNetwork: string | null;
   nextGameOpponentId: string | null;
   nextGameOpponentName: string | null;
+}
+
+export interface CalcuttaTeamResult {
+  assetId: string;
+  assetLabel: string;
+  seed: number | null;
+  isGrouped: boolean;
+  cost: number;
+  realizedPayout: number;
+  netPnL: number;
+  roundsWon: Stage[];
+  isEliminated: boolean;
+  isStillAlive: boolean;
+}
+
+export interface CalcuttaSyndicateResult {
+  syndicateId: string;
+  syndicateName: string;
+  syndicateColor: string;
+  isFocusSyndicate: boolean;
+  spend: number;
+  realizedPayout: number;
+  netPnL: number;
+  returnPct: number;
+  teamsAlive: number;
+  totalTeams: number;
+  assets: CalcuttaTeamResult[];
 }
 
 export interface MothershipPortfolioResults {
