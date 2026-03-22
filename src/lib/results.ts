@@ -179,7 +179,7 @@ export function computeMothershipPortfolioResults(
     const returnPerShare = roundCurrency(realizedPayout / equivalentShares);
     const netPerShare = roundCurrency(returnPerShare - costPerShare);
     const breakEvenStage = !isGrouped
-      ? getBreakEvenStage(purchase.price, session.payoutRules)
+      ? getBreakEvenStage(purchase.price, session.payoutRules, totalRoomSpend)
       : null;
 
     const assetLabel = asset?.label ?? singleTeam?.name ?? purchase.teamId;
