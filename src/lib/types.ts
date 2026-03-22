@@ -1051,6 +1051,7 @@ export interface MothershipAssetResult {
   teamCount: number;
   percentOfSpend: number;
   costPerShare: number;
+  breakEvenStage: Stage | "negativeReturn" | null;
   roundsWon: Stage[];
   realizedPayout: number;
   returnPerShare: number;
