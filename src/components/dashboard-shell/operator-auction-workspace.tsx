@@ -10,6 +10,7 @@ import {
   AuctionAsset,
   AuctionDashboard,
   BidRecommendation,
+  CalcuttaSyndicateResult,
   MatchupConflict,
   MothershipPortfolioResults,
   RoundMatchup,
@@ -34,6 +35,7 @@ import {
 import { AssetLogo, TeamLogo } from "@/components/team-logo";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 import { TournamentTracker } from "@/components/dashboard-shell/tournament-tracker";
+import { CalcuttaStandings } from "@/components/dashboard-shell/calcutta-standings";
 
 interface OperatorAuctionWorkspaceProps {
   dashboard: AuctionDashboard;
@@ -50,6 +52,7 @@ interface OperatorAuctionWorkspaceProps {
   isAuctionMarkedComplete: boolean;
   isTournamentActive: boolean;
   portfolioResults: MothershipPortfolioResults | null;
+  calcuttaStandings: CalcuttaSyndicateResult[] | null;
   teamSelectRef: RefObject<HTMLInputElement | null>;
   bidInputRef: RefObject<HTMLInputElement | null>;
   onAssetChange: (nextAssetId: string) => void;
@@ -108,6 +111,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
     isAuctionMarkedComplete,
     isTournamentActive,
     portfolioResults,
+    calcuttaStandings,
     teamSelectRef,
     bidInputRef,
     onAssetChange,
@@ -390,7 +394,12 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         <TournamentTracker results={portfolioResults} />
       ) : null}
 
+      {isTournamentActive && calcuttaStandings && calcuttaStandings.length > 0 ? (
+        <CalcuttaStandings standings={calcuttaStandings} />
+      ) : null}
+
       <section className="operator-board-layout">
+        {!isTournamentActive ? (
         <div className="operator-board-layout__main">
           <article className="surface-card decision-panel decision-panel--combined">
             <div className="decision-panel__header">
@@ -1076,6 +1085,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             </div>
           </article>
         </div>
+        ) : null}
 
         <aside className="operator-board-layout__side">
 <OperatorSyndicateBoardCard
@@ -1092,6 +1102,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
             onCollapseAll={onCollapseAll}
           />
 
+          {!isTournamentActive ? (
           <article className="surface-card">
             <div className="section-headline">
               <div>
@@ -1114,6 +1125,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
               <p className="empty-copy">No sales have been recorded yet.</p>
             )}
           </article>
+          ) : null}
         </aside>
       </section>
 

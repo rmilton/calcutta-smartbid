@@ -3,9 +3,12 @@ import {
   BracketGame,
   BracketRoundKey,
   BracketViewModel,
+  CalcuttaSyndicateResult,
+  CalcuttaTeamResult,
   MothershipAssetResult,
   MothershipPortfolioResults,
   Stage,
+  Syndicate,
   TeamProjection
 } from "@/lib/types";
 import { deriveEquivalentShares } from "@/lib/funding";
@@ -267,4 +270,111 @@ export function computeMothershipPortfolioResults(
     currentReturnPerShare,
     currentNetPerShare
   };
+}
+
+/**
+ * Builds Calcutta standings across all syndicates that made at least one purchase.
+ * Uses actual total room spend as the pot for payout calculations (not projectedPot).
+ * Sorted by returnPct descending, tiebroken by netPnL descending.
+ */
+export function computeCalcuttaStandings(
+  session: AuctionSession,
+  bracket: BracketViewModel,
+  syndicates: Syndicate[],
+  focusSyndicateId: string
+): CalcuttaSyndicateResult[] {
+  const syndicateLookup = new Map(syndicates.map((s) => [s.id, s]));
+  const auctionAssets = session.auctionAssets ?? [];
+  const projectionLookup = new Map(session.projections.map((t) => [t.id, t]));
+
+  const totalRoomSpend = roundCurrency(
+    session.purchases.reduce((sum, p) => sum + p.price, 0)
+  );
+
+  // Group purchases by syndicate
+  const purchasesBySyndicate = new Map<string, typeof session.purchases>();
+  for (const purchase of session.purchases) {
+    const group = purchasesBySyndicate.get(purchase.buyerSyndicateId) ?? [];
+    group.push(purchase);
+    purchasesBySyndicate.set(purchase.buyerSyndicateId, group);
+  }
+
+  const results: CalcuttaSyndicateResult[] = [];
+
+  for (const [syndicateId, purchases] of purchasesBySyndicate) {
+    const syndicate = syndicateLookup.get(syndicateId);
+    if (!syndicate) continue;
+
+    const spend = roundCurrency(purchases.reduce((sum, p) => sum + p.price, 0));
+
+    const assets: CalcuttaTeamResult[] = purchases.map((purchase) => {
+      const assetId = purchase.assetId ?? purchase.teamId;
+      const asset = auctionAssets.find((a) => a.id === assetId);
+      const projectionIds = purchase.projectionIds ?? [purchase.teamId];
+      const isGrouped = projectionIds.length > 1;
+
+      const singleTeam = !isGrouped ? projectionLookup.get(projectionIds[0]) ?? null : null;
+      const assetLabel = asset?.label ?? singleTeam?.name ?? purchase.teamId;
+      const seed = singleTeam?.seed ?? null;
+
+      const teamProgressions = projectionIds.map((teamId) =>
+        deriveTeamRoundProgression(teamId, bracket)
+      );
+
+      const wonStageSet = new Set<Stage>(teamProgressions.flatMap((p) => p.roundsWon));
+      const roundsWon = STAGE_ORDER.filter((stage) => wonStageSet.has(stage));
+      const isEliminated = teamProgressions.every((p) => p.isEliminated);
+      const isStillAlive = !isEliminated && bracket.isSupported;
+
+      const realizedPayout = roundCurrency(
+        teamProgressions.reduce(
+          (sum, progression) =>
+            sum + computeRealizedPayoutForRoundsWon(progression.roundsWon, session, totalRoomSpend),
+          0
+        )
+      );
+
+      const netPnL = roundCurrency(realizedPayout - purchase.price);
+
+      return {
+        assetId,
+        assetLabel,
+        seed,
+        isGrouped,
+        cost: purchase.price,
+        realizedPayout,
+        netPnL,
+        roundsWon,
+        isEliminated,
+        isStillAlive
+      } satisfies CalcuttaTeamResult;
+    });
+
+    // Sort assets by cost descending within each syndicate
+    assets.sort((a, b) => b.cost - a.cost);
+
+    const realizedPayout = roundCurrency(assets.reduce((sum, a) => sum + a.realizedPayout, 0));
+    const netPnL = roundCurrency(realizedPayout - spend);
+    const returnPct = spend > 0 ? netPnL / spend : 0;
+    const teamsAlive = assets.filter((a) => a.isStillAlive).length;
+
+    results.push({
+      syndicateId,
+      syndicateName: syndicate.name,
+      syndicateColor: syndicate.color,
+      isFocusSyndicate: syndicateId === focusSyndicateId,
+      spend,
+      realizedPayout,
+      netPnL,
+      returnPct,
+      teamsAlive,
+      totalTeams: assets.length,
+      assets
+    });
+  }
+
+  // Sort by returnPct desc, tiebreak by netPnL desc
+  results.sort((a, b) => b.returnPct - a.returnPct || b.netPnL - a.netPnL);
+
+  return results;
 }

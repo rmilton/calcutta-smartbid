@@ -9,7 +9,7 @@ import {
   deriveProjectedFinalPot,
   filterRecommendationRationale
 } from "@/lib/live-room";
-import { computeMothershipPortfolioResults } from "@/lib/results";
+import { computeMothershipPortfolioResults, computeCalcuttaStandings } from "@/lib/results";
 import { fetchEspnTournamentSchedule, EspnScheduleMap } from "@/lib/espn";
 import {
   AuctionDashboard,
@@ -180,6 +180,11 @@ function buildDashboardContext(
       ? computeMothershipPortfolioResults(publicSession, bracket, focusSyndicate.id)
       : null;
 
+  const calcuttaStandings =
+    publicSession.auctionStatus === "tournament_active"
+      ? computeCalcuttaStandings(publicSession, bracket, publicSession.syndicates, focusSyndicate.id)
+      : null;
+
   return {
     publicSession,
     focusSyndicate,
@@ -193,6 +198,7 @@ function buildDashboardContext(
     bracket,
     recommendation,
     portfolioResults,
+    calcuttaStandings,
     storageBackend
   };
 }
@@ -320,7 +326,8 @@ export function buildDashboard(
       context.publicSession.purchases[context.publicSession.purchases.length - 1] ?? null,
     projectionOverrideCount: Object.keys(context.publicSession.projectionOverrides).length,
     storageBackend: context.storageBackend,
-    portfolioResults: context.portfolioResults
+    portfolioResults: context.portfolioResults,
+    calcuttaStandings: context.calcuttaStandings
   };
 }
 
