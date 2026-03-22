@@ -19,7 +19,7 @@ import {
   TeamClassificationValue,
   TeamProjection
 } from "@/lib/types";
-import { cn, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent, formatSharePrice } from "@/lib/utils";
 import {
   AuctionCompleteAssetRow,
   AssetSaleRow,
@@ -980,7 +980,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     value={
                       focusFundingImpliedSharePrice === null
                         ? "--"
-                        : formatCurrency(focusFundingImpliedSharePrice)
+                        : formatSharePrice(focusFundingImpliedSharePrice)
                     }
                     tooltip="What each equivalent Mothership share implies based on current spend."
                   />
@@ -1062,7 +1062,7 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
                     value={
                       focusFundingImpliedSharePrice === null
                         ? "--"
-                        : formatCurrency(focusFundingImpliedSharePrice)
+                        : formatSharePrice(focusFundingImpliedSharePrice)
                     }
                     tooltip="What each equivalent Mothership share implies based on current spend."
                   />
