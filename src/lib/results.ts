@@ -93,7 +93,8 @@ export function deriveTeamRoundProgression(
  */
 export function computeRealizedPayoutForRoundsWon(
   roundsWon: Stage[],
-  session: Pick<AuctionSession, "payoutRules">
+  session: Pick<AuctionSession, "payoutRules">,
+  pot = session.payoutRules.projectedPot
 ): number {
   if (roundsWon.length === 0) return 0;
 
@@ -105,7 +106,7 @@ export function computeRealizedPayoutForRoundsWon(
   if (maxStageIndex === -1) return 0;
 
   const maxStage = STAGE_ORDER[maxStageIndex];
-  const cumulativePayouts = getCumulativeStagePayouts(session.payoutRules);
+  const cumulativePayouts = getCumulativeStagePayouts(session.payoutRules, pot);
   return cumulativePayouts.find((p) => p.stage === maxStage)?.payout ?? 0;
 }
 
@@ -133,6 +134,10 @@ export function computeMothershipPortfolioResults(
     mothershipPurchases.reduce((sum, p) => sum + p.price, 0)
   );
   const costBasisPerShare = roundCurrency(totalCost / equivalentShares);
+
+  const totalRoomSpend = roundCurrency(
+    session.purchases.reduce((sum, p) => sum + p.price, 0)
+  );
 
   const projectionLookup = new Map<string, TeamProjection>(
     session.projections.map((t) => [t.id, t])
@@ -165,7 +170,7 @@ export function computeMothershipPortfolioResults(
     const realizedPayout = roundCurrency(
       teamProgressions.reduce(
         (sum, progression) =>
-          sum + computeRealizedPayoutForRoundsWon(progression.roundsWon, session),
+          sum + computeRealizedPayoutForRoundsWon(progression.roundsWon, session, totalRoomSpend),
         0
       )
     );

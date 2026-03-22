@@ -1,6 +1,6 @@
 import React from "react";
 import { MothershipAssetResult, MothershipPortfolioResults, Stage } from "@/lib/types";
-import { cn, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, formatCurrency, formatPercent, formatSharePrice } from "@/lib/utils";
 import { TeamLogo } from "@/components/team-logo";
 
 function formatNextGame(isoDate: string | null, network: string | null): string {
@@ -226,20 +226,20 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
         <div className="tournament-tracker__summary-stat">
           <span className="insight-label">Cost basis / share</span>
           <strong className="tournament-tracker__summary-value">
-            {formatCurrency(results.costBasisPerShare)}
+            {formatSharePrice(results.costBasisPerShare)}
           </strong>
         </div>
         <div className="tournament-tracker__summary-stat">
           <span className="insight-label">Cost basis / half share</span>
           <strong className="tournament-tracker__summary-value">
-            {formatCurrency(results.costBasisPerShare / 2)}
+            {formatSharePrice(results.costBasisPerShare / 2)}
           </strong>
         </div>
         <div className="tournament-tracker__summary-stat">
           <span className="insight-label">Current return / share</span>
           <strong className="tournament-tracker__summary-value">
             {results.currentReturnPerShare > 0
-              ? formatCurrency(results.currentReturnPerShare)
+              ? formatCurrency(Math.round(results.currentReturnPerShare))
               : "—"}
           </strong>
         </div>
@@ -258,10 +258,10 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
           </strong>
         </div>
         <div className="tournament-tracker__summary-stat">
-          <span className="insight-label">Total return</span>
+          <span className="insight-label">Net return</span>
           <strong className="tournament-tracker__summary-value">
-            {results.totalRealizedPayout > 0
-              ? `${formatCurrency(results.totalRealizedPayout)} (${formatPercent(returnPct)})`
+            {results.totalCost > 0
+              ? `${results.netPnL >= 0 ? "+" : ""}${Math.round((results.netPnL / results.totalCost) * 100)}%`
               : "—"}
           </strong>
         </div>
@@ -314,7 +314,7 @@ export function TournamentTracker({ results }: TournamentTrackerProps) {
         </div>
         <div className="tournament-tracker__cost-col">
           <span className="tournament-tracker__stat-value">
-            {formatCurrency(results.costBasisPerShare)}
+            ~{formatCurrency(results.costBasisPerShare)}
           </span>
         </div>
         <div className="tournament-tracker__rounds-col" />

@@ -26,7 +26,7 @@ import {
   SessionAdminConfig,
   Syndicate
 } from "@/lib/types";
-import { formatCurrency, titleCaseStage } from "@/lib/utils";
+import { formatCurrency, formatSharePrice, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const payoutStages: Array<
@@ -1414,7 +1414,7 @@ export function SessionAdminCenter({
                 value={
                   fundingPreview.impliedSharePrice === null
                     ? "--"
-                    : formatCurrency(fundingPreview.impliedSharePrice)
+                    : formatSharePrice(fundingPreview.impliedSharePrice)
                 }
                 tooltip="Current Mothership spend divided by equivalent shares sold. It shows what each sold share is effectively carrying right now."
               />
