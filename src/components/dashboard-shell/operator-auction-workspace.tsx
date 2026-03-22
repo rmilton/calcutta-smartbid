@@ -1088,19 +1088,21 @@ export function OperatorAuctionWorkspace(props: OperatorAuctionWorkspaceProps) {
         ) : null}
 
         <aside className="operator-board-layout__side">
-<OperatorSyndicateBoardCard
-            holdings={operatorSyndicateHoldings}
-            focusSyndicateId={dashboard.focusSyndicate.id}
-            teamLookup={teamLookup}
-            availableAssets={dashboard.availableAssets}
-            budgetRows={dashboard.analysis.budgetRows}
-            liveAssetId={selectedAssetId}
-            liveBid={currentBid}
-            expandedSyndicateIds={expandedSyndicateIds}
-            onToggleSyndicate={onToggleSyndicate}
-            onExpandAll={onExpandAll}
-            onCollapseAll={onCollapseAll}
-          />
+          {!isTournamentActive && (
+            <OperatorSyndicateBoardCard
+              holdings={operatorSyndicateHoldings}
+              focusSyndicateId={dashboard.focusSyndicate.id}
+              teamLookup={teamLookup}
+              availableAssets={dashboard.availableAssets}
+              budgetRows={dashboard.analysis.budgetRows}
+              liveAssetId={selectedAssetId}
+              liveBid={currentBid}
+              expandedSyndicateIds={expandedSyndicateIds}
+              onToggleSyndicate={onToggleSyndicate}
+              onExpandAll={onExpandAll}
+              onCollapseAll={onCollapseAll}
+            />
+          )}
 
           {!isTournamentActive ? (
           <article className="surface-card">

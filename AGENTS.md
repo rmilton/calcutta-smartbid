@@ -134,7 +134,7 @@ Selection Sunday prep is now session-managed: bracket structure and team analysi
   - full-field tournament bracket surface
   - owned-team syndicate markers
   - operator winner advancement and viewer read-only mode
-  - bracket game cards show ESPN broadcast info (date, time, network) when in tournament mode; "TBD" otherwise
+  - bracket game cards show ESPN broadcast info (date and time only, no network) when in tournament mode; "TBD" for unscheduled games; "Final" for completed games
 
 ### Domain and orchestration
 
@@ -279,7 +279,7 @@ Run this after touching auth, admin flows, dashboard controls, or payout/simulat
 22. Log in as a viewer after sellout and confirm the viewer board also shows `Auction Complete` without spend/equity recap.
 22a. Click "Enter tournament mode" and confirm the nav pill changes to "Tournament mode active".
 22b. Confirm the Mothership Portfolio Results tracker appears on operator and viewer boards.
-22c. Confirm bracket cards show broadcast info for scheduled games and "TBD" for unscheduled ones.
+22c. Confirm bracket cards show date + time (no network) for scheduled games, "TBD" for unscheduled games, and "Final" for completed games.
 22d. Confirm the viewer board hides the decision board, team highlights, recent sales, and rooting guide in tournament mode.
 22e. Click "Exit tournament mode" and confirm the board returns to auction-complete state.
 23. Undo the last purchase and confirm the team returns to active bidding with the prior bid restored.
