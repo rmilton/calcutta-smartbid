@@ -145,20 +145,24 @@ function BracketBoard({
   density,
   onSelectWinner
 }: BracketBoardProps) {
-  const regions = organizeBoardRegions(bracket.regions);
-  const semifinals = organizeSemifinals(bracket.finals);
+  // bracket.regions is ordered by finalFourPairings.flat():
+  // [0] and [1] pair for the left Final Four game; [2] and [3] pair for the right.
+  const [leftTop, leftBottom, rightTop, rightBottom] = bracket.regions;
+  const semifinals = organizeSemifinals(bracket.finals, bracket.regions);
   const playInGames = bracket.playIns?.games ?? [];
   const championshipRound = bracket.finals.find((round) => round.key === "championship") ?? null;
   const championshipGame = championshipRound?.games[0] ?? null;
   const champion =
     championshipGame?.entrants.find((entrant) => entrant?.teamId === championshipGame.winnerTeamId) ??
     null;
+  const leftTitle = leftTop && leftBottom ? `${leftTop.name} / ${leftBottom.name}` : "Semifinal";
+  const rightTitle = rightTop && rightBottom ? `${rightTop.name} / ${rightBottom.name}` : "Semifinal";
 
   return (
     <article className="surface-card bracket-board" data-density={density}>
       <div className="bracket-board__half bracket-board__half--top">
         <BracketBoardRegion
-          region={regions.east}
+          region={leftTop ?? null}
           canEdit={canEdit}
           isSaving={isSaving}
           mothershipSyndicateId={mothershipSyndicateId}
@@ -166,7 +170,7 @@ function BracketBoard({
           onSelectWinner={onSelectWinner}
         />
         <BracketBoardRegion
-          region={regions.west}
+          region={rightTop ?? null}
           canEdit={canEdit}
           isSaving={isSaving}
           mothershipSyndicateId={mothershipSyndicateId}
@@ -179,7 +183,7 @@ function BracketBoard({
       <div className="bracket-board__championship-band">
         <div className="bracket-board__band-grid">
           <BracketBoardSemifinal
-            title="South / East"
+            title={leftTitle}
             game={semifinals.top}
             canEdit={canEdit}
             isSaving={isSaving}
@@ -216,7 +220,7 @@ function BracketBoard({
             </div>
           </div>
           <BracketBoardSemifinal
-            title="West / Midwest"
+            title={rightTitle}
             game={semifinals.bottom}
             canEdit={canEdit}
             isSaving={isSaving}
@@ -229,7 +233,7 @@ function BracketBoard({
 
       <div className="bracket-board__half bracket-board__half--bottom">
         <BracketBoardRegion
-          region={regions.south}
+          region={leftBottom ?? null}
           canEdit={canEdit}
           isSaving={isSaving}
           mothershipSyndicateId={mothershipSyndicateId}
@@ -237,7 +241,7 @@ function BracketBoard({
           onSelectWinner={onSelectWinner}
         />
         <BracketBoardRegion
-          region={regions.midwest}
+          region={rightBottom ?? null}
           canEdit={canEdit}
           isSaving={isSaving}
           mothershipSyndicateId={mothershipSyndicateId}
@@ -420,28 +424,23 @@ function BracketBoardPlayIns({
   );
 }
 
-function organizeBoardRegions(regions: BracketRegion[]) {
-  const regionLookup = new Map(regions.map((region) => [normalizeRegionName(region.name), region]));
 
-  return {
-    south: regionLookup.get("south") ?? null,
-    east: regionLookup.get("east") ?? null,
-    west: regionLookup.get("west") ?? null,
-    midwest: regionLookup.get("midwest") ?? null
-  };
-}
-
-function organizeSemifinals(rounds: BracketRound[]) {
+function organizeSemifinals(rounds: BracketRound[], regions: BracketRegion[]) {
   const semifinalRound = rounds.find((round) => round.key === "finalFour") ?? null;
   const semifinalGames = semifinalRound?.games ?? [];
 
+  // regions is ordered by finalFourPairings.flat(): [0]+[1] are the left pair, [2]+[3] the right.
+  // Normalize names to match the keys embedded in source game IDs (e.g. "South" → "south").
+  const leftPair = [regions[0]?.name, regions[1]?.name].filter(Boolean).map(normalizeRegionName);
+  const rightPair = [regions[2]?.name, regions[3]?.name].filter(Boolean).map(normalizeRegionName);
+
   return {
     top:
-      semifinalGames.find((game) => gameFeedsRegions(game, ["south", "east"])) ??
+      (leftPair.length === 2 ? semifinalGames.find((game) => gameFeedsRegions(game, leftPair)) : null) ??
       semifinalGames[0] ??
       null,
     bottom:
-      semifinalGames.find((game) => gameFeedsRegions(game, ["west", "midwest"])) ??
+      (rightPair.length === 2 ? semifinalGames.find((game) => gameFeedsRegions(game, rightPair)) : null) ??
       semifinalGames[1] ??
       null
   };

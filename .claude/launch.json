@@ -4,8 +4,10 @@
     {
       "name": "calcutta-smartbid",
       "runtimeExecutable": "npm",
+      "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" },
       "runtimeArgs": ["run", "dev", "--", "-p", "3003"],
-      "port": 3003
+      "port": 3003,
+      "autoPort": false
     }
   ]
 }
